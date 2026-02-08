@@ -4,4 +4,8 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "click>=8.3.1",
+    "pyparsing>=3.3.2",
+    "roll-cli>=2.0.0",
+]

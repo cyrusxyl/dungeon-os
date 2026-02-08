@@ -1,0 +1,211 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "D&D 5e Character Sheet",
+  "description": "Player character sheet based on dnd5e_json_schema",
+  "type": "object",
+  "required": ["name", "race", "class", "level", "ability_scores", "hp"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Character name"
+    },
+    "controlled_by": {
+      "type": "string",
+      "description": "Player ID who controls this character"
+    },
+    "race": {
+      "type": "string",
+      "examples": ["Human", "Elf", "Dwarf", "Halfling"]
+    },
+    "class": {
+      "type": "string",
+      "examples": ["Fighter", "Wizard", "Rogue", "Cleric"]
+    },
+    "level": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "background": {
+      "type": "string",
+      "examples": ["Soldier", "Sage", "Criminal"]
+    },
+    "alignment": {
+      "type": "string",
+      "examples": ["Lawful Good", "Chaotic Neutral", "Neutral Evil"]
+    },
+    "experience_points": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ability_scores": {
+      "type": "object",
+      "required": ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"],
+      "properties": {
+        "strength": {"type": "integer", "minimum": 1, "maximum": 30},
+        "dexterity": {"type": "integer", "minimum": 1, "maximum": 30},
+        "constitution": {"type": "integer", "minimum": 1, "maximum": 30},
+        "intelligence": {"type": "integer", "minimum": 1, "maximum": 30},
+        "wisdom": {"type": "integer", "minimum": 1, "maximum": 30},
+        "charisma": {"type": "integer", "minimum": 1, "maximum": 30}
+      }
+    },
+    "ability_modifiers": {
+      "type": "object",
+      "description": "Calculated modifiers from ability scores",
+      "properties": {
+        "strength": {"type": "integer"},
+        "dexterity": {"type": "integer"},
+        "constitution": {"type": "integer"},
+        "intelligence": {"type": "integer"},
+        "wisdom": {"type": "integer"},
+        "charisma": {"type": "integer"}
+      }
+    },
+    "proficiency_bonus": {
+      "type": "integer",
+      "description": "Proficiency bonus based on level",
+      "minimum": 2
+    },
+    "skills": {
+      "type": "object",
+      "description": "Skill proficiencies and bonuses",
+      "properties": {
+        "acrobatics": {"type": "integer"},
+        "animal_handling": {"type": "integer"},
+        "arcana": {"type": "integer"},
+        "athletics": {"type": "integer"},
+        "deception": {"type": "integer"},
+        "history": {"type": "integer"},
+        "insight": {"type": "integer"},
+        "intimidation": {"type": "integer"},
+        "investigation": {"type": "integer"},
+        "medicine": {"type": "integer"},
+        "nature": {"type": "integer"},
+        "perception": {"type": "integer"},
+        "performance": {"type": "integer"},
+        "persuasion": {"type": "integer"},
+        "religion": {"type": "integer"},
+        "sleight_of_hand": {"type": "integer"},
+        "stealth": {"type": "integer"},
+        "survival": {"type": "integer"}
+      }
+    },
+    "hp": {
+      "type": "object",
+      "required": ["current", "max"],
+      "properties": {
+        "current": {"type": "integer", "minimum": 0},
+        "max": {"type": "integer", "minimum": 1},
+        "temp": {"type": "integer", "minimum": 0, "default": 0}
+      }
+    },
+    "armor_class": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "initiative": {
+      "type": "integer",
+      "description": "Initiative modifier"
+    },
+    "speed": {
+      "type": "integer",
+      "description": "Movement speed in feet",
+      "default": 30
+    },
+    "hit_dice": {
+      "type": "object",
+      "properties": {
+        "total": {"type": "integer"},
+        "remaining": {"type": "integer"}
+      }
+    },
+    "death_saves": {
+      "type": "object",
+      "properties": {
+        "successes": {"type": "integer", "minimum": 0, "maximum": 3, "default": 0},
+        "failures": {"type": "integer", "minimum": 0, "maximum": 3, "default": 0}
+      }
+    },
+    "inventory": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "quantity": {"type": "integer", "minimum": 1},
+          "weight": {"type": "number"},
+          "description": {"type": "string"},
+          "equipped": {"type": "boolean"}
+        },
+        "required": ["name"]
+      }
+    },
+    "weapons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "attack_bonus": {"type": "integer"},
+          "damage": {"type": "string"},
+          "damage_type": {"type": "string"},
+          "properties": {"type": "array", "items": {"type": "string"}},
+          "equipped": {"type": "boolean"}
+        }
+      }
+    },
+    "armor": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "ac_bonus": {"type": "integer"},
+        "type": {"type": "string", "enum": ["light", "medium", "heavy", "shield"]},
+        "equipped": {"type": "boolean"}
+      }
+    },
+    "spellcasting": {
+      "type": "object",
+      "properties": {
+        "ability": {
+          "type": "string",
+          "enum": ["intelligence", "wisdom", "charisma"]
+        },
+        "spell_save_dc": {"type": "integer"},
+        "spell_attack_bonus": {"type": "integer"},
+        "spell_slots": {
+          "type": "object",
+          "properties": {
+            "1": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "2": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "3": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "4": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "5": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "6": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "7": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "8": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}},
+            "9": {"type": "object", "properties": {"max": {"type": "integer"}, "remaining": {"type": "integer"}}}
+          }
+        },
+        "spells_known": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "features_and_traits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "personality_traits": {"type": "string"},
+    "ideals": {"type": "string"},
+    "bonds": {"type": "string"},
+    "flaws": {"type": "string"}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "game_time": "Day 1, 10:00 AM",
+  "location": "Starting Location",
+  "weather": "Clear",
+  "active_encounter": null,
+  "active_player_turn": null,
+  "quest_log": [],
+  "party_status": "Exploring",
+  "session_players_present": []
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Location",
+  "description": "Schema for locations, rooms, and points of interest",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Location name",
+      "examples": ["The Prancing Pony Inn", "Wave Echo Cave - Entrance Hall"]
+    },
+    "description": {
+      "type": "string",
+      "description": "Vivid description of the location"
+    },
+    "exits": {
+      "type": "array",
+      "description": "Available exits and where they lead",
+      "items": {
+        "type": "object",
+        "properties": {
+          "direction": {"type": "string"},
+          "leads_to": {"type": "string"},
+          "locked": {"type": "boolean"},
+          "hidden": {"type": "boolean"}
+        }
+      }
+    },
+    "notable_features": {
+      "type": "array",
+      "description": "Interesting features players can interact with",
+      "items": {"type": "string"}
+    },
+    "hidden_elements": {
+      "type": "array",
+      "description": "Secrets, traps, or hidden items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "dc_to_find": {"type": "integer"},
+          "skill_required": {"type": "string"}
+        }
+      }
+    },
+    "npcs_present": {
+      "type": "array",
+      "description": "NPCs currently at this location",
+      "items": {"type": "string"}
+    },
+    "atmosphere": {
+      "type": "string",
+      "description": "Mood and sensory details",
+      "examples": ["Warm and cozy with crackling fireplace", "Dark and damp, echoing with distant drips"]
+    }
+  }
+}

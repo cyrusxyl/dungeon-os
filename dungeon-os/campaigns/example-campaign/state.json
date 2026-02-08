@@ -1,0 +1,17 @@
+{
+  "game_time": "Day 1, Morning",
+  "location": "Phandalin - Town Square",
+  "weather": "Clear skies",
+  "active_encounter": null,
+  "active_player_turn": null,
+  "quest_log": [
+    {
+      "id": "lost-mine",
+      "title": "Find the Lost Mine of Phandelver",
+      "status": "active",
+      "progress": "Just arrived in Phandalin"
+    }
+  ],
+  "party_status": "Exploring",
+  "session_players_present": ["player1", "player2"]
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Player Metadata",
+  "description": "Information about a player (not their character)",
+  "type": "object",
+  "required": ["player_id", "player_name", "characters_controlled"],
+  "properties": {
+    "player_id": {
+      "type": "string",
+      "description": "Unique identifier for this player",
+      "examples": ["player1", "alice-2024"]
+    },
+    "player_name": {
+      "type": "string",
+      "description": "Real name or preferred name of the player",
+      "examples": ["Alice", "Bob"]
+    },
+    "characters_controlled": {
+      "type": "array",
+      "description": "List of character names this player controls",
+      "items": {
+        "type": "string"
+      },
+      "examples": [["aragorn"], ["legolas", "gimli"]]
+    },
+    "permissions": {
+      "type": "object",
+      "description": "What this player is allowed to do",
+      "properties": {
+        "can_edit_own_characters": {
+          "type": "boolean",
+          "default": true
+        },
+        "can_view_other_sheets": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether player can see other characters' full stats"
+        },
+        "can_edit_world": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether player can modify world files (usually DM only)"
+        }
+      }
+    },
+    "joined_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When this player joined the campaign"
+    },
+    "notes": {
+      "type": "string",
+      "description": "DM notes about this player"
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NPC (Non-Player Character)",
+  "description": "Schema for NPCs and monsters",
+  "type": "object",
+  "required": ["name", "type"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "NPC or monster name"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["humanoid", "monster", "beast", "undead", "construct", "dragon", "celestial", "fiend", "fey", "elemental", "aberration"],
+      "description": "Creature type"
+    },
+    "challenge_rating": {
+      "type": "number",
+      "description": "CR for monsters, or level equivalent for NPCs"
+    },
+    "hp": {
+      "type": "object",
+      "properties": {
+        "current": {"type": "integer", "minimum": 0},
+        "max": {"type": "integer", "minimum": 1}
+      }
+    },
+    "armor_class": {
+      "type": "integer"
+    },
+    "ability_scores": {
+      "type": "object",
+      "properties": {
+        "strength": {"type": "integer"},
+        "dexterity": {"type": "integer"},
+        "constitution": {"type": "integer"},
+        "intelligence": {"type": "integer"},
+        "wisdom": {"type": "integer"},
+        "charisma": {"type": "integer"}
+      }
+    },
+    "actions": {
+      "type": "array",
+      "description": "Available actions in combat",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "attack_bonus": {"type": "integer"},
+          "damage": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "personality": {
+      "type": "string",
+      "description": "Personality traits for roleplay"
+    },
+    "motivation": {
+      "type": "string",
+      "description": "What drives this NPC"
+    },
+    "secret": {
+      "type": "string",
+      "description": "Hidden information about this NPC"
+    },
+    "location": {
+      "type": "string",
+      "description": "Where this NPC is typically found"
+    },
+    "relationship_to_party": {
+      "type": "string",
+      "enum": ["friendly", "neutral", "hostile", "unknown"],
+      "default": "neutral"
+    },
+    "notes": {
+      "type": "string",
+      "description": "DM notes and session history with this NPC"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Toblen Stonehill",
+  "type": "humanoid",
+  "personality": "Friendly and jovial innkeeper, loves to hear adventurers' tales",
+  "motivation": "Keep his inn successful and his family safe",
+  "secret": "Knows about suspicious activities from the Redbrands gang but is too afraid to speak openly",
+  "location": "Phandalin - Stonehill Inn",
+  "relationship_to_party": "friendly",
+  "notes": "Example NPC - innkeeper in Phandalin"
+}

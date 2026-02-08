@@ -1,0 +1,11 @@
+{
+  "player_id": "player1",
+  "player_name": "Alice",
+  "characters_controlled": ["aragorn"],
+  "permissions": {
+    "can_edit_own_characters": true,
+    "can_view_other_sheets": false,
+    "can_edit_world": false
+  },
+  "joined_date": "2026-02-07"
+}

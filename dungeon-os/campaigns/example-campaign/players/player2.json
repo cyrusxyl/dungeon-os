@@ -1,0 +1,11 @@
+{
+  "player_id": "player2",
+  "player_name": "Bob",
+  "characters_controlled": ["legolas"],
+  "permissions": {
+    "can_edit_own_characters": true,
+    "can_view_other_sheets": false,
+    "can_edit_world": false
+  },
+  "joined_date": "2026-02-07"
+}

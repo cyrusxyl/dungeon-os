@@ -1,0 +1,111 @@
+{
+  "name": "Aragorn",
+  "controlled_by": "player1",
+  "race": "Human",
+  "class": "Fighter",
+  "level": 3,
+  "background": "Soldier",
+  "alignment": "Lawful Good",
+  "experience_points": 900,
+  "ability_scores": {
+    "strength": 16,
+    "dexterity": 14,
+    "constitution": 15,
+    "intelligence": 10,
+    "wisdom": 12,
+    "charisma": 13
+  },
+  "ability_modifiers": {
+    "strength": 3,
+    "dexterity": 2,
+    "constitution": 2,
+    "intelligence": 0,
+    "wisdom": 1,
+    "charisma": 1
+  },
+  "proficiency_bonus": 2,
+  "skills": {
+    "athletics": 5,
+    "intimidation": 3,
+    "perception": 3,
+    "survival": 3
+  },
+  "hp": {
+    "current": 28,
+    "max": 28,
+    "temp": 0
+  },
+  "armor_class": 16,
+  "initiative": 2,
+  "speed": 30,
+  "hit_dice": {
+    "total": 3,
+    "remaining": 3
+  },
+  "death_saves": {
+    "successes": 0,
+    "failures": 0
+  },
+  "inventory": [
+    {
+      "name": "Rope, hempen (50 feet)",
+      "quantity": 1,
+      "weight": 10,
+      "equipped": false
+    },
+    {
+      "name": "Rations (1 day)",
+      "quantity": 5,
+      "weight": 2,
+      "equipped": false
+    },
+    {
+      "name": "Torch",
+      "quantity": 3,
+      "weight": 1,
+      "equipped": false
+    }
+  ],
+  "weapons": [
+    {
+      "name": "Longsword",
+      "attack_bonus": 5,
+      "damage": "1d8+3",
+      "damage_type": "slashing",
+      "properties": ["versatile (1d10)"],
+      "equipped": true
+    },
+    {
+      "name": "Longbow",
+      "attack_bonus": 4,
+      "damage": "1d8+2",
+      "damage_type": "piercing",
+      "properties": ["ammunition (range 150/600)", "two-handed"],
+      "equipped": false
+    }
+  ],
+  "armor": {
+    "name": "Chain Mail",
+    "ac_bonus": 16,
+    "type": "heavy",
+    "equipped": true
+  },
+  "features_and_traits": [
+    {
+      "name": "Second Wind",
+      "description": "On your turn, you can use a bonus action to regain 1d10 + 3 HP. Once used, must finish short or long rest."
+    },
+    {
+      "name": "Action Surge",
+      "description": "On your turn, you can take one additional action. Once used, must finish short or long rest."
+    },
+    {
+      "name": "Fighting Style: Defense",
+      "description": "+1 bonus to AC while wearing armor (already included in AC)"
+    }
+  ],
+  "personality_traits": "Brave and noble, natural leader",
+  "ideals": "Duty - Protect the innocent",
+  "bonds": "Sworn to protect the realm",
+  "flaws": "Sometimes too trusting of others"
+}

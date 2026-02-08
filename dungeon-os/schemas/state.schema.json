@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Campaign State",
+  "description": "Current state of the D&D campaign session",
+  "type": "object",
+  "required": ["game_time", "location", "party_status"],
+  "properties": {
+    "game_time": {
+      "type": "string",
+      "description": "Current in-game time",
+      "examples": ["Day 1, 10:00 AM", "Day 5, Evening"]
+    },
+    "location": {
+      "type": "string",
+      "description": "Current location of the party",
+      "examples": ["Phandalin - Town Square", "Wave Echo Cave - Entrance"]
+    },
+    "weather": {
+      "type": "string",
+      "description": "Current weather conditions",
+      "examples": ["Clear", "Rainy", "Stormy", "Snowing"]
+    },
+    "active_encounter": {
+      "type": ["object", "null"],
+      "description": "Current combat encounter if any",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["combat", "social", "exploration"]
+        },
+        "participants": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "initiative_order": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "initiative": {"type": "number"}
+            }
+          }
+        },
+        "current_turn": {
+          "type": "string"
+        }
+      }
+    },
+    "active_player_turn": {
+      "type": ["string", "null"],
+      "description": "ID of player whose turn it is (null if not applicable)"
+    },
+    "quest_log": {
+      "type": "array",
+      "description": "List of active and completed quests",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "status": {
+            "type": "string",
+            "enum": ["active", "completed", "failed"]
+          },
+          "progress": {"type": "string"}
+        },
+        "required": ["id", "title", "status"]
+      }
+    },
+    "party_status": {
+      "type": "string",
+      "description": "General status of the party",
+      "examples": ["Exploring", "Resting", "In Combat", "Traveling"]
+    },
+    "session_players_present": {
+      "type": "array",
+      "description": "List of player IDs present in current session",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}
