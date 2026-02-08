@@ -1,6 +1,6 @@
 ---
 name: Combat Resolution
-description: Handle D&D 5e combat encounters including initiative, attacks, damage, HP tracking, and turn coordination. Use when combat starts, players attack, enemies engage, or initiative is rolled. Supports multi-player coordination and spell attacks.
+description: Handle D&D 5e combat encounters including initiative, attacks, damage, HP tracking, conditions, status effects, and turn coordination. Use when combat starts, players attack, enemies engage, spells apply conditions, or initiative is rolled. Supports multi-player coordination and condition enforcement.
 ---
 
 # Combat Resolution
@@ -173,6 +173,211 @@ After each turn:
 ### 4. Move to Next Turn
 
 Cycle through `initiative_order`, loop back to top when reaching end.
+
+## Conditions & Status Effects
+
+Track and enforce D&D 5e conditions with mechanical effects.
+
+### Applying Conditions
+
+When a spell, ability, or effect applies a condition:
+
+1. **Query condition details**:
+   ```bash
+   curl -sL "https://www.dnd5eapi.co/api/2014/conditions/{condition-index}" | jq '{
+     name: .name,
+     desc: .desc
+   }'
+   ```
+
+   Common conditions: `blinded`, `charmed`, `deafened`, `frightened`, `grappled`, `incapacitated`, `invisible`, `paralyzed`, `petrified`, `poisoned`, `prone`, `restrained`, `stunned`, `unconscious`, `exhaustion`
+
+2. **Update combat state**:
+   ```json
+   "active_encounter": {
+     "conditions": {
+       "goblin-1": [
+         {
+           "condition": "poisoned",
+           "duration": "1 minute",
+           "source": "Ray of Sickness",
+           "save_dc": 13,
+           "save_type": "CON"
+         }
+       ],
+       "aragorn": [
+         {
+           "condition": "prone",
+           "duration": "until stands up",
+           "source": "knocked down"
+         }
+       ]
+     }
+   }
+   ```
+
+3. **Narrate application**:
+   - "The goblin reels back, green-faced and retching (**Poisoned**)."
+   - "Aragorn hits the ground hard (**Prone**)."
+
+### Condition Effects
+
+Enforce these mechanical effects automatically:
+
+**Blinded**:
+- Attack rolls have disadvantage
+- Attacks against have advantage
+- Auto-fail ability checks requiring sight
+
+**Charmed**:
+- Can't attack charmer or target with harmful effects
+- Charmer has advantage on social checks
+
+**Frightened**:
+- Disadvantage on ability checks and attack rolls while source is in sight
+- Can't willingly move closer to source
+
+**Grappled**:
+- Speed becomes 0
+- Can't benefit from bonuses to speed
+
+**Incapacitated**:
+- Can't take actions or reactions
+
+**Invisible**:
+- Can't be seen without special sense
+- Attack rolls have advantage
+- Attacks against have disadvantage
+
+**Paralyzed**:
+- Incapacitated (can't take actions/reactions)
+- Auto-fail STR and DEX saves
+- Attacks against have advantage
+- Melee attacks within 5 ft are critical hits
+
+**Poisoned**:
+- Disadvantage on attack rolls
+- Disadvantage on ability checks
+
+**Prone**:
+- Disadvantage on attack rolls
+- Melee attacks against have advantage
+- Ranged attacks against have disadvantage
+- Costs half movement to stand up
+
+**Restrained**:
+- Speed becomes 0
+- Attack rolls have disadvantage
+- Attacks against have advantage
+- Disadvantage on DEX saves
+
+**Stunned**:
+- Incapacitated (can't take actions/reactions)
+- Auto-fail STR and DEX saves
+- Attacks against have advantage
+
+**Unconscious**:
+- Incapacitated, can't move or speak
+- Drops what it's holding, falls prone
+- Auto-fail STR and DEX saves
+- Attacks against have advantage
+- Melee attacks within 5 ft are critical hits
+
+**Exhaustion** (levels 1-6):
+1. Disadvantage on ability checks
+2. Speed halved
+3. Disadvantage on attack rolls and saves
+4. HP maximum halved
+5. Speed reduced to 0
+6. Death
+
+### Enforcing Conditions During Combat
+
+**Before attack roll**:
+- Check if attacker has conditions: Apply disadvantage for `blinded`, `frightened`, `poisoned`, `prone`, `restrained`
+- Check if target has conditions: Apply advantage for attacks against `blinded`, `paralyzed`, `prone` (melee only), `restrained`, `stunned`, `unconscious`
+
+**Before saving throw**:
+- Check conditions: `Paralyzed` or `stunned` = auto-fail STR/DEX saves
+- Apply disadvantage/advantage as appropriate
+
+**During movement**:
+- Check conditions: `Grappled`, `restrained`, `prone` (costs half movement), `exhaustion` level 2+ (halved speed), level 5 (speed 0)
+
+**Start of turn**:
+- Check condition duration: "Until end of turn", "1 minute", "concentration", etc.
+- Prompt saves if allowed: "The goblin can make a CON save (DC 13) to end Poisoned."
+
+### Condition Duration Tracking
+
+**Instantaneous**: Apply once, no tracking
+**Until end of turn**: Remove at end of creature's turn
+**1 minute (10 rounds)**: Decrement round counter, remove at 0
+**Concentration**: Tied to caster's concentration, remove if caster loses concentration
+**Until condition met**: Remove when specified action occurs (e.g., "until stands up")
+
+Example tracking:
+```json
+{
+  "condition": "hold-person",
+  "duration": "concentration, 1 minute",
+  "rounds_remaining": 10,
+  "source": "Wizard's spell",
+  "save_dc": 14,
+  "save_type": "WIS",
+  "save_on_turn_end": true
+}
+```
+
+### Removing Conditions
+
+**Automatically**:
+- Duration expires
+- Condition's trigger met (stands up from prone)
+- Source removed (charmer dies)
+
+**By action**:
+- Lesser Restoration spell removes many conditions
+- Medicine check to stabilize unconscious
+
+**By save**:
+- Some conditions allow saves at end of turn
+- Roll save, compare to DC, remove on success
+
+**Update state**:
+```bash
+# Remove condition from active_encounter.conditions
+```
+
+### Concentration Checks
+
+When a concentrating caster takes damage:
+
+1. **Determine DC**: DC = 10 or half damage taken, whichever is higher
+2. **Roll CON save**:
+   ```bash
+   source .venv/bin/activate && roll 1d20+{con_modifier} -v
+   ```
+3. **On failure**: Concentration breaks, remove all concentration-based conditions/spells
+
+### Damage Types
+
+Query damage type information:
+
+```bash
+curl -sL "https://www.dnd5eapi.co/api/2014/damage-types/{damage-type}" | jq '{
+  name: .name,
+  desc: .desc
+}'
+```
+
+Common types: `acid`, `bludgeoning`, `cold`, `fire`, `force`, `lightning`, `necrotic`, `piercing`, `poison`, `psychic`, `radiant`, `slashing`, `thunder`
+
+**Resistances**: Take half damage
+**Vulnerabilities**: Take double damage
+**Immunities**: Take no damage
+
+Check creature stat blocks for resistances/immunities and apply when calculating damage.
 
 ## Saving Throws
 

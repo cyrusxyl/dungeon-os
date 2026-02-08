@@ -1,6 +1,6 @@
 ---
 name: Worldbuilding & Procedural Generation
-description: Generate NPCs, locations, loot, and quest content on-the-fly for D&D campaigns. Use when the DM needs to create new content during play, improvise encounters, populate towns, generate treasure, or expand the world dynamically.
+description: Generate NPCs, locations, loot, equipment, and quest content on-the-fly for D&D campaigns. Use when the DM needs to create new content during play, improvise encounters, populate towns, generate treasure, manage merchant shops, look up equipment stats, or expand the world dynamically.
 ---
 
 # Worldbuilding & Procedural Generation
@@ -191,6 +191,200 @@ After determining loot:
    - Edit `inventory[]` array
    - Add coins to character's wealth
    - Add magic items with full description
+
+## Equipment & Inventory Management
+
+Handle equipment lookups, merchant shops, and inventory updates with API-sourced item stats.
+
+### Equipment Lookup
+
+When players want to know about a weapon, armor, or gear:
+
+1. **Query equipment details**:
+   ```bash
+   curl -sL "https://www.dnd5eapi.co/api/2014/equipment/{equipment-index}" | jq '{
+     name: .name,
+     equipment_category: .equipment_category.name,
+     cost: .cost,
+     weight: .weight,
+     desc: .desc
+   }'
+   ```
+
+2. **For weapons**, get additional stats:
+   ```bash
+   curl -sL "https://www.dnd5eapi.co/api/2014/equipment/{weapon-index}" | jq '{
+     name: .name,
+     cost: .cost,
+     damage: .damage,
+     range: .range,
+     properties: .properties,
+     weapon_category: .weapon_category,
+     weapon_range: .weapon_range
+   }'
+   ```
+
+3. **For armor**, get AC details:
+   ```bash
+   curl -sL "https://www.dnd5eapi.co/api/2014/equipment/{armor-index}" | jq '{
+     name: .name,
+     cost: .cost,
+     armor_category: .armor_category,
+     armor_class: .armor_class,
+     str_minimum: .str_minimum,
+     stealth_disadvantage: .stealth_disadvantage
+   }'
+   ```
+
+4. **Query weapon properties** for clarification:
+   ```bash
+   curl -sL "https://www.dnd5eapi.co/api/2014/weapon-properties/{property-index}" | jq '{
+     name: .name,
+     desc: .desc
+   }'
+   ```
+
+   Common properties: `finesse`, `versatile`, `light`, `heavy`, `reach`, `thrown`, `two-handed`, `ammunition`, `loading`
+
+### Merchant Shop Generation
+
+When players visit a shop:
+
+1. **Determine shop type**: Weaponsmith, armorer, general store, alchemist, magic shop
+
+2. **Browse equipment by category**:
+   ```bash
+   curl -sL "https://www.dnd5eapi.co/api/2014/equipment-categories/{category-index}" | jq '.equipment[] | .name'
+   ```
+
+   Categories: `weapon`, `armor`, `adventuring-gear`, `tools`, `mounts-and-vehicles`, `ammunition`
+
+3. **Generate stock**:
+   - Small village shop: Common items, 1d6+2 types, 20% markup
+   - Town shop: Common + uncommon items, 2d6+4 types, 10% markup
+   - City shop: Full selection, base prices
+   - Black market: Rare items, 50-200% markup
+
+4. **Pricing**:
+   - Use `cost.quantity` and `cost.unit` from API (gp, sp, cp)
+   - Apply markup/discount as appropriate
+   - Standard exchange: 1 gp = 10 sp = 100 cp
+
+5. **Example merchant interaction**:
+   ```
+   DM: "Hargus the blacksmith shows you his wares. What are you looking for?"
+   Player: "Do you have any rapiers?"
+   DM: [Query API] "Aye, I've got a fine rapier here. 25 gold pieces. Light, nimble blade—perfect for a dextrous fighter."
+   ```
+
+### Equipment Purchase
+
+When a player buys equipment:
+
+1. **Check cost**: Use API data for accurate price
+2. **Verify character has gold**: Read character file `inventory` or wealth tracking
+3. **Subtract cost**: Update character's gold
+4. **Add to inventory**:
+   - For weapons: Add to `weapons[]` array with full stats
+   - For armor: Update `armor` object
+   - For items: Add to `inventory[]` array
+
+5. **Example weapon addition**:
+   ```json
+   {
+     "name": "Rapier",
+     "attack_bonus": 5,
+     "damage": "1d8+3",
+     "damage_type": "piercing",
+     "properties": ["finesse"],
+     "equipped": false
+   }
+   ```
+
+   Calculate `attack_bonus` = proficiency_bonus + DEX_modifier (or STR if not finesse)
+   Calculate `damage` = weapon_die + ability_modifier
+
+6. **Example armor update**:
+   ```json
+   {
+     "name": "Chain Mail",
+     "ac_bonus": 16,
+     "type": "heavy",
+     "equipped": true
+   }
+   ```
+
+   Recalculate character's `armor_class` after equipping
+
+### Equipment Proficiency Validation
+
+Before allowing equipment use:
+
+1. **Check character proficiencies**:
+   - Read character file for `proficiencies` or class-granted proficiencies
+   - Common proficiencies from character creation skill
+
+2. **Weapon proficiency**:
+   - Simple weapons: Club, dagger, quarterstaff, light crossbow, etc.
+   - Martial weapons: Longsword, rapier, longbow, greatsword, etc.
+   - If not proficient: No proficiency bonus to attack rolls
+
+3. **Armor proficiency**:
+   - Light armor: Leather, studded leather
+   - Medium armor: Hide, chain shirt, scale mail
+   - Heavy armor: Chain mail, plate
+   - If not proficient: Disadvantage on ability checks, saving throws, attack rolls using STR or DEX
+
+4. **Query proficiency details** if needed:
+   ```bash
+   curl -sL "https://www.dnd5eapi.co/api/2014/proficiencies/{proficiency-index}" | jq '{
+     name: .name,
+     type: .type,
+     classes: .classes,
+     races: .races
+   }'
+   ```
+
+### Merchant Inventory Templates
+
+**Weaponsmith**:
+- Martial weapons: Longsword, greatsword, battleaxe, warhammer, longbow
+- Simple weapons: Handaxe, spear, light crossbow
+- Ammunition: Arrows (20), bolts (20)
+- Maybe: +1 weapon (rare, expensive)
+
+**Armorer**:
+- Light armor: Leather, studded leather
+- Medium armor: Hide, chain shirt, scale mail, half plate
+- Heavy armor: Chain mail, splint, plate
+- Shields: Wooden, steel
+
+**General Store**:
+- Adventuring gear: Rope, torches, rations, waterskin, backpack, bedroll
+- Tools: Thieves' tools, tinker's tools, healer's kit
+- Miscellaneous: Lantern, oil, chalk, crowbar, hammer
+
+**Alchemist**:
+- Potions: Healing (2d4+2), greater healing (4d4+4), antitoxin
+- Supplies: Alchemist's supplies, herbalism kit, healer's kit
+- Rare: Potion of invisibility, potion of climbing
+
+### Loot Distribution with Equipment
+
+After combat or treasure discovery:
+
+1. **Identify items**: Use API to get exact stats
+2. **Present to players**: "You find a battleaxe, 15 gp, and a potion of healing"
+3. **Players divide loot**: Let them decide who takes what
+4. **Update inventory**: Edit each character file accordingly
+
+### Equipment Maintenance
+
+Track equipment condition (optional rule):
+
+- **Damaged**: After critical fail in combat, roll for weapon/armor damage
+- **Repair**: Costs 10% of item value, requires smith or appropriate tools
+- **Broken**: Unusable until repaired
 
 ## Quest Generation
 

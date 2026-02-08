@@ -46,6 +46,24 @@
         },
         "current_turn": {
           "type": "string"
+        },
+        "conditions": {
+          "type": "object",
+          "description": "Active conditions on combatants",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "condition": {"type": "string"},
+                "duration": {"type": "string"},
+                "source": {"type": "string"},
+                "save_dc": {"type": "number"},
+                "save_type": {"type": "string"}
+              },
+              "required": ["condition"]
+            }
+          }
         }
       }
     },
