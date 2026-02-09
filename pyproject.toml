@@ -8,7 +8,11 @@ dependencies = [
     "click>=8.3.1",
     "pyparsing>=3.3.2",
     "roll-cli>=2.0.0",
+    "rapidfuzz>=3.0.0",
 ]
 
 [project.scripts]
 dnd-api = "dnd_api.__main__:main"
+
+[tool.uv]
+package = true

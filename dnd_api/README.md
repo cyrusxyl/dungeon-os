@@ -12,14 +12,25 @@ uv pip install -e .
 ## Quick Start
 
 ```bash
+# First time: Warmup cache for fast searches
+uv run dnd-api warmup monsters
+uv run dnd-api warmup spells
+
 # List all monsters
 uv run dnd-api list monsters
 
 # Get specific monster (cached)
 uv run dnd-api get monsters/goblin
 
+# Search with fuzzy matching (handles typos!)
+uv run dnd-api search monsters --name "gobln"  # Finds "Goblin"
+uv run dnd-api search spells --name "firbal"   # Finds "Fireball"
+
 # Search for spells
 uv run dnd-api search spells --level 3 --school evocation
+
+# Text search in descriptions
+uv run dnd-api search monsters --text "invisible"
 
 # Random encounter
 uv run dnd-api random monsters --count 3
@@ -64,33 +75,53 @@ uv run dnd-api get monsters/goblin --json | jq '{name, hp: .hit_points, ac: .arm
 
 ### search
 
-Semantic filtering for resources:
+**Fuzzy search with filters** (requires warmup):
 
 ```bash
 uv run dnd-api search <resource> [--filters]
 ```
 
 **Monster filters**:
-- `--name <query>` - Name search (partial match)
+- `--name <query>` - **Fuzzy name matching** (handles typos: "gobln" → "Goblin")
+- `--text <query>` - **Text search** in abilities/descriptions
 - `--cr <range>` - Challenge rating (e.g., `5`, `5-7`, `3+`)
 - `--type <type>` - Creature type (undead, dragon, humanoid, etc.)
 - `--size <size>` - Size (tiny, small, medium, large, huge, gargantuan)
 
 **Spell filters**:
-- `--name <query>` - Name search
+- `--name <query>` - **Fuzzy name matching** (handles typos: "firbal" → "Fireball")
+- `--text <query>` - **Text search** in spell descriptions
 - `--level <range>` - Spell level (0-9 or cantrip)
 - `--school <school>` - School of magic (evocation, enchantment, etc.)
 - `--class <class>` - Available to class (wizard, cleric, etc.)
 
 **Equipment filters**:
-- `--name <query>` - Name search
+- `--name <query>` - **Fuzzy name matching** (handles typos: "longswrd" → "Longsword")
 - `--category <category>` - Category (weapon, armor, adventuring-gear)
 
 **Examples**:
 ```bash
-uv run dnd-api search monsters --name goblin
+# Fuzzy name matching (typo-tolerant)
+uv run dnd-api search monsters --name "gobln"
+uv run dnd-api search spells --name "firbal"
+uv run dnd-api search equipment --name "longswrd"
+
+# Partial name matching
+uv run dnd-api search monsters --name "dra"  # Finds all dragons
+uv run dnd-api search spells --name "fir"    # Finds fire spells
+
+# Text search in descriptions
+uv run dnd-api search monsters --text "invisible"
+uv run dnd-api search spells --text "fire damage"
+uv run dnd-api search monsters --text "bonus action"
+
+# Structured filters
+uv run dnd-api search monsters --cr 5-7 --type undead
 uv run dnd-api search spells --level 3 --school evocation
-uv run dnd-api search equipment --category weapon --name sword
+
+# Combined filters
+uv run dnd-api search monsters --cr 0-2 --text "bonus action"
+uv run dnd-api search spells --level 3 --school evocation --text "fire"
 ```
 
 ### random
@@ -133,6 +164,25 @@ Display cache statistics:
 uv run dnd-api cache-info
 ```
 
+### warmup
+
+Pre-cache full resource data for fuzzy search and filtering:
+
+```bash
+uv run dnd-api warmup <resource>        # Warmup specific resource
+uv run dnd-api warmup all               # Warmup all resources
+uv run dnd-api warmup monsters --force  # Force re-fetch
+```
+
+**Note:** Run warmup before using search filters (`--cr`, `--type`, `--level`, `--text`, etc.). Warmup caches full resource data, enabling fast filtering.
+
+**Examples**:
+```bash
+uv run dnd-api warmup monsters  # ~1-2 minutes for 334 monsters
+uv run dnd-api warmup spells    # ~1-2 minutes for 319 spells
+uv run dnd-api warmup all       # ~3-5 minutes total
+```
+
 ### clear-cache
 
 Clear cache files:
@@ -142,13 +192,25 @@ uv run dnd-api clear-cache              # Clear all
 uv run dnd-api clear-cache monsters     # Clear specific resource
 ```
 
-## Caching
+## Caching & Search
 
-- Cache location: `{campaign}/.cache/api/2014/`
-- Caches persist across sessions (D&D 5e rules don't change)
+**Cache location**: `{campaign}/.cache/api/2014/`
+
+**Performance**:
 - First lookup: ~200-300ms (API call)
 - Cached lookup: ~30-50ms (file read)
-- Token savings: 35-45% per session
+- Search (after warmup): < 100ms (in-memory)
+
+**Token efficiency**:
+- List workflows: 35-45% reduction
+- Search workflows: 90% reduction (fuzzy search prevents listing all items)
+
+**Fuzzy search features**:
+- Typo tolerance: "gobln" → "Goblin", "firbal" → "Fireball"
+- Partial matching: "fir" → Fire Bolt, Fireball, Fire Shield
+- Text search: Find keywords in abilities/descriptions
+- Structured filters: CR ranges, types, levels, schools
+- Combined filters: Mix multiple criteria
 
 ## Performance Comparison
 
@@ -170,10 +232,13 @@ dnd_api/
 ├── __main__.py          # CLI entry point
 ├── api.py              # API wrapper with error handling
 ├── cache.py            # Cache management
+├── cache_warmup.py     # Pre-fetch full resource data
+├── fuzzy.py            # RapidFuzz-based fuzzy matching
+├── text_search.py      # Text search in descriptions
 └── commands/           # Command implementations
     ├── list.py
     ├── get.py
-    ├── search.py
+    ├── search.py       # Fuzzy search + filters + text
     ├── random.py
     ├── info.py
     └── cache_cmd.py

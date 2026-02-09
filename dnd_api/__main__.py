@@ -19,6 +19,7 @@ from dnd_api.commands import search as cmd_search
 from dnd_api.commands import random as cmd_random
 from dnd_api.commands import info as cmd_info
 from dnd_api.commands import cache_cmd
+from dnd_api.cache_warmup import warmup_cache, warmup_all_resources
 
 
 def create_parser():
@@ -49,7 +50,8 @@ def create_parser():
     search_parser.add_argument("--school", help="Spell school (evocation, etc.)")
     search_parser.add_argument("--class", dest="spell_class", help="Spell class (wizard, cleric, etc.)")
     search_parser.add_argument("--category", help="Equipment category")
-    search_parser.add_argument("--name", help="Name search (partial match)")
+    search_parser.add_argument("--name", help="Name search (fuzzy matching)")
+    search_parser.add_argument("--text", help="Text search in descriptions/abilities")
 
     # Random command
     random_parser = subparsers.add_parser("random", help="Random resource selection")
@@ -68,6 +70,22 @@ def create_parser():
     cache_info_parser = subparsers.add_parser("cache-info", help="Show cache statistics")
     clear_cache_parser = subparsers.add_parser("clear-cache", help="Clear cache")
     clear_cache_parser.add_argument("resource", nargs="?", help="Specific resource to clear (optional)")
+
+    # Warmup command
+    warmup_parser = subparsers.add_parser(
+        "warmup",
+        help="Pre-cache full resource data for filtering"
+    )
+    warmup_parser.add_argument(
+        "resource",
+        nargs="?",
+        help="Resource to warmup (monsters, spells, etc.) or 'all'"
+    )
+    warmup_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force re-fetch even if cached"
+    )
 
     return parser
 
@@ -106,6 +124,8 @@ def main():
                 filters["category"] = args.category
             if args.name:
                 filters["name"] = args.name
+            if args.text:
+                filters["text"] = args.text
 
             return cmd_search.execute(args.resource, filters)
 
@@ -128,6 +148,18 @@ def main():
 
         elif args.command == "clear-cache":
             return cache_cmd.execute_clear(args.resource)
+
+        elif args.command == "warmup":
+            resource = args.resource or "all"
+
+            if resource == "all":
+                warmup_all_resources(force=args.force)
+            else:
+                cached, errors = warmup_cache(resource, force=args.force)
+                if errors > 0:
+                    return 1
+
+            return 0
 
         else:
             print(f"Unknown command: {args.command}", file=sys.stderr)

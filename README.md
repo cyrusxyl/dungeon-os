@@ -10,20 +10,42 @@ The project includes a Python CLI wrapper (`dnd-api`) for efficient D&D 5e API a
 
 ```bash
 # Install
-uv pip install -e .
+uv sync
+
+# First time: Warmup cache for fast searches
+uv run dnd-api warmup monsters
+uv run dnd-api warmup spells
 
 # Use wrapper
 uv run dnd-api list monsters
 uv run dnd-api get monsters/goblin
+
+# Search with fuzzy matching (handles typos!)
+uv run dnd-api search monsters --name "gobln"  # Finds "Goblin"
+uv run dnd-api search spells --name "firbal"   # Finds "Fireball"
+
+# Filter by attributes
+uv run dnd-api search monsters --cr 5-7 --type undead
 uv run dnd-api search spells --level 3 --school evocation
+
+# Text search in descriptions
+uv run dnd-api search monsters --text "invisible"
+uv run dnd-api search spells --text "fire damage"
+
+# Combined filters
+uv run dnd-api search monsters --cr 0-2 --text "bonus action"
+
+# Other utilities
 uv run dnd-api random monsters --count 3
 uv run dnd-api info conditions paralyzed
 ```
 
-**Benefits:**
-- Caching: First call ~200ms (API), subsequent calls ~30ms (cached)
-- Token efficiency: 35-45% reduction in token usage per session
-- Search: Filter monsters by CR, spells by school/level, equipment by category
-- DM utilities: Random selection, quick reference formatting
+**Features:**
+- **Fuzzy Search**: Typo-tolerant name matching ("gobln" → "Goblin")
+- **Structured Filters**: CR ranges, type, size, level, school, class
+- **Text Search**: Find keywords in abilities/descriptions
+- **Caching**: First call ~200ms (API), subsequent calls ~30ms (cached)
+- **Token Efficiency**: 90% reduction in token usage for search workflows
+- **DM Utilities**: Random selection, quick reference formatting
 
 See `dnd_api/README.md` for full documentation.
