@@ -15,14 +15,25 @@ When combat begins:
    - Read player characters from `{campaign}/characters/*.json`
    - For monsters/NPCs, either load from `{campaign}/world/npcs/{name}.json` or fetch from API:
      ```bash
-     curl -sL "https://www.dnd5eapi.co/api/2014/monsters/{monster-name}" | jq '{
+     # Quick lookup (full data, cached)
+     uv run dnd-api get monsters/{monster-name}
+
+     # Extract minimal fields with jq
+     uv run dnd-api get monsters/{monster-name} --json | jq '{
        name: .name,
        hp: .hit_points,
        ac: .armor_class[0].value,
        dex_mod: ((.dexterity - 10) / 2 | floor),
        actions: .actions
      }'
+
+     # Search for appropriate monster
+     uv run dnd-api search monsters --name {query}
+
+     # Random encounter monster
+     uv run dnd-api random monsters --count {n}
      ```
+   - The wrapper caches responses for speed and token efficiency
    - Save fetched monsters to `{campaign}/world/npcs/{name}-{number}.json` for this encounter
 
 2. **Create combat state**:
@@ -114,7 +125,11 @@ Player declares: "I cast Fire Bolt at the goblin"
 
 **Step 1: Query spell**
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/spells/{spell-name}" | jq '{
+# Full spell data (cached)
+uv run dnd-api get spells/{spell-name}
+
+# Or extract minimal fields
+uv run dnd-api get spells/{spell-name} --json | jq '{
   name: .name,
   level: .level,
   damage: .damage,
@@ -184,7 +199,11 @@ When a spell, ability, or effect applies a condition:
 
 1. **Query condition details**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/conditions/{condition-index}" | jq '{
+   # Quick reference for condition effects (formatted)
+   uv run dnd-api info conditions {condition-index}
+
+   # Or get raw data for minimal extraction
+   uv run dnd-api get conditions/{condition-index} --json | jq '{
      name: .name,
      desc: .desc
    }'

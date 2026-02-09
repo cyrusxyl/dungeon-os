@@ -9,3 +9,6 @@ dependencies = [
     "pyparsing>=3.3.2",
     "roll-cli>=2.0.0",
 ]
+
+[project.scripts]
+dnd-api = "dnd_api.__main__:main"

@@ -202,18 +202,25 @@ When players want to know about a weapon, armor, or gear:
 
 1. **Query equipment details**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/equipment/{equipment-index}" | jq '{
+   # Full equipment data (cached)
+   uv run dnd-api get equipment/{equipment-index}
+
+   # Or extract specific fields
+   uv run dnd-api get equipment/{equipment-index} --json | jq '{
      name: .name,
      equipment_category: .equipment_category.name,
      cost: .cost,
      weight: .weight,
      desc: .desc
    }'
+
+   # Search for equipment
+   uv run dnd-api search equipment --category weapon --name sword
    ```
 
 2. **For weapons**, get additional stats:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/equipment/{weapon-index}" | jq '{
+   uv run dnd-api get equipment/{weapon-index} --json | jq '{
      name: .name,
      cost: .cost,
      damage: .damage,
@@ -226,7 +233,7 @@ When players want to know about a weapon, armor, or gear:
 
 3. **For armor**, get AC details:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/equipment/{armor-index}" | jq '{
+   uv run dnd-api get equipment/{armor-index} --json | jq '{
      name: .name,
      cost: .cost,
      armor_category: .armor_category,
@@ -238,7 +245,11 @@ When players want to know about a weapon, armor, or gear:
 
 4. **Query weapon properties** for clarification:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/weapon-properties/{property-index}" | jq '{
+   # Quick reference
+   uv run dnd-api info weapon-properties {property-index}
+
+   # Or with jq extraction
+   uv run dnd-api get weapon-properties/{property-index} --json | jq '{
      name: .name,
      desc: .desc
    }'
@@ -254,7 +265,11 @@ When players visit a shop:
 
 2. **Browse equipment by category**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/equipment-categories/{category-index}" | jq '.equipment[] | .name'
+   # Get equipment category list (cached)
+   uv run dnd-api get equipment-categories/{category-index} --json | jq '.equipment[] | .name'
+
+   # Or search by category
+   uv run dnd-api search equipment --category weapon
    ```
 
    Categories: `weapon`, `armor`, `adventuring-gear`, `tools`, `mounts-and-vehicles`, `ammunition`

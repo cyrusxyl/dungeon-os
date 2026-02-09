@@ -14,7 +14,11 @@ When a player casts a spell:
 ### Step 1: Query Spell Details
 
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/spells/{spell-index}" | jq '{
+# Full spell data (cached)
+uv run dnd-api get spells/{spell-index}
+
+# Or extract specific fields with jq
+uv run dnd-api get spells/{spell-index} --json | jq '{
   name: .name,
   level: .level,
   school: .school.name,
@@ -31,6 +35,9 @@ curl -sL "https://www.dnd5eapi.co/api/2014/spells/{spell-index}" | jq '{
   desc: .desc,
   higher_level: .higher_level
 }'
+
+# Search for spells by criteria
+uv run dnd-api search spells --level 3 --school evocation
 ```
 
 Key fields:
@@ -187,7 +194,8 @@ See Character Advancement skill for detailed workflow.
 1. Check class level data for spells known/prepared at new level
 2. Query class spell list:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}/spells" | jq -r '.results[] | .name'
+   # Get class spell list (cached)
+   uv run dnd-api get classes/{class-index}/spells --json | jq -r '.results[] | .name'
    ```
 3. Filter by levels character can cast
 4. Player chooses, add to character
@@ -363,7 +371,8 @@ Some class features interact with schools (e.g., Abjuration Wizard, Evocation Wi
 Get complete class spell list:
 
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}/spells" | jq -r '.results[] | .name'
+# Get class spell list (cached)
+uv run dnd-api get classes/{class-index}/spells --json | jq -r '.results[] | .name'
 ```
 
 **Classes**:
