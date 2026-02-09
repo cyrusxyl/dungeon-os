@@ -15,10 +15,10 @@ When a player casts a spell:
 
 ```bash
 # Full spell data (cached)
-uv run dnd-api get spells/{spell-index}
+uv run dnd-cli get spells/{spell-index}
 
 # Or extract specific fields with jq
-uv run dnd-api get spells/{spell-index} --json | jq '{
+uv run dnd-cli get spells/{spell-index} --json | jq '{
   name: .name,
   level: .level,
   school: .school.name,
@@ -37,7 +37,7 @@ uv run dnd-api get spells/{spell-index} --json | jq '{
 }'
 
 # Search for spells by criteria
-uv run dnd-api search spells --level 3 --school evocation
+uv run dnd-cli search spells --level 3 --school evocation
 ```
 
 Key fields:
@@ -195,7 +195,7 @@ See Character Advancement skill for detailed workflow.
 2. Query class spell list:
    ```bash
    # Get class spell list (cached)
-   uv run dnd-api get classes/{class-index}/spells --json | jq -r '.results[] | .name'
+   uv run dnd-cli get classes/{class-index}/spells --json | jq -r '.results[] | .name'
    ```
 3. Filter by levels character can cast
 4. Player chooses, add to character
@@ -372,7 +372,7 @@ Get complete class spell list:
 
 ```bash
 # Get class spell list (cached)
-uv run dnd-api get classes/{class-index}/spells --json | jq -r '.results[] | .name'
+uv run dnd-cli get classes/{class-index}/spells --json | jq -r '.results[] | .name'
 ```
 
 **Classes**:

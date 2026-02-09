@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-dnd-api = "dnd_api.__main__:main"
+dnd-cli = "dnd_cli.__main__:main"
 
 [tool.uv]
 package = true

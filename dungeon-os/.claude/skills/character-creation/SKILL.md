@@ -7,23 +7,23 @@ description: Guide players through D&D 5e character creation with API-driven val
 
 Create validated D&D 5e characters using API data for races, classes, backgrounds, and abilities. This skill guides players through character creation while automatically calculating derived stats.
 
-## DND-API Wrapper
+## dnd-cli Wrapper
 
-This skill uses the `dnd-api` wrapper for efficient API access with caching:
+This skill uses the `dnd-cli` wrapper for efficient API access with caching:
 
 ```bash
 # List resources
-uv run dnd-api list races
-uv run dnd-api list classes
+uv run dnd-cli list races
+uv run dnd-cli list classes
 
 # Get specific resource (cached, fast lookups)
-uv run dnd-api get races/elf
+uv run dnd-cli get races/elf
 
 # Search for options
-uv run dnd-api search classes --name wizard
+uv run dnd-cli search classes --name wizard
 
 # Extract minimal fields with jq when needed
-uv run dnd-api get races/elf --json | jq '{name, speed, ability_bonuses}'
+uv run dnd-cli get races/elf --json | jq '{name, speed, ability_bonuses}'
 ```
 
 The wrapper caches all API responses for speed and token efficiency. All examples below can use either the wrapper or direct curl commands.

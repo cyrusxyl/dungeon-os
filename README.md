@@ -4,40 +4,40 @@ This is the main repository for Dungeon OS, an open-source operating system for 
 
 This outer folder is for the development of the Dungeon OS kernel, enter the `dungeon-os` folder to experience the Dungeon OS userland.
 
-## DND-API Wrapper
+## dnd-cli Wrapper
 
-The project includes a Python CLI wrapper (`dnd-api`) for efficient D&D 5e API access with caching and DM utilities:
+The project includes a Python CLI wrapper (`dnd-cli`) for efficient D&D 5e API access with caching and DM utilities:
 
 ```bash
 # Install
 uv sync
 
 # First time: Warmup cache for fast searches
-uv run dnd-api warmup monsters
-uv run dnd-api warmup spells
+uv run dnd-cli warmup monsters
+uv run dnd-cli warmup spells
 
 # Use wrapper
-uv run dnd-api list monsters
-uv run dnd-api get monsters/goblin
+uv run dnd-cli list monsters
+uv run dnd-cli get monsters/goblin
 
 # Search with fuzzy matching (handles typos!)
-uv run dnd-api search monsters --name "gobln"  # Finds "Goblin"
-uv run dnd-api search spells --name "firbal"   # Finds "Fireball"
+uv run dnd-cli search monsters --name "gobln"  # Finds "Goblin"
+uv run dnd-cli search spells --name "firbal"   # Finds "Fireball"
 
 # Filter by attributes
-uv run dnd-api search monsters --cr 5-7 --type undead
-uv run dnd-api search spells --level 3 --school evocation
+uv run dnd-cli search monsters --cr 5-7 --type undead
+uv run dnd-cli search spells --level 3 --school evocation
 
 # Text search in descriptions
-uv run dnd-api search monsters --text "invisible"
-uv run dnd-api search spells --text "fire damage"
+uv run dnd-cli search monsters --text "invisible"
+uv run dnd-cli search spells --text "fire damage"
 
 # Combined filters
-uv run dnd-api search monsters --cr 0-2 --text "bonus action"
+uv run dnd-cli search monsters --cr 0-2 --text "bonus action"
 
 # Other utilities
-uv run dnd-api random monsters --count 3
-uv run dnd-api info conditions paralyzed
+uv run dnd-cli random monsters --count 3
+uv run dnd-cli info conditions paralyzed
 ```
 
 **Features:**
@@ -48,4 +48,4 @@ uv run dnd-api info conditions paralyzed
 - **Token Efficiency**: 90% reduction in token usage for search workflows
 - **DM Utilities**: Random selection, quick reference formatting
 
-See `dnd_api/README.md` for full documentation.
+See `dnd_cli/README.md` for full documentation.

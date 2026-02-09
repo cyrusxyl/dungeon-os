@@ -1,7 +1,7 @@
 """List command - browse available resources"""
 
 import sys
-from dnd_api.api import api_list
+from dnd_cli.api import api_list
 
 
 def format_monster_entry(monster: dict) -> str:
@@ -72,8 +72,8 @@ def execute(resource: str) -> int:
 
     # Print usage hints
     print()
-    print(f"Use: dnd-api get {resource}/<index> for details")
-    print(f"Use: dnd-api search {resource} [--filters] to filter")
+    print(f"Use: dnd-cli get {resource}/<index> for details")
+    print(f"Use: dnd-cli search {resource} [--filters] to filter")
 
     if was_cached:
         print(f"[Cached results]")

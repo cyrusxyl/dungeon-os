@@ -3,8 +3,8 @@
 import json
 import subprocess
 from typing import Optional, Tuple
-from dnd_api import API_BASE
-from dnd_api.cache import load_cache, save_cache
+from dnd_cli import API_BASE
+from dnd_cli.cache import load_cache, save_cache
 
 
 def safe_api_call(endpoint: str) -> Tuple[Optional[dict], Optional[str]]:

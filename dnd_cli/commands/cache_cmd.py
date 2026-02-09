@@ -1,7 +1,7 @@
 """Cache management commands"""
 
 import sys
-from dnd_api.cache import clear_cache, get_cache_info
+from dnd_cli.cache import clear_cache, get_cache_info
 
 
 def execute_clear(resource: str = None) -> int:

@@ -1,52 +1,52 @@
-# DND-API Wrapper Implementation Summary
+# dnd-cli Wrapper Implementation Summary
 
 ## What Was Implemented
 
 ### Phase 1: Core Wrapper ✅ COMPLETE
 
-A Python CLI tool (`dnd-api`) that wraps the D&D 5e API with the following features:
+A Python CLI tool (`dnd-cli`) that wraps the D&D 5e API with the following features:
 
 #### Commands Implemented
 
 1. **list** - Browse all available resources
    - Clean formatted output
    - Displays count and usage hints
-   - Example: `uv run dnd-api list monsters`
+   - Example: `uv run dnd-cli list monsters`
 
 2. **get** - Fetch specific resource with caching
    - Returns full data with metadata
    - `--json` flag for raw JSON output
    - Caches responses automatically
-   - Example: `uv run dnd-api get monsters/goblin`
+   - Example: `uv run dnd-cli get monsters/goblin`
 
 3. **search** - Semantic filtering
    - Monster filters: `--name`, `--cr`, `--type`, `--size`
    - Spell filters: `--name`, `--level`, `--school`, `--class`
    - Equipment filters: `--name`, `--category`
-   - Example: `uv run dnd-api search spells --level 3 --school evocation`
+   - Example: `uv run dnd-cli search spells --level 3 --school evocation`
 
 4. **random** - Random resource selection
    - Select N random items from a resource
    - Supports filter criteria
-   - Example: `uv run dnd-api random monsters --count 3`
+   - Example: `uv run dnd-cli random monsters --count 3`
 
 5. **info** - Quick reference lookup
    - Formatted output for common queries
    - Supports: conditions, skills, damage-types
-   - Example: `uv run dnd-api info conditions paralyzed`
+   - Example: `uv run dnd-cli info conditions paralyzed`
 
 6. **cache-info** - Display cache statistics
    - Shows cache location, file count, size by resource
-   - Example: `uv run dnd-api cache-info`
+   - Example: `uv run dnd-cli cache-info`
 
 7. **clear-cache** - Clear cached data
    - Clear all or specific resource
-   - Example: `uv run dnd-api clear-cache monsters`
+   - Example: `uv run dnd-cli clear-cache monsters`
 
 #### Architecture
 
 ```
-dnd_api/
+dnd_cli/
 ├── __init__.py          # Package constants (API_BASE)
 ├── __main__.py          # CLI entry point with argparse
 ├── api.py              # API wrapper (safe_api_call, api_get, api_list)
@@ -109,12 +109,12 @@ Each skill now shows:
 ### Phase 3: Documentation ✅ COMPLETE
 
 1. **CLAUDE.md** - Updated with:
-   - DND-API Wrapper section in "Tools for Rules"
+   - dnd-cli Wrapper section in "Tools for Rules"
    - Comprehensive command documentation
    - When to use wrapper vs direct API
    - Cache management guidance
 
-2. **dnd_api/README.md** - Created comprehensive documentation:
+2. **dnd_cli/README.md** - Created comprehensive documentation:
    - Installation instructions
    - All commands with examples
    - Filter specifications
@@ -122,7 +122,7 @@ Each skill now shows:
    - Architecture overview
 
 3. **README.md** - Updated root README with:
-   - DND-API Wrapper section
+   - dnd-cli Wrapper section
    - Quick start examples
    - Benefits summary
    - Link to detailed docs
@@ -133,36 +133,36 @@ All core functionality verified:
 
 ```bash
 # List command
-✅ uv run dnd-api list monsters
+✅ uv run dnd-cli list monsters
    - Returns 334 monsters with clean formatting
 
 # Get command with caching
-✅ uv run dnd-api get monsters/goblin
+✅ uv run dnd-cli get monsters/goblin
    - First call: ~200ms (API)
    - Second call: ~32ms (cached) - 6x faster!
 
 # Search command
-✅ uv run dnd-api search monsters --name goblin
+✅ uv run dnd-cli search monsters --name goblin
    - Found 2 matches: Goblin, Hobgoblin
 
 # Random command
-✅ uv run dnd-api random monsters --count 3
+✅ uv run dnd-cli random monsters --count 3
    - Returns 3 random monsters
 
 # Info command
-✅ uv run dnd-api info conditions paralyzed
+✅ uv run dnd-cli info conditions paralyzed
    - Formatted condition effects display
 
 # Spell lookup
-✅ uv run dnd-api get spells/fireball
+✅ uv run dnd-cli get spells/fireball
    - Returns full spell data with damage scaling
 
 # Equipment lookup
-✅ uv run dnd-api get equipment/longsword
+✅ uv run dnd-cli get equipment/longsword
    - Returns weapon stats with properties
 
 # Cache management
-✅ uv run dnd-api cache-info
+✅ uv run dnd-cli cache-info
    - Shows cache location, file count, size
 ```
 
@@ -184,20 +184,20 @@ curl -sL "https://www.dnd5eapi.co/api/2014/monsters/goblin" | jq '{
 **After (with options):**
 ```bash
 # Quick lookup (full data, cached)
-uv run dnd-api get monsters/goblin
+uv run dnd-cli get monsters/goblin
 
 # Extract minimal fields
-uv run dnd-api get monsters/goblin --json | jq '{
+uv run dnd-cli get monsters/goblin --json | jq '{
   name: .name,
   hp: .hit_points,
   ac: .armor_class[0].value
 }'
 
 # Search for appropriate monster
-uv run dnd-api search monsters --name goblin
+uv run dnd-cli search monsters --name goblin
 
 # Random encounter
-uv run dnd-api random monsters --count 3
+uv run dnd-cli random monsters --count 3
 ```
 
 ### CLAUDE.md Integration
@@ -205,7 +205,7 @@ uv run dnd-api random monsters --count 3
 The main system prompt now includes:
 
 1. **Tools section** - References wrapper as primary tool for D&D data
-2. **DND-API Wrapper section** - Full command reference
+2. **dnd-cli Wrapper section** - Full command reference
 3. **When to use** - Guidance on wrapper vs direct API
 4. **Cache management** - How and when to clear cache
 
@@ -251,18 +251,18 @@ Currently, search supports basic name filtering. Advanced filters would require 
 
 ## Files Created
 
-1. `/home/cyrus/workspace/dungeon-os/dnd_api/__init__.py`
-2. `/home/cyrus/workspace/dungeon-os/dnd_api/__main__.py`
-3. `/home/cyrus/workspace/dungeon-os/dnd_api/api.py`
-4. `/home/cyrus/workspace/dungeon-os/dnd_api/cache.py`
-5. `/home/cyrus/workspace/dungeon-os/dnd_api/commands/__init__.py`
-6. `/home/cyrus/workspace/dungeon-os/dnd_api/commands/list.py`
-7. `/home/cyrus/workspace/dungeon-os/dnd_api/commands/get.py`
-8. `/home/cyrus/workspace/dungeon-os/dnd_api/commands/search.py`
-9. `/home/cyrus/workspace/dungeon-os/dnd_api/commands/random.py`
-10. `/home/cyrus/workspace/dungeon-os/dnd_api/commands/info.py`
-11. `/home/cyrus/workspace/dungeon-os/dnd_api/commands/cache_cmd.py`
-12. `/home/cyrus/workspace/dungeon-os/dnd_api/README.md`
+1. `/home/cyrus/workspace/dungeon-os/dnd_cli/__init__.py`
+2. `/home/cyrus/workspace/dungeon-os/dnd_cli/__main__.py`
+3. `/home/cyrus/workspace/dungeon-os/dnd_cli/api.py`
+4. `/home/cyrus/workspace/dungeon-os/dnd_cli/cache.py`
+5. `/home/cyrus/workspace/dungeon-os/dnd_cli/commands/__init__.py`
+6. `/home/cyrus/workspace/dungeon-os/dnd_cli/commands/list.py`
+7. `/home/cyrus/workspace/dungeon-os/dnd_cli/commands/get.py`
+8. `/home/cyrus/workspace/dungeon-os/dnd_cli/commands/search.py`
+9. `/home/cyrus/workspace/dungeon-os/dnd_cli/commands/random.py`
+10. `/home/cyrus/workspace/dungeon-os/dnd_cli/commands/info.py`
+11. `/home/cyrus/workspace/dungeon-os/dnd_cli/commands/cache_cmd.py`
+12. `/home/cyrus/workspace/dungeon-os/dnd_cli/README.md`
 13. `/home/cyrus/workspace/dungeon-os/IMPLEMENTATION_SUMMARY.md`
 14. `/home/cyrus/workspace/dungeon-os/test-wrapper.sh`
 
@@ -307,30 +307,30 @@ Currently, search supports basic name filtering. Advanced filters would require 
 **During session prep:**
 ```bash
 # Cache common resources
-uv run dnd-api list monsters > /dev/null
-uv run dnd-api list spells > /dev/null
+uv run dnd-cli list monsters > /dev/null
+uv run dnd-cli list spells > /dev/null
 ```
 
 **During play:**
 ```bash
 # Quick monster lookup
-uv run dnd-api get monsters/goblin
+uv run dnd-cli get monsters/goblin
 
 # Find appropriate encounter
-uv run dnd-api search monsters --name orc
-uv run dnd-api random monsters --count 3
+uv run dnd-cli search monsters --name orc
+uv run dnd-cli random monsters --count 3
 
 # Reference conditions
-uv run dnd-api info conditions stunned
+uv run dnd-cli info conditions stunned
 ```
 
 **After session:**
 ```bash
 # Check what was cached
-uv run dnd-api cache-info
+uv run dnd-cli cache-info
 
 # Clear if API updates (rare)
-uv run dnd-api clear-cache
+uv run dnd-cli clear-cache
 ```
 
 ## Next Steps (If Continuing)
@@ -342,7 +342,7 @@ uv run dnd-api clear-cache
 
 ## Conclusion
 
-The DND-API wrapper successfully addresses the core pain points:
+The dnd-cli wrapper successfully addresses the core pain points:
 
 - ✅ Eliminates repeated LIST + GET workflows
 - ✅ Provides search for resource discovery

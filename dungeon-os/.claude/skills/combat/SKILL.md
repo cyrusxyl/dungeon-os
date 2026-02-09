@@ -16,10 +16,10 @@ When combat begins:
    - For monsters/NPCs, either load from `{campaign}/world/npcs/{name}.json` or fetch from API:
      ```bash
      # Quick lookup (full data, cached)
-     uv run dnd-api get monsters/{monster-name}
+     uv run dnd-cli get monsters/{monster-name}
 
      # Extract minimal fields with jq
-     uv run dnd-api get monsters/{monster-name} --json | jq '{
+     uv run dnd-cli get monsters/{monster-name} --json | jq '{
        name: .name,
        hp: .hit_points,
        ac: .armor_class[0].value,
@@ -28,10 +28,10 @@ When combat begins:
      }'
 
      # Search for appropriate monster
-     uv run dnd-api search monsters --name {query}
+     uv run dnd-cli search monsters --name {query}
 
      # Random encounter monster
-     uv run dnd-api random monsters --count {n}
+     uv run dnd-cli random monsters --count {n}
      ```
    - The wrapper caches responses for speed and token efficiency
    - Save fetched monsters to `{campaign}/world/npcs/{name}-{number}.json` for this encounter
@@ -126,10 +126,10 @@ Player declares: "I cast Fire Bolt at the goblin"
 **Step 1: Query spell**
 ```bash
 # Full spell data (cached)
-uv run dnd-api get spells/{spell-name}
+uv run dnd-cli get spells/{spell-name}
 
 # Or extract minimal fields
-uv run dnd-api get spells/{spell-name} --json | jq '{
+uv run dnd-cli get spells/{spell-name} --json | jq '{
   name: .name,
   level: .level,
   damage: .damage,
@@ -200,10 +200,10 @@ When a spell, ability, or effect applies a condition:
 1. **Query condition details**:
    ```bash
    # Quick reference for condition effects (formatted)
-   uv run dnd-api info conditions {condition-index}
+   uv run dnd-cli info conditions {condition-index}
 
    # Or get raw data for minimal extraction
-   uv run dnd-api get conditions/{condition-index} --json | jq '{
+   uv run dnd-cli get conditions/{condition-index} --json | jq '{
      name: .name,
      desc: .desc
    }'

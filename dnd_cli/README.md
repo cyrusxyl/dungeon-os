@@ -1,4 +1,4 @@
-# DND-API Wrapper
+# dnd-cli Wrapper
 
 A Python CLI wrapper for the D&D 5e API with caching, semantic search, and DM utilities.
 
@@ -13,30 +13,30 @@ uv pip install -e .
 
 ```bash
 # First time: Warmup cache for fast searches
-uv run dnd-api warmup monsters
-uv run dnd-api warmup spells
+uv run dnd-cli warmup monsters
+uv run dnd-cli warmup spells
 
 # List all monsters
-uv run dnd-api list monsters
+uv run dnd-cli list monsters
 
 # Get specific monster (cached)
-uv run dnd-api get monsters/goblin
+uv run dnd-cli get monsters/goblin
 
 # Search with fuzzy matching (handles typos!)
-uv run dnd-api search monsters --name "gobln"  # Finds "Goblin"
-uv run dnd-api search spells --name "firbal"   # Finds "Fireball"
+uv run dnd-cli search monsters --name "gobln"  # Finds "Goblin"
+uv run dnd-cli search spells --name "firbal"   # Finds "Fireball"
 
 # Search for spells
-uv run dnd-api search spells --level 3 --school evocation
+uv run dnd-cli search spells --level 3 --school evocation
 
 # Text search in descriptions
-uv run dnd-api search monsters --text "invisible"
+uv run dnd-cli search monsters --text "invisible"
 
 # Random encounter
-uv run dnd-api random monsters --count 3
+uv run dnd-cli random monsters --count 3
 
 # Quick reference
-uv run dnd-api info conditions paralyzed
+uv run dnd-cli info conditions paralyzed
 ```
 
 ## Commands
@@ -46,7 +46,7 @@ uv run dnd-api info conditions paralyzed
 Browse all available resources:
 
 ```bash
-uv run dnd-api list <resource>
+uv run dnd-cli list <resource>
 ```
 
 **Supported resources**: `monsters`, `spells`, `equipment`, `magic-items`, `classes`, `races`, `backgrounds`, `feats`, `conditions`, `damage-types`, `skills`, `languages`, `ability-scores`, `proficiencies`, `weapon-properties`
@@ -56,21 +56,21 @@ uv run dnd-api list <resource>
 Fetch specific resource with caching:
 
 ```bash
-uv run dnd-api get <endpoint>
-uv run dnd-api get <endpoint> --json  # Raw JSON output
+uv run dnd-cli get <endpoint>
+uv run dnd-cli get <endpoint> --json  # Raw JSON output
 ```
 
 **Examples**:
 ```bash
-uv run dnd-api get monsters/goblin
-uv run dnd-api get spells/fireball
-uv run dnd-api get equipment/longsword
-uv run dnd-api get classes/wizard/levels/5
+uv run dnd-cli get monsters/goblin
+uv run dnd-cli get spells/fireball
+uv run dnd-cli get equipment/longsword
+uv run dnd-cli get classes/wizard/levels/5
 ```
 
 **Extract minimal fields with jq**:
 ```bash
-uv run dnd-api get monsters/goblin --json | jq '{name, hp: .hit_points, ac: .armor_class[0].value}'
+uv run dnd-cli get monsters/goblin --json | jq '{name, hp: .hit_points, ac: .armor_class[0].value}'
 ```
 
 ### search
@@ -78,7 +78,7 @@ uv run dnd-api get monsters/goblin --json | jq '{name, hp: .hit_points, ac: .arm
 **Fuzzy search with filters** (requires warmup):
 
 ```bash
-uv run dnd-api search <resource> [--filters]
+uv run dnd-cli search <resource> [--filters]
 ```
 
 **Monster filters**:
@@ -102,26 +102,26 @@ uv run dnd-api search <resource> [--filters]
 **Examples**:
 ```bash
 # Fuzzy name matching (typo-tolerant)
-uv run dnd-api search monsters --name "gobln"
-uv run dnd-api search spells --name "firbal"
-uv run dnd-api search equipment --name "longswrd"
+uv run dnd-cli search monsters --name "gobln"
+uv run dnd-cli search spells --name "firbal"
+uv run dnd-cli search equipment --name "longswrd"
 
 # Partial name matching
-uv run dnd-api search monsters --name "dra"  # Finds all dragons
-uv run dnd-api search spells --name "fir"    # Finds fire spells
+uv run dnd-cli search monsters --name "dra"  # Finds all dragons
+uv run dnd-cli search spells --name "fir"    # Finds fire spells
 
 # Text search in descriptions
-uv run dnd-api search monsters --text "invisible"
-uv run dnd-api search spells --text "fire damage"
-uv run dnd-api search monsters --text "bonus action"
+uv run dnd-cli search monsters --text "invisible"
+uv run dnd-cli search spells --text "fire damage"
+uv run dnd-cli search monsters --text "bonus action"
 
 # Structured filters
-uv run dnd-api search monsters --cr 5-7 --type undead
-uv run dnd-api search spells --level 3 --school evocation
+uv run dnd-cli search monsters --cr 5-7 --type undead
+uv run dnd-cli search spells --level 3 --school evocation
 
 # Combined filters
-uv run dnd-api search monsters --cr 0-2 --text "bonus action"
-uv run dnd-api search spells --level 3 --school evocation --text "fire"
+uv run dnd-cli search monsters --cr 0-2 --text "bonus action"
+uv run dnd-cli search spells --level 3 --school evocation --text "fire"
 ```
 
 ### random
@@ -129,14 +129,14 @@ uv run dnd-api search spells --level 3 --school evocation --text "fire"
 Random selection from resources:
 
 ```bash
-uv run dnd-api random <resource> --count <n>
+uv run dnd-cli random <resource> --count <n>
 ```
 
 **Examples**:
 ```bash
-uv run dnd-api random monsters --count 3
-uv run dnd-api random spells --level 1-3 --count 2
-uv run dnd-api random equipment --category weapon --count 1
+uv run dnd-cli random monsters --count 3
+uv run dnd-cli random spells --level 1-3 --count 2
+uv run dnd-cli random equipment --category weapon --count 1
 ```
 
 ### info
@@ -144,16 +144,16 @@ uv run dnd-api random equipment --category weapon --count 1
 Quick reference lookup with formatted output:
 
 ```bash
-uv run dnd-api info <resource> <index>
+uv run dnd-cli info <resource> <index>
 ```
 
 **Supported resources**: `conditions`, `skills`, `damage-types`, `weapon-properties`
 
 **Examples**:
 ```bash
-uv run dnd-api info conditions paralyzed
-uv run dnd-api info skills stealth
-uv run dnd-api info damage-types fire
+uv run dnd-cli info conditions paralyzed
+uv run dnd-cli info skills stealth
+uv run dnd-cli info damage-types fire
 ```
 
 ### cache-info
@@ -161,7 +161,7 @@ uv run dnd-api info damage-types fire
 Display cache statistics:
 
 ```bash
-uv run dnd-api cache-info
+uv run dnd-cli cache-info
 ```
 
 ### warmup
@@ -169,18 +169,18 @@ uv run dnd-api cache-info
 Pre-cache full resource data for fuzzy search and filtering:
 
 ```bash
-uv run dnd-api warmup <resource>        # Warmup specific resource
-uv run dnd-api warmup all               # Warmup all resources
-uv run dnd-api warmup monsters --force  # Force re-fetch
+uv run dnd-cli warmup <resource>        # Warmup specific resource
+uv run dnd-cli warmup all               # Warmup all resources
+uv run dnd-cli warmup monsters --force  # Force re-fetch
 ```
 
 **Note:** Run warmup before using search filters (`--cr`, `--type`, `--level`, `--text`, etc.). Warmup caches full resource data, enabling fast filtering.
 
 **Examples**:
 ```bash
-uv run dnd-api warmup monsters  # ~1-2 minutes for 334 monsters
-uv run dnd-api warmup spells    # ~1-2 minutes for 319 spells
-uv run dnd-api warmup all       # ~3-5 minutes total
+uv run dnd-cli warmup monsters  # ~1-2 minutes for 334 monsters
+uv run dnd-cli warmup spells    # ~1-2 minutes for 319 spells
+uv run dnd-cli warmup all       # ~3-5 minutes total
 ```
 
 ### clear-cache
@@ -188,8 +188,8 @@ uv run dnd-api warmup all       # ~3-5 minutes total
 Clear cache files:
 
 ```bash
-uv run dnd-api clear-cache              # Clear all
-uv run dnd-api clear-cache monsters     # Clear specific resource
+uv run dnd-cli clear-cache              # Clear all
+uv run dnd-cli clear-cache monsters     # Clear specific resource
 ```
 
 ## Caching & Search
@@ -227,7 +227,7 @@ uv run dnd-api clear-cache monsters     # Clear specific resource
 ## Architecture
 
 ```
-dnd_api/
+dnd_cli/
 ├── __init__.py          # Package constants
 ├── __main__.py          # CLI entry point
 ├── api.py              # API wrapper with error handling
@@ -250,16 +250,16 @@ All DungeonOS skills support the wrapper. Example from combat skill:
 
 ```bash
 # Quick lookup (full data, cached)
-uv run dnd-api get monsters/goblin
+uv run dnd-cli get monsters/goblin
 
 # Extract minimal fields
-uv run dnd-api get monsters/goblin --json | jq '{name, hp: .hit_points}'
+uv run dnd-cli get monsters/goblin --json | jq '{name, hp: .hit_points}'
 
 # Search for appropriate monster
-uv run dnd-api search monsters --name orc
+uv run dnd-cli search monsters --name orc
 
 # Random encounter
-uv run dnd-api random monsters --count 3
+uv run dnd-cli random monsters --count 3
 ```
 
 ## Future Enhancements

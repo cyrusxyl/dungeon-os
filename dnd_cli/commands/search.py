@@ -2,10 +2,10 @@
 
 import sys
 from typing import List, Dict, Optional
-from dnd_api.api import api_list
-from dnd_api.cache import load_cache
-from dnd_api.fuzzy import fuzzy_match_multi_algorithm
-from dnd_api.text_search import text_search
+from dnd_cli.api import api_list
+from dnd_cli.cache import load_cache
+from dnd_cli.fuzzy import fuzzy_match_multi_algorithm
+from dnd_cli.text_search import text_search
 
 
 def parse_range(value: str) -> tuple[Optional[float], Optional[float]]:
@@ -136,7 +136,7 @@ def execute(resource: str, filters: dict) -> int:
     full_resources = load_full_resources(resource, index_list)
 
     if not full_resources:
-        print(f"No cached data for {resource}. Run: dnd-api warmup {resource}",
+        print(f"No cached data for {resource}. Run: dnd-cli warmup {resource}",
               file=sys.stderr)
         return 1
 
@@ -219,6 +219,6 @@ def execute(resource: str, filters: dict) -> int:
         print(f"\n... and {len(filtered) - 20} more")
 
     print()
-    print(f"Use: dnd-api get {resource}/<index> for full details")
+    print(f"Use: dnd-cli get {resource}/<index> for full details")
 
     return 0

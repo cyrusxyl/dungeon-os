@@ -2,7 +2,7 @@
 
 import sys
 import json
-from dnd_api.api import api_get
+from dnd_cli.api import api_get
 
 
 def execute(endpoint: str, json_output: bool = False) -> int:

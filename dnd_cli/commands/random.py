@@ -2,7 +2,7 @@
 
 import sys
 import random
-from dnd_api.api import api_list
+from dnd_cli.api import api_list
 
 
 def execute(resource: str, filters: dict, count: int = 1) -> int:
@@ -39,6 +39,6 @@ def execute(resource: str, filters: dict, count: int = 1) -> int:
         print(f"   Index: {index}")
         print()
 
-    print(f"Use: dnd-api get {resource}/<index> for full details")
+    print(f"Use: dnd-cli get {resource}/<index> for full details")
 
     return 0

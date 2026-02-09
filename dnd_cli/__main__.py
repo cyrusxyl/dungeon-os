@@ -2,24 +2,24 @@
 """DungeonOS D&D 5e API CLI Wrapper
 
 Usage:
-    dnd-api list <resource>
-    dnd-api get <endpoint>
-    dnd-api search <resource> [--filters]
-    dnd-api random <resource> [--count N] [--filters]
-    dnd-api info <resource> <index>
-    dnd-api cache-info
-    dnd-api clear-cache [resource]
+    dnd-cli list <resource>
+    dnd-cli get <endpoint>
+    dnd-cli search <resource> [--filters]
+    dnd-cli random <resource> [--count N] [--filters]
+    dnd-cli info <resource> <index>
+    dnd-cli cache-info
+    dnd-cli clear-cache [resource]
 """
 
 import sys
 import argparse
-from dnd_api.commands import list as cmd_list
-from dnd_api.commands import get as cmd_get
-from dnd_api.commands import search as cmd_search
-from dnd_api.commands import random as cmd_random
-from dnd_api.commands import info as cmd_info
-from dnd_api.commands import cache_cmd
-from dnd_api.cache_warmup import warmup_cache, warmup_all_resources
+from dnd_cli.commands import list as cmd_list
+from dnd_cli.commands import get as cmd_get
+from dnd_cli.commands import search as cmd_search
+from dnd_cli.commands import random as cmd_random
+from dnd_cli.commands import info as cmd_info
+from dnd_cli.commands import cache_cmd
+from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
 def create_parser():

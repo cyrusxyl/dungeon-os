@@ -1,7 +1,7 @@
 """Info command - quick reference lookup"""
 
 import sys
-from dnd_api.api import api_get
+from dnd_cli.api import api_get
 
 
 def format_condition(data: dict) -> str:

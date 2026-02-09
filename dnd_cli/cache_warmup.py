@@ -1,7 +1,7 @@
 """Cache warmup utilities for pre-fetching full resource data"""
 
-from dnd_api.api import api_list, api_get
-from dnd_api.cache import load_cache
+from dnd_cli.api import api_list, api_get
+from dnd_cli.cache import load_cache
 from typing import Optional
 
 

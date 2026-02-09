@@ -2,7 +2,7 @@
 
 ## Implementation Summary
 
-Successfully implemented fuzzy search for the DND-API wrapper with:
+Successfully implemented fuzzy search for the dnd-cli wrapper with:
 
 1. **Fuzzy name matching** (RapidFuzz) - Handles typos and partial matches
 2. **Structured filters** - CR ranges, type, size, school, level, class, category
@@ -13,13 +13,13 @@ Successfully implemented fuzzy search for the DND-API wrapper with:
 - rapidfuzz==3.14.3 (~3MB, fast C++ implementation)
 
 **Files Created:**
-- `dnd_api/cache_warmup.py` - Pre-cache full resource data
-- `dnd_api/fuzzy.py` - RapidFuzz-based fuzzy name matching
-- `dnd_api/text_search.py` - Text substring search utilities
+- `dnd_cli/cache_warmup.py` - Pre-cache full resource data
+- `dnd_cli/fuzzy.py` - RapidFuzz-based fuzzy name matching
+- `dnd_cli/text_search.py` - Text substring search utilities
 
 **Files Modified:**
-- `dnd_api/commands/search.py` - Integrated fuzzy + filters + text search
-- `dnd_api/__main__.py` - Added `warmup` command and `--text` flag
+- `dnd_cli/commands/search.py` - Integrated fuzzy + filters + text search
+- `dnd_cli/__main__.py` - Added `warmup` command and `--text` flag
 - `pyproject.toml` - Added rapidfuzz dependency and enabled packaging
 
 ---
@@ -30,19 +30,19 @@ Successfully implemented fuzzy search for the DND-API wrapper with:
 
 **Monsters:**
 ```bash
-uv run dnd-api warmup monsters
+uv run dnd-cli warmup monsters
 ```
 ✓ Cached 334 monsters with 0 errors (~1-2 minutes)
 
 **Spells:**
 ```bash
-uv run dnd-api warmup spells
+uv run dnd-cli warmup spells
 ```
 ✓ Cached 318 spells with 1 error (~1-2 minutes)
 
 **Equipment:**
 ```bash
-uv run dnd-api warmup equipment
+uv run dnd-cli warmup equipment
 ```
 ✓ Cached 235 equipment with 2 errors (~1 minute)
 
@@ -52,19 +52,19 @@ uv run dnd-api warmup equipment
 
 **CR Range + Type:**
 ```bash
-uv run dnd-api search monsters --cr 5-7 --type undead
+uv run dnd-cli search monsters --cr 5-7 --type undead
 ```
 **Result:** Found 2 monsters (Vampire Spawn, Wraith) ✓
 
 **Size + Type:**
 ```bash
-uv run dnd-api search monsters --size large --type dragon
+uv run dnd-cli search monsters --size large --type dragon
 ```
 **Result:** Found 11 young dragons + Wyvern ✓
 
 **Spell Level:**
 ```bash
-uv run dnd-api search spells --level cantrip --text "damage"
+uv run dnd-cli search spells --level cantrip --text "damage"
 ```
 **Result:** Found 12 damage-dealing cantrips ✓
 
@@ -74,19 +74,19 @@ uv run dnd-api search spells --level cantrip --text "damage"
 
 **Typo Correction (gobln → Goblin):**
 ```bash
-uv run dnd-api search monsters --name "gobln"
+uv run dnd-cli search monsters --name "gobln"
 ```
 **Result:** Found Goblin #1, Hobgoblin #2 ✓
 
 **Typo Correction (firbal → Fireball):**
 ```bash
-uv run dnd-api search spells --name "firbal"
+uv run dnd-cli search spells --name "firbal"
 ```
 **Result:** Found Fireball #2 (Delayed Blast Fireball #1) ✓
 
 **Typo Correction (longswrd → Longsword):**
 ```bash
-uv run dnd-api search equipment --name "longswrd"
+uv run dnd-cli search equipment --name "longswrd"
 ```
 **Result:** Found Longsword #1 ✓
 
@@ -96,13 +96,13 @@ uv run dnd-api search equipment --name "longswrd"
 
 **Partial Match (dra → dragons):**
 ```bash
-uv run dnd-api search monsters --name "dra"
+uv run dnd-cli search monsters --name "dra"
 ```
 **Result:** Found 20 dragons (Hydra, Pseudodragon, all dragon types) ✓
 
 **Partial Match (fir → fire spells):**
 ```bash
-uv run dnd-api search spells --name "fir"
+uv run dnd-cli search spells --name "fir"
 ```
 **Result:** Found 20 spells including Fire Bolt, Fire Shield, Fireball, Faerie Fire ✓
 
@@ -112,19 +112,19 @@ uv run dnd-api search spells --name "fir"
 
 **Invisible Abilities:**
 ```bash
-uv run dnd-api search monsters --text "invisible"
+uv run dnd-cli search monsters --text "invisible"
 ```
 **Result:** Found 7 monsters (Invisible Stalker, Imp, Quasit, Will-o'-Wisp, etc.) ✓
 
 **Fire Damage:**
 ```bash
-uv run dnd-api search spells --text "fire damage"
+uv run dnd-cli search spells --text "fire damage"
 ```
 **Result:** Found 20+ spells (Fireball, Fire Bolt, Burning Hands, etc.) ✓
 
 **Bonus Action:**
 ```bash
-uv run dnd-api search monsters --text "bonus action"
+uv run dnd-cli search monsters --text "bonus action"
 ```
 **Result:** Found monsters with bonus action abilities ✓
 
@@ -134,13 +134,13 @@ uv run dnd-api search monsters --text "bonus action"
 
 **CR + Text:**
 ```bash
-uv run dnd-api search monsters --cr 0-2 --text "bonus action"
+uv run dnd-cli search monsters --cr 0-2 --text "bonus action"
 ```
 **Result:** Found 22 low-CR monsters with bonus actions (Goblin, Gnoll, etc.) ✓
 
 **Level + School + Text:**
 ```bash
-uv run dnd-api search spells --level 3 --school evocation --text "fire"
+uv run dnd-cli search spells --level 3 --school evocation --text "fire"
 ```
 **Result:** Found 1 spell (Fireball - perfect match!) ✓
 
@@ -185,60 +185,60 @@ uv run dnd-api search spells --level 3 --school evocation --text "fire"
 ### 1. Find Typo-Tolerant Names
 ```bash
 # Find goblins even with typos
-uv run dnd-api search monsters --name "gobln"
-uv run dnd-api search monsters --name "hobgobln"
+uv run dnd-cli search monsters --name "gobln"
+uv run dnd-cli search monsters --name "hobgobln"
 
 # Find spells with typos
-uv run dnd-api search spells --name "firbal"
-uv run dnd-api search spells --name "magic misile"
+uv run dnd-cli search spells --name "firbal"
+uv run dnd-cli search spells --name "magic misile"
 ```
 
 ### 2. Filter by CR and Type
 ```bash
 # Find mid-level undead for encounter
-uv run dnd-api search monsters --cr 5-10 --type undead
+uv run dnd-cli search monsters --cr 5-10 --type undead
 
 # Find high-CR dragons
-uv run dnd-api search monsters --cr 15+ --type dragon
+uv run dnd-cli search monsters --cr 15+ --type dragon
 
 # Find low-level humanoids
-uv run dnd-api search monsters --cr 0-2 --type humanoid
+uv run dnd-cli search monsters --cr 0-2 --type humanoid
 ```
 
 ### 3. Search Abilities by Keyword
 ```bash
 # Find monsters with invisibility
-uv run dnd-api search monsters --text "invisible"
+uv run dnd-cli search monsters --text "invisible"
 
 # Find monsters with resistance
-uv run dnd-api search monsters --text "resistance"
+uv run dnd-cli search monsters --text "resistance"
 
 # Find monsters with legendary actions
-uv run dnd-api search monsters --text "legendary action"
+uv run dnd-cli search monsters --text "legendary action"
 ```
 
 ### 4. Complex Spell Searches
 ```bash
 # Find fire damage spells
-uv run dnd-api search spells --text "fire damage"
+uv run dnd-cli search spells --text "fire damage"
 
 # Find low-level healing spells
-uv run dnd-api search spells --level 1-3 --text "healing"
+uv run dnd-cli search spells --level 1-3 --text "healing"
 
 # Find wizard evocation spells
-uv run dnd-api search spells --school evocation --class wizard
+uv run dnd-cli search spells --school evocation --class wizard
 ```
 
 ### 5. Combined Searches
 ```bash
 # Find CR 5-7 undead with life drain
-uv run dnd-api search monsters --cr 5-7 --type undead --text "life"
+uv run dnd-cli search monsters --cr 5-7 --type undead --text "life"
 
 # Find level 3 evocation fire spells
-uv run dnd-api search spells --level 3 --school evocation --text "fire"
+uv run dnd-cli search spells --level 3 --school evocation --text "fire"
 
 # Find large dragons
-uv run dnd-api search monsters --size large --type dragon
+uv run dnd-cli search monsters --size large --type dragon
 ```
 
 ---

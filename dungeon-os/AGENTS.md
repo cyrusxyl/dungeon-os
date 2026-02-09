@@ -25,12 +25,12 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
 
 ### 2. Tools for Rules (Never Hallucinate)
 
-- **D&D Rules & Data**: Use the `dnd-api` wrapper with caching:
+- **D&D Rules & Data**: Use the `dnd-cli` wrapper with caching:
   ```bash
-  uv run dnd-api get monsters/goblin      # Cached lookups (fast)
-  uv run dnd-api search spells --level 3  # Semantic search
-  uv run dnd-api info conditions paralyzed # Quick reference
-  uv run dnd-api random monsters --count 3 # Random selection
+  uv run dnd-cli get monsters/goblin      # Cached lookups (fast)
+  uv run dnd-cli search spells --level 3  # Semantic search
+  uv run dnd-cli info conditions paralyzed # Quick reference
+  uv run dnd-cli random monsters --count 3 # Random selection
   ```
   You can still use direct API calls with curl when needed, but the wrapper provides caching and token efficiency.
 
@@ -51,54 +51,54 @@ Your skills in `./.claude/skills/` teach you how to handle specific situations:
 
 **Load skills only when needed to keep context lean.**
 
-### 4. DND-API Wrapper
+### 4. dnd-cli Wrapper
 
-DungeonOS includes a Python CLI wrapper (`dnd-api`) that provides efficient access to the D&D 5e API with caching and DM utilities.
+DungeonOS includes a Python CLI wrapper (`dnd-cli`) that provides efficient access to the D&D 5e API with caching and DM utilities.
 
 #### Core Commands
 
 **List resources** (browse all available items):
 ```bash
-uv run dnd-api list monsters
-uv run dnd-api list spells
-uv run dnd-api list equipment
+uv run dnd-cli list monsters
+uv run dnd-cli list spells
+uv run dnd-cli list equipment
 ```
 
 **Get specific resource** (cached after first fetch):
 ```bash
-uv run dnd-api get monsters/goblin
-uv run dnd-api get spells/fireball
-uv run dnd-api get equipment/longsword
+uv run dnd-cli get monsters/goblin
+uv run dnd-cli get spells/fireball
+uv run dnd-cli get equipment/longsword
 
 # Extract minimal fields with jq
-uv run dnd-api get monsters/goblin --json | jq '{name, hp: .hit_points, ac: .armor_class[0].value}'
+uv run dnd-cli get monsters/goblin --json | jq '{name, hp: .hit_points, ac: .armor_class[0].value}'
 ```
 
 **Search with filters** (semantic filtering):
 ```bash
-uv run dnd-api search monsters --name goblin
-uv run dnd-api search spells --level 3 --school evocation
-uv run dnd-api search equipment --category weapon --name sword
+uv run dnd-cli search monsters --name goblin
+uv run dnd-cli search spells --level 3 --school evocation
+uv run dnd-cli search equipment --category weapon --name sword
 ```
 
 **Random selection** (for encounters, loot):
 ```bash
-uv run dnd-api random monsters --count 3
-uv run dnd-api random spells --level 1-3 --count 2
+uv run dnd-cli random monsters --count 3
+uv run dnd-cli random spells --level 1-3 --count 2
 ```
 
 **Quick reference** (formatted output for common lookups):
 ```bash
-uv run dnd-api info conditions paralyzed
-uv run dnd-api info skills stealth
-uv run dnd-api info damage-types fire
+uv run dnd-cli info conditions paralyzed
+uv run dnd-cli info skills stealth
+uv run dnd-cli info damage-types fire
 ```
 
 **Cache management**:
 ```bash
-uv run dnd-api cache-info          # Show cache statistics
-uv run dnd-api clear-cache monsters # Clear specific resource
-uv run dnd-api clear-cache         # Clear all cache
+uv run dnd-cli cache-info          # Show cache statistics
+uv run dnd-cli clear-cache monsters # Clear specific resource
+uv run dnd-cli clear-cache         # Clear all cache
 ```
 
 #### When to Use the Wrapper

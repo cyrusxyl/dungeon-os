@@ -203,10 +203,10 @@ When players want to know about a weapon, armor, or gear:
 1. **Query equipment details**:
    ```bash
    # Full equipment data (cached)
-   uv run dnd-api get equipment/{equipment-index}
+   uv run dnd-cli get equipment/{equipment-index}
 
    # Or extract specific fields
-   uv run dnd-api get equipment/{equipment-index} --json | jq '{
+   uv run dnd-cli get equipment/{equipment-index} --json | jq '{
      name: .name,
      equipment_category: .equipment_category.name,
      cost: .cost,
@@ -215,12 +215,12 @@ When players want to know about a weapon, armor, or gear:
    }'
 
    # Search for equipment
-   uv run dnd-api search equipment --category weapon --name sword
+   uv run dnd-cli search equipment --category weapon --name sword
    ```
 
 2. **For weapons**, get additional stats:
    ```bash
-   uv run dnd-api get equipment/{weapon-index} --json | jq '{
+   uv run dnd-cli get equipment/{weapon-index} --json | jq '{
      name: .name,
      cost: .cost,
      damage: .damage,
@@ -233,7 +233,7 @@ When players want to know about a weapon, armor, or gear:
 
 3. **For armor**, get AC details:
    ```bash
-   uv run dnd-api get equipment/{armor-index} --json | jq '{
+   uv run dnd-cli get equipment/{armor-index} --json | jq '{
      name: .name,
      cost: .cost,
      armor_category: .armor_category,
@@ -246,10 +246,10 @@ When players want to know about a weapon, armor, or gear:
 4. **Query weapon properties** for clarification:
    ```bash
    # Quick reference
-   uv run dnd-api info weapon-properties {property-index}
+   uv run dnd-cli info weapon-properties {property-index}
 
    # Or with jq extraction
-   uv run dnd-api get weapon-properties/{property-index} --json | jq '{
+   uv run dnd-cli get weapon-properties/{property-index} --json | jq '{
      name: .name,
      desc: .desc
    }'
@@ -266,10 +266,10 @@ When players visit a shop:
 2. **Browse equipment by category**:
    ```bash
    # Get equipment category list (cached)
-   uv run dnd-api get equipment-categories/{category-index} --json | jq '.equipment[] | .name'
+   uv run dnd-cli get equipment-categories/{category-index} --json | jq '.equipment[] | .name'
 
    # Or search by category
-   uv run dnd-api search equipment --category weapon
+   uv run dnd-cli search equipment --category weapon
    ```
 
    Categories: `weapon`, `armor`, `adventuring-gear`, `tools`, `mounts-and-vehicles`, `ammunition`
