@@ -45,7 +45,7 @@ When combat begins:
 Roll initiative for all combatants:
 
 ```bash
-source .venv/bin/activate && roll 1d20+{dex_modifier} -v
+uv run roll 1d20+{dex_modifier} -v
 ```
 
 The `-v` flag shows breakdown: `Rolled: 1d20: [15] Adding: 15 + 3 = 18`
@@ -96,7 +96,7 @@ Player declares: "I attack the goblin with my longsword"
 
 **Step 3: Roll to hit**
 ```bash
-source .venv/bin/activate && roll 1d20+{attack_bonus} -v
+uv run roll 1d20+{attack_bonus} -v
 ```
 
 **Step 4: Compare to AC**
@@ -105,7 +105,7 @@ source .venv/bin/activate && roll 1d20+{attack_bonus} -v
 
 **Step 5: Roll damage (on hit)**
 ```bash
-source .venv/bin/activate && roll {damage_dice}+{modifier} -v
+uv run roll {damage_dice}+{modifier} -v
 ```
 Example: `roll 1d8+3 -v` for longsword with +3 STR
 
@@ -149,7 +149,7 @@ uv run dnd-cli get spells/{spell-name} --json | jq '{
 
 **Step 4: Roll damage**
 - Parse damage from API (e.g., "8d6")
-- Roll: `source .venv/bin/activate && roll 8d6 -v`
+- Roll: `uv run roll 8d6 -v`
 
 **Step 5: Update**
 - Deduct spell slot: Edit character file, decrement `spell_slots["{level}"].remaining`
@@ -173,7 +173,7 @@ Example: "I want to shove the goblin off the ledge"
 
 **Step 4: Roll**
 ```bash
-source .venv/bin/activate && roll 1d20+{modifier} -v
+uv run roll 1d20+{modifier} -v
 ```
 
 **Step 5: Narrate result**
@@ -375,7 +375,7 @@ When a concentrating caster takes damage:
 1. **Determine DC**: DC = 10 or half damage taken, whichever is higher
 2. **Roll CON save**:
    ```bash
-   source .venv/bin/activate && roll 1d20+{con_modifier} -v
+   uv run roll 1d20+{con_modifier} -v
    ```
 3. **On failure**: Concentration breaks, remove all concentration-based conditions/spells
 
@@ -414,7 +414,7 @@ When a spell or effect requires a save:
 
 **Step 4: Roll save**
 ```bash
-source .venv/bin/activate && roll 1d20+{modifier} -v
+uv run roll 1d20+{modifier} -v
 ```
 
 **Step 5: Compare**

@@ -1,0 +1,161 @@
+{
+  "name": "Sireth",
+  "controlled_by": "cyrus",
+  "race": "Drow (High Elf)",
+  "class": "Monk",
+  "level": 1,
+  "background": "Folk Hero",
+  "alignment": "Chaotic Good",
+  "experience_points": 0,
+  "ability_scores": {
+    "strength": 12,
+    "dexterity": 17,
+    "constitution": 13,
+    "intelligence": 11,
+    "wisdom": 14,
+    "charisma": 8
+  },
+  "ability_modifiers": {
+    "strength": 1,
+    "dexterity": 3,
+    "constitution": 1,
+    "intelligence": 0,
+    "wisdom": 2,
+    "charisma": -1
+  },
+  "proficiency_bonus": 2,
+  "skills": {
+    "acrobatics": 5,
+    "athletics": 3,
+    "insight": 2
+  },
+  "saving_throws": {
+    "strength": 3,
+    "dexterity": 5
+  },
+  "hp": {
+    "current": 9,
+    "max": 9,
+    "temp": 0
+  },
+  "armor_class": 15,
+  "initiative": 3,
+  "speed": 30,
+  "hit_dice": {
+    "total": 1,
+    "remaining": 1,
+    "type": "d8"
+  },
+  "death_saves": {
+    "successes": 0,
+    "failures": 0
+  },
+  "inventory": [
+    {
+      "name": "Shortsword",
+      "quantity": 1,
+      "weight": 2,
+      "description": "Martial weapon, 1d6 slashing damage"
+    },
+    {
+      "name": "Explorer's Pack",
+      "quantity": 1,
+      "weight": 10,
+      "description": "Backpack, bedroll, rope, mess kit, tinderbox, torches, rations, waterskin"
+    },
+    {
+      "name": "Rope (50 ft)",
+      "quantity": 1,
+      "weight": 10,
+      "description": "Hempen rope"
+    },
+    {
+      "name": "Thieves' Tools",
+      "quantity": 1,
+      "weight": 1,
+      "description": "Lockpicks, small file, and other tools for disarming locks"
+    },
+    {
+      "name": "Folk Hero Memento",
+      "quantity": 1,
+      "weight": 0,
+      "description": "A trinket or token from those you helped"
+    },
+    {
+      "name": "Gold Pieces",
+      "quantity": 30,
+      "weight": 0,
+      "description": "Payment from Cassara Whitmore"
+    }
+  ],
+  "weapons": [
+    {
+      "name": "Shortsword",
+      "attack_bonus": 5,
+      "damage": "1d6+3",
+      "damage_type": "slashing",
+      "properties": ["finesse", "light"],
+      "equipped": true
+    },
+    {
+      "name": "Unarmed Strike",
+      "attack_bonus": 5,
+      "damage": "1d4+3",
+      "damage_type": "bludgeoning",
+      "properties": ["martial arts"],
+      "equipped": true
+    }
+  ],
+  "armor": {
+    "name": "None",
+    "ac_bonus": 0,
+    "type": "unarmored",
+    "equipped": true
+  },
+  "features_and_traits": [
+    {
+      "name": "Darkvision",
+      "description": "You can see in dim light within 60 feet as if it were bright light, and in darkness as if it were dim light. You can't discern color in darkness, only shades of gray."
+    },
+    {
+      "name": "Keen Senses",
+      "description": "You have proficiency in the Perception skill."
+    },
+    {
+      "name": "Fey Ancestry",
+      "description": "You have advantage on saving throws against being charmed, and magic can't put you to sleep."
+    },
+    {
+      "name": "Trance",
+      "description": "Elves don't need to sleep. Instead, you meditate deeply, remaining semiconscious, for 4 hours a day."
+    },
+    {
+      "name": "Elf Weapon Training",
+      "description": "You have proficiency with the longsword, shortsword, shortbow, and longbow."
+    },
+    {
+      "name": "Martial Arts",
+      "description": "At 1st level, your practice with unarmed strikes and monk weapons gives you mastery of combat forms that use them. You gain the following benefits while you are unarmed or wielding only monk weapons and you aren't wearing armor or wielding a shield: Your damage rolls for unarmed strikes and monk weapons increase as you gain monk levels."
+    },
+    {
+      "name": "Unarmored Defense",
+      "description": "Beginning at 1st level, while you are unarmed or wielding only monk weapons and you aren't wearing armor or wielding a shield, your AC equals 10 + your Dexterity modifier + your Wisdom modifier."
+    },
+    {
+      "name": "Rustic Hospitality",
+      "description": "You can find a place to hide, rest, or recuperate among other commoners, unless you have shown yourself to be a danger to them. They will shield you from the law or anyone else searching for you, though they will not risk their lives for you."
+    }
+  ],
+  "personality_traits": "I stand up to bullies and defend the downtrodden. Even though I've escaped the Underdark, I use my skills to right injustices wherever I find them.",
+  "ideals": "Community. It is each person's responsibility to improve the welfare of the place where they are.",
+  "bonds": "I owe a debt to those who helped me escape the Underdark. I will help oppressed people find freedom.",
+  "flaws": "I'm suspicious of those with authority and hate being told what to do. My past in the Underdark's darkness sometimes makes me paranoid.",
+  "languages": ["Common", "Elvish"],
+  "proficiencies": [
+    "Simple weapons",
+    "Shortswords",
+    "Athletics",
+    "Acrobatics",
+    "Thieves' Tools"
+  ]
+}

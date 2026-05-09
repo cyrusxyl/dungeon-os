@@ -65,7 +65,7 @@ This returns:
 
 **Option 1: Roll**:
 ```bash
-source .venv/bin/activate && roll 1d{hit_die} -v
+uv run roll 1d{hit_die} -v
 ```
 
 **Option 2: Take average** (rounded up):

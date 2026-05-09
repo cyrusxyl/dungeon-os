@@ -1,0 +1,20 @@
+{
+  "game_time": "Day 1, Late Morning - Eleint 1 (The Fading)",
+  "location": "En route - Marketplace Quarter to Dock Ward",
+  "weather": "Overcast, cool autumn breeze",
+  "active_encounter": null,
+  "active_player_turn": null,
+  "quest_log": [
+    {
+      "id": "expose-corruption",
+      "title": "Expose Flaming Fist Corruption",
+      "status": "active",
+      "progress": "Hired by Cassara Whitmore (30gp). Heading to Chapel of Ilmater, Dock Ward to find Sister Gareth, who has independent evidence against the Flaming Fist.",
+      "contact": "Cassara Whitmore (hiding from Flaming Fist)",
+      "leads": ["Sister Gareth at chapel in Dock Ward", "Council Hall archives for signature verification"]
+    }
+  ],
+  "party_status": "Investigating",
+  "session_players_present": ["cyrus"],
+  "party_members": ["sireth"]
+}

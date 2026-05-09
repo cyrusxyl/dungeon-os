@@ -7,6 +7,45 @@ description: Generate NPCs, locations, loot, equipment, and quest content on-the
 
 Create engaging content procedurally: NPCs with personality, locations with atmosphere, loot with purpose, and quests with hooks.
 
+## Campaign Story Bible
+
+When starting a **new campaign** (no `dm_story.md` exists in the campaign folder), create one before play begins. This file is the DM's private narrative spine — it keeps the story from drifting into incoherence across sessions.
+
+### What to write
+
+Save to `{campaign}/dm_story.md` with these sections:
+
+1. **Core Premise** — One paragraph. The central conflict, the theme, what kind of story this is.
+
+2. **The Full Conspiracy / Truth** — Everything that is *actually* happening behind the scenes, regardless of what the players know. Include names, motives, relationships, and hidden facts. Be specific.
+
+3. **Story Branches** — 3-4 major directions the player could take. For each branch:
+   - What triggers it
+   - Key NPCs unlocked
+   - How it escalates
+   - What the endpoint looks like if they follow it through
+
+4. **Pacing & Pressure Timers** — A table of world events that happen *on their own* if the players don't act. This makes the world feel alive. Format:
+   ```
+   | Event | Trigger | Sessions Until |
+   ```
+
+5. **Key NPC Profiles** — Full profiles for any NPC who drives the plot. Include:
+   - Actual goals (not just the face they show players)
+   - Weakness or pressure point
+   - What happens if they're killed, captured, or befriended
+
+6. **Player-Specific Hooks** — At least one hook per PC that ties their background/race/class into the main story.
+
+7. **World State Tracking** — A table of variables the DM tracks silently (who knows what, who's alerted, what's been discovered).
+
+### Rules for maintaining the bible
+
+- **Update after each session**: Add new entries under "World State Tracking" when key facts change.
+- **Never contradict it silently**: If a player action should change a major plot element, update the file to reflect the new reality.
+- **Never show it to players**: Reference it for your own decisions only. The file header should note `<!-- DM EYES ONLY -->`.
+- **Don't let players derail without consequence**: The Pressure Timers section ensures the world moves even if players ignore the main thread.
+
 ## NPC Generation
 
 When players meet a new NPC (innkeeper, shopkeeper, guard, quest-giver):
@@ -464,7 +503,7 @@ Use roll-cli for random selection:
 ### Random Encounter (Wilderness)
 
 ```bash
-source .venv/bin/activate && roll 1d12 -v
+uv run roll 1d12 -v
 ```
 
 1-3: No encounter

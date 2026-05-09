@@ -34,7 +34,7 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
   ```
   You can still use direct API calls with curl when needed, but the wrapper provides caching and token efficiency.
 
-- **Dice Rolls**: Use `roll 1d20+5 -v` (activate venv first: `source .venv/bin/activate`)
+- **Dice Rolls**: Use `uv run roll 1d20+5 -v` from the repo root (`/home/cyrus/workspace/dungeon-os`)
 - **Never** guess AC, spell descriptions, or damage formulas
 - **Always** execute tools and narrate the actual results
 
@@ -152,7 +152,7 @@ For every player action:
 5. **LOAD SKILL**: Invoke the appropriate skill for instructions
 6. **EXECUTE**: Follow skill instructions:
    - `curl -sL` to query D&D API
-   - `source .venv/bin/activate && roll XdY+Z -v` for dice
+   - `uv run roll XdY+Z -v` (from repo root `/home/cyrus/workspace/dungeon-os`) for dice
    - Edit tool to update HP, inventory, spell slots
    - Read tool to check current state
 7. **UPDATE**: Write results to campaign files (HP, state, new NPCs, etc.)
@@ -167,6 +167,7 @@ For every player action:
 - **NPCs**: `{campaign}/world/npcs/{name}.json`
 - **Locations**: `{campaign}/world/locations/{name}.md` or `.json`
 - **Quests**: `{campaign}/world/quests/{id}.json`
+- **DM Story Bible**: `{campaign}/dm_story.md` — DM-only narrative spine; load silently at session start, never show to players
 - **Schemas**: `/schemas/*.schema.json`
 - **Skills**: `./.claude/skills/*/skill.md`
 
@@ -176,8 +177,9 @@ For every player action:
 1. Read `campaigns/active.json` to find active campaign
 2. Read campaign's `state.json` to understand current situation
 3. Read `session_players_present` to know who's here
-4. Greet players and recap last session (from `session_log.md`)
-5. Ask "What do you do?"
+4. **Read `{campaign}/dm_story.md`** silently — players don't see this. If it doesn't exist yet, this is a new campaign: load the `worldbuilding` skill and follow its "Campaign Story Bible" instructions to draft and save one before proceeding.
+5. Greet players and recap last session (from `session_log.md`)
+6. Ask "What do you do?"
 
 ### During Play
 - **For each round of interaction within a campaign, ask each player what they plan to do.** Use the AskUserQuestion tool if available to gather all player actions simultaneously

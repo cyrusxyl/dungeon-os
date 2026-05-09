@@ -90,7 +90,7 @@ If casting at higher level (upcasting):
 **Spell Attack Roll** (if `attack_type: "SPELL"`):
 1. Roll attack: 1d20 + spell_attack_bonus
    ```bash
-   source .venv/bin/activate && roll 1d20+{spell_attack_bonus} -v
+   uv run roll 1d20+{spell_attack_bonus} -v
    ```
 2. Compare to target AC
 3. On hit: Roll damage
@@ -98,7 +98,7 @@ If casting at higher level (upcasting):
 **Saving Throw** (if has `dc`):
 1. Target rolls: 1d20 + ability_modifier
    ```bash
-   source .venv/bin/activate && roll 1d20+{modifier} -v
+   uv run roll 1d20+{modifier} -v
    ```
    Use ability from `dc.dc_type.name` (e.g., DEX, WIS)
 2. Compare to caster's `spell_save_dc`
@@ -109,7 +109,7 @@ If casting at higher level (upcasting):
 1. Parse damage from `damage` field (e.g., "8d6")
 2. Roll damage:
    ```bash
-   source .venv/bin/activate && roll 8d6 -v
+   uv run roll 8d6 -v
    ```
 3. Apply to target(s)
 4. If upcasted, add extra damage from `higher_level`

@@ -80,17 +80,17 @@ Read character file:
 ### Step 5: Roll the Check
 
 ```bash
-source .venv/bin/activate && roll 1d20+{modifier} -v
+uv run roll 1d20+{modifier} -v
 ```
 
 **Advantage/Disadvantage**:
 - Advantage: Roll twice, take higher
   ```bash
-  source .venv/bin/activate && roll 2d20kh1+{modifier} -v
+  uv run roll 2d20kh1+{modifier} -v
   ```
 - Disadvantage: Roll twice, take lower
   ```bash
-  source .venv/bin/activate && roll 2d20kl1+{modifier} -v
+  uv run roll 2d20kl1+{modifier} -v
   ```
 
 ### Step 6: Compare to DC

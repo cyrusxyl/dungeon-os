@@ -1,0 +1,11 @@
+{
+  "player_id": "cyrus",
+  "player_name": "Cyrus",
+  "characters_controlled": ["sireth"],
+  "permissions": {
+    "can_edit_own_characters": true,
+    "can_view_other_sheets": false,
+    "can_edit_world": false
+  },
+  "joined_date": "2026-02-10"
+}

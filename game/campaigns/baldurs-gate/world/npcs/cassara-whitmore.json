@@ -1,0 +1,28 @@
+{
+  "name": "Cassara Whitmore",
+  "status": "Hunted by Flaming Fist",
+  "location": "The Helm & Cloak tavern (hiding)",
+  "role": "Former Council Scribe",
+  "alignment": "Lawful Good",
+  "description": "An educated woman with careful mannerisms. Gloved hands, concealed documents. Shows signs of stress but maintains composure.",
+  "background": "Was a scribe for the Baldur's Gate Council before discovering evidence of corruption",
+  "motivation": "Expose corruption and murder covered up by Flaming Fist commanders",
+  "relationship_with_sireth": "Cautious ally - trusts Sireth's honesty and offer of help",
+  "key_information": {
+    "evidence": "Copy of contract proving Flaming Fist ordered assassination of merchant Aldus Thorne",
+    "conspirators": ["Commander Voss", "Captain Harwin"],
+    "victim": "Merchant Aldus Thorne (killed 6 weeks ago, made to look like robbery)",
+    "motive": "Thorne was going to expose Flaming Fist protection racket with slave traders",
+    "contract_amount": "500 gold pieces"
+  },
+  "resources": {
+    "documents_in_hand": "Copy of assassination contract with signatures and seals",
+    "documents_hidden": "Original documents hidden in secure location",
+    "ally": "Sister Gareth - private investigator at chapel in Dock Ward, has independent evidence"
+  },
+  "next_steps": [
+    "Find Sister Gareth at chapel in Dock Ward for corroboration",
+    "Access Council Hall archives to verify signatures and seals",
+    "Decide how to expose the corruption safely"
+  ]
+}

@@ -145,7 +145,7 @@ Offer player choice of method:
 **Point Buy**: 27 points to distribute (8=0, 9=1, 10=2, 11=3, 12=4, 13=5, 14=7, 15=9)
 **Rolling**: Roll 4d6 drop lowest, 6 times:
 ```bash
-source .venv/bin/activate && roll 4d6kh3 -v
+uv run roll 4d6kh3 -v
 ```
 (Repeat 6 times, record results)
 
@@ -275,7 +275,7 @@ Guide player through:
 
 Backgrounds often provide tables to roll on:
 ```bash
-source .venv/bin/activate && roll 1d8 -v
+uv run roll 1d8 -v
 ```
 
 ### Step 9: Generate Character File

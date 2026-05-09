@@ -212,7 +212,7 @@ After significant interactions, update NPC file:
 For new NPCs without established relationship:
 
 ```bash
-source .venv/bin/activate && roll 2d6+{charisma_modifier} -v
+uv run roll 2d6+{charisma_modifier} -v
 ```
 
 **Result**:
@@ -357,7 +357,7 @@ When players want to learn information:
 
 **Rolling for rumors**:
 ```bash
-source .venv/bin/activate && roll 1d8 -v
+uv run roll 1d8 -v
 ```
 
 Create rumor table:
