@@ -160,7 +160,7 @@
       "properties": {
         "name": {"type": "string"},
         "ac_bonus": {"type": "integer"},
-        "type": {"type": "string", "enum": ["light", "medium", "heavy", "shield"]},
+        "type": {"type": "string", "enum": ["unarmored", "light", "medium", "heavy", "shield"]},
         "equipped": {"type": "boolean"}
       }
     },
