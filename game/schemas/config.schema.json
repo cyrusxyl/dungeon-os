@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Campaign Config",
+  "description": "Campaign settings, including the Session Zero agreements. Checklist Section 6: write these down and keep them.",
+  "type": "object",
+  "required": ["campaign_name", "ruleset", "tone", "max_players", "created"],
+  "properties": {
+    "campaign_name": {"type": "string"},
+    "setting": {"type": "string"},
+    "ruleset": {"type": "string", "examples": ["D&D 5e"]},
+    "source_books_allowed": {
+      "type": "array",
+      "description": "Checklist 6.3: state the source books you allow.",
+      "items": {"type": "string"},
+      "examples": [["Player's Handbook"]]
+    },
+    "tone": {"type": "string", "examples": ["Heroic", "Dark", "Funny", "Scary"]},
+    "difficulty": {"type": "string"},
+    "planned_length_sessions": {
+      "type": "object",
+      "description": "Checklist 1.4: a first campaign must have 6 to 10 sessions.",
+      "properties": {
+        "min": {"type": "integer", "minimum": 1},
+        "max": {"type": "integer", "minimum": 1}
+      }
+    },
+    "max_players": {"type": "integer", "minimum": 1},
+    "created": {"type": "string", "format": "date"},
+    "description": {"type": "string"},
+
+    "character_death_policy": {
+      "type": "string",
+      "description": "Checklist 6.4: how death is handled at this table.",
+      "examples": ["Standard 5e death saves, no permadeath without player agreement", "Permadeath, character retires and a new one joins next session"]
+    },
+
+    "safety_limits": {
+      "type": "object",
+      "description": "Checklist 6.5: hard limits and soft limits.",
+      "properties": {
+        "hard_limits": {
+          "type": "array",
+          "description": "Topics that must not appear at all.",
+          "items": {"type": "string"}
+        },
+        "soft_limits": {
+          "type": "array",
+          "description": "Topics that may appear only with care.",
+          "items": {"type": "string"}
+        }
+      }
+    },
+
+    "table_rules": {
+      "type": "object",
+      "description": "Checklist 6.6-6.7. Not applicable to a solo, asynchronous campaign — leave empty and note why in campaign notes.",
+      "properties": {
+        "session_length_minutes": {"type": "integer"},
+        "frequency": {"type": "string"},
+        "missed_session_policy": {"type": "string"}
+      }
+    },
+
+    "party_backstory": {
+      "type": "string",
+      "description": "Checklist 6.8: how the player characters know each other. Do not start session 1 with strangers in a tavern."
+    }
+  }
+}

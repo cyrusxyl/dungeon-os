@@ -1,0 +1,160 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Canon File",
+  "description": "The single record of true campaign facts. Rule: if a fact is not here, the fact is not true. See AI DM Operating Guide, Section 1.",
+  "type": "object",
+  "required": ["campaign_id", "last_session_written", "villains", "threads", "facts", "characters", "items", "promises", "rulings"],
+  "properties": {
+    "campaign_id": {
+      "type": "string",
+      "description": "Campaign folder name"
+    },
+    "last_session_written": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of the last session fully written to this file. Operating Guide 11.3: do not end a session before this file is updated."
+    },
+    "last_clock_touched": {
+      "type": ["string", "null"],
+      "description": "Name of the villain clock touched in the last session. Operating Guide 4.3. Null only before session 1."
+    },
+
+    "villains": {
+      "type": "array",
+      "description": "Part A: Villains and their clocks. Operating Guide Section 2.",
+      "items": {
+        "type": "object",
+        "required": ["name", "goal", "trait", "clocks"],
+        "properties": {
+          "name": {"type": "string"},
+          "goal": {"type": "string", "description": "One clear goal. Checklist 2.2."},
+          "trait": {"type": "string", "description": "One trait players will remember. Checklist 2.5."},
+          "escape_plan": {"type": "string", "description": "How this villain escapes capture. Checklist 2.4."},
+          "clocks": {
+            "type": "array",
+            "description": "Each clock is one quest toward the goal. Checklist 2.3. A campaign should give each villain up to three.",
+            "items": {
+              "type": "object",
+              "required": ["name", "segments_total", "segments_filled"],
+              "properties": {
+                "name": {"type": "string"},
+                "description": {"type": "string"},
+                "segments_total": {
+                  "type": "integer",
+                  "enum": [4, 6, 8],
+                  "description": "Operating Guide 2.2: a clock has 4, 6, or 8 segments."
+                },
+                "segments_filled": {"type": "integer", "minimum": 0},
+                "status": {
+                  "type": "string",
+                  "enum": ["active", "complete", "stopped"],
+                  "default": "active",
+                  "description": "'complete' means segments_filled reached segments_total. Operating Guide 2.7-2.8: tell the players the result."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "threads": {
+      "type": "array",
+      "description": "Part B: Open threads. Operating Guide Section 3. Do not keep more than five open (3.7).",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "staleness_count"],
+        "properties": {
+          "id": {"type": "string"},
+          "description": {"type": "string"},
+          "staleness_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Sessions since this thread last appeared in play. At 2, put it back into play (3.4). At 3, the world acts on it without the players (3.5)."
+          }
+        }
+      }
+    },
+
+    "facts": {
+      "type": "array",
+      "description": "Part C: Established facts. Canon-level improv items go here at the moment they are stated (Operating Guide 5.4-5.7).",
+      "items": {
+        "type": "object",
+        "required": ["fact", "source", "session"],
+        "properties": {
+          "fact": {"type": "string"},
+          "source": {
+            "type": "string",
+            "description": "'DM' or the name of the player who established this fact."
+          },
+          "session": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+
+    "characters": {
+      "type": "array",
+      "description": "Part D: Characters and their abilities, as recorded canon (not the full mechanical sheet, which lives in characters/*.json).",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": {"type": "string"},
+          "abilities_of_note": {"type": "array", "items": {"type": "string"}},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+
+    "items": {
+      "type": "array",
+      "description": "Part E: Items and rewards given.",
+      "items": {
+        "type": "object",
+        "required": ["item", "recipient", "session"],
+        "properties": {
+          "item": {"type": "string"},
+          "recipient": {"type": "string"},
+          "session": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+
+    "promises": {
+      "type": "array",
+      "description": "Part F: Promises made to players.",
+      "items": {
+        "type": "object",
+        "required": ["promise", "made_to", "session", "fulfilled"],
+        "properties": {
+          "promise": {"type": "string"},
+          "made_to": {"type": "string"},
+          "session": {"type": "integer", "minimum": 0},
+          "fulfilled": {"type": "boolean", "default": false}
+        }
+      }
+    },
+
+    "rulings": {
+      "type": "array",
+      "description": "Part G: Rulings made. Operating Guide 7.2: write each ruling here. 7.7: a ruling changes only for a new in-story fact or a canon-file error.",
+      "items": {
+        "type": "object",
+        "required": ["ruling", "context", "session"],
+        "properties": {
+          "ruling": {"type": "string"},
+          "context": {"type": "string"},
+          "session": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+
+    "secret": {
+      "type": "boolean",
+      "default": true,
+      "description": "Operating Guide 12.1-12.4: this file holds secret information. Do not show its contents to players."
+    }
+  }
+}
