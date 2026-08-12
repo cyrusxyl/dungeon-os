@@ -75,15 +75,17 @@ Key fields:
 
 ### Step 3: Deduct Spell Slot
 
+Run `uv run dnd-cli character cast {campaign} {name} {level}` — do not decrement `remaining` yourself and write the number in with the Edit tool. It refuses if no slots remain at that level, which is the check "If 0" in Step 2 above is really relying on: read the slot count to decide whether casting is possible, but let the command do the actual subtraction.
+
 If casting at base level:
-- Decrement `spell_slots["{level}"].remaining` by 1
+- `level` = the spell's own level
 
 If casting at higher level (upcasting):
 - Player chooses higher spell slot
-- Decrement chosen level's remaining slots
+- `level` = the chosen slot's level, not the spell's base level
 - Apply higher-level effects from `higher_level` field
 
-**Update character file immediately**.
+The command validates the character file against the schema before saving, so a bad write is refused rather than silently corrupting the file.
 
 ### Step 4: Resolve Spell Effect
 
@@ -327,8 +329,10 @@ Some class features interact with schools (e.g., Abjuration Wizard, Evocation Wi
 
 **Long Rest**:
 - All classes: Recover all spell slots
+- Run `uv run dnd-cli character restore-slots {campaign} {name}` (all levels at once — do not loop by hand)
 
-**Update character file** after rest.
+**Short Rest** (Warlock, or Wizard Arcane Recovery):
+- Run `uv run dnd-cli character restore-slots {campaign} {name} --level {level}` once per level being recovered. For Arcane Recovery, this restores that level's slots to full rather than a partial amount — if the recovered slots total is less than the level's max, restore a lower level's slots instead so the total recovered matches half the wizard's level rounded up.
 
 ## Common Spell Scenarios
 

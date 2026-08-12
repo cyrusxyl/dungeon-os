@@ -110,9 +110,8 @@ uv run roll {damage_dice}+{modifier} -v
 Example: `roll 1d8+3 -v` for longsword with +3 STR
 
 **Step 6: Update target HP**
-- Read target's current HP
-- Subtract damage
-- Write new HP to target's file using Edit tool
+- **If the target is a player character** (`{campaign}/characters/{name}.json`): use `uv run dnd-cli character apply-damage {campaign} {name} {amount}`. Do not subtract the damage yourself and write the number in with the Edit tool — temp HP absorbs damage before current HP does, and getting that order wrong by hand is exactly the kind of arithmetic mistake this command exists to rule out. The command reports `absorbed_by_temp_hp`, `absorbed_by_current_hp`, and `dropped_to_zero` — use those to narrate.
+- **If the target is an NPC or monster** (`{campaign}/world/npcs/{name}.json`): this file follows `npc.schema.json`, not the character schema, and the `character` CLI does not cover it yet. Subtract the damage and write it with the Edit tool as before — this is a known gap, not an oversight.
 - If HP ≤ 0: Creature is down/dead
 
 **Step 7: Narrate**
@@ -152,8 +151,8 @@ uv run dnd-cli get spells/{spell-name} --json | jq '{
 - Roll: `uv run roll 8d6 -v`
 
 **Step 5: Update**
-- Deduct spell slot: Edit character file, decrement `spell_slots["{level}"].remaining`
-- Apply damage to target
+- Deduct spell slot: `uv run dnd-cli character cast {campaign} {name} {level}`. It refuses if no slots remain at that level instead of writing a negative or stale number.
+- Apply damage to target (see Step 6 above — player character vs NPC/monster)
 
 #### Skill Check in Combat
 
@@ -182,7 +181,7 @@ uv run roll 1d20+{modifier} -v
 
 After each turn:
 - Update `state.json`: set `current_turn` to next in initiative order
-- Update any changed HP/status in character/NPC files
+- Update any changed HP/status: `dnd-cli character apply-damage`/`heal`/`add-temp-hp` for player characters (see Step 6 above); Edit tool for NPC/monster files
 - Narrate the result vividly
 
 ### 4. Move to Next Turn
@@ -458,6 +457,6 @@ When all enemies are defeated or players flee:
 ## Common Mistakes to Avoid
 
 - **Don't hallucinate AC or HP**: Always read from files
-- **Don't forget to save changes**: Edit files immediately after HP changes
-- **Don't skip spell slot checks**: Wizards can't cast infinite Fireballs
+- **Don't compute new HP or spell-slot numbers yourself**: for player characters, use `dnd-cli character apply-damage/heal/add-temp-hp/cast` (see "Update target HP" above) — save changes immediately by running the command, not by hand-editing the number in
+- **Don't skip spell slot checks**: Wizards can't cast infinite Fireballs — `dnd-cli character cast` refuses when none remain
 - **Don't mix up attack bonus and damage**: Attack determines if hit, damage determines how much hurt
