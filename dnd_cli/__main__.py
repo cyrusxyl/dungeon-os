@@ -20,6 +20,7 @@ from dnd_cli.commands import random as cmd_random
 from dnd_cli.commands import info as cmd_info
 from dnd_cli.commands import cache_cmd
 from dnd_cli.commands import canon_cmd
+from dnd_cli.commands import character_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -180,6 +181,46 @@ def create_parser():
     p.add_argument("session", type=int)
     p.add_argument("--force", action="store_true", help="Close even if the session report has warnings")
 
+    # Character command group
+    character_parser = subparsers.add_parser(
+        "character",
+        help="Character file bookkeeping: HP and spell slots (no LLM arithmetic)"
+    )
+    character_sub = character_parser.add_subparsers(dest="character_command", help="Character subcommand")
+
+    p = character_sub.add_parser("show", help="Print a character file")
+    p.add_argument("campaign")
+    p.add_argument("name", help="Character file name, without .json")
+
+    p = character_sub.add_parser("validate", help="Validate a character file against the schema")
+    p.add_argument("campaign")
+    p.add_argument("name")
+
+    p = character_sub.add_parser("apply-damage", help="Apply damage: temp HP absorbs first, then current HP, floored at 0")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("amount", type=int)
+
+    p = character_sub.add_parser("heal", help="Heal: current HP capped at max, does not restore temp HP")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("amount", type=int)
+
+    p = character_sub.add_parser("add-temp-hp", help="Set temp HP: does not stack, higher value wins")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("amount", type=int)
+
+    p = character_sub.add_parser("cast", help="Spend one spell slot at the given level")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("level", type=int, choices=range(1, 10))
+
+    p = character_sub.add_parser("restore-slots", help="Long rest: restore one level's slots, or all levels if --level omitted")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("--level", type=int, choices=range(1, 10), default=None)
+
     return parser
 
 
@@ -289,6 +330,30 @@ def main():
                 return canon_cmd.execute_close_session(args.campaign, args.session, args.force)
             else:
                 print(f"Unknown canon subcommand: {cc}", file=sys.stderr)
+                return 1
+
+        elif args.command == "character":
+            if not args.character_command:
+                print("Usage: dnd-cli character <subcommand> ... (see --help)", file=sys.stderr)
+                return 1
+
+            cc = args.character_command
+            if cc == "show":
+                return character_cmd.execute_show(args.campaign, args.name)
+            elif cc == "validate":
+                return character_cmd.execute_validate(args.campaign, args.name)
+            elif cc == "apply-damage":
+                return character_cmd.execute_apply_damage(args.campaign, args.name, args.amount)
+            elif cc == "heal":
+                return character_cmd.execute_heal(args.campaign, args.name, args.amount)
+            elif cc == "add-temp-hp":
+                return character_cmd.execute_add_temp_hp(args.campaign, args.name, args.amount)
+            elif cc == "cast":
+                return character_cmd.execute_cast(args.campaign, args.name, args.level)
+            elif cc == "restore-slots":
+                return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
+            else:
+                print(f"Unknown character subcommand: {cc}", file=sys.stderr)
                 return 1
 
         elif args.command == "warmup":
