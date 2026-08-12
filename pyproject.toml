@@ -9,6 +9,7 @@ dependencies = [
     "pyparsing>=3.3.2",
     "roll-cli>=2.0.0",
     "rapidfuzz>=3.0.0",
+    "jsonschema>=4.0.0",
 ]
 
 [project.scripts]
@@ -16,3 +17,6 @@ dnd-cli = "dnd_cli.__main__:main"
 
 [tool.uv]
 package = true
+
+[tool.setuptools.packages.find]
+include = ["dnd_cli", "dnd_cli.*"]
