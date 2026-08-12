@@ -19,6 +19,7 @@ from dnd_cli.commands import search as cmd_search
 from dnd_cli.commands import random as cmd_random
 from dnd_cli.commands import info as cmd_info
 from dnd_cli.commands import cache_cmd
+from dnd_cli.commands import canon_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -87,6 +88,98 @@ def create_parser():
         help="Force re-fetch even if cached"
     )
 
+    # Canon command group
+    canon_parser = subparsers.add_parser(
+        "canon",
+        help="Canon file bookkeeping: clocks, threads, facts (no LLM arithmetic)"
+    )
+    canon_sub = canon_parser.add_subparsers(dest="canon_command", help="Canon subcommand")
+
+    p = canon_sub.add_parser("init", help="Create an empty canon.json for a campaign")
+    p.add_argument("campaign")
+
+    p = canon_sub.add_parser("validate", help="Validate canon.json against the schema")
+    p.add_argument("campaign")
+
+    p = canon_sub.add_parser("show", help="Print canon.json")
+    p.add_argument("campaign")
+
+    p = canon_sub.add_parser("add-villain", help="Add a villain to Part A (Checklist 2.1-2.5)")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("goal")
+    p.add_argument("trait")
+    p.add_argument("--escape-plan", default="", help="How this villain escapes capture (Checklist 2.4)")
+
+    p = canon_sub.add_parser("add-clock", help="Add a clock (quest) to a villain (OG 2.1-2.3)")
+    p.add_argument("campaign")
+    p.add_argument("villain")
+    p.add_argument("clock")
+    p.add_argument("segments_total", type=int, choices=[4, 6, 8], help="OG 2.2: a clock has 4, 6, or 8 segments")
+    p.add_argument("--description", default="")
+
+    p = canon_sub.add_parser("advance-clock", help="Advance a villain's clock (OG 2.4-2.6)")
+    p.add_argument("campaign")
+    p.add_argument("villain")
+    p.add_argument("clock")
+    p.add_argument("--action-taken", action="store_true", help="Players took direct action against this quest: do not advance")
+    p.add_argument("--warning-ignored", action="store_true", help="Players ignored a clear warning: advance by 2")
+
+    p = canon_sub.add_parser("touch-clock", help="Record the clock the session's arc-touch scene connected to (OG 4.3)")
+    p.add_argument("campaign")
+    p.add_argument("villain")
+    p.add_argument("clock")
+
+    p = canon_sub.add_parser("sweep-threads", help="Update thread staleness at session end (OG 3.3-3.6)")
+    p.add_argument("campaign")
+    p.add_argument("--appeared", default="", help="Comma-separated thread ids that appeared in play this session")
+
+    p = canon_sub.add_parser("add-thread", help="Open a new thread (enforces the 5-thread cap, OG 3.7-3.8)")
+    p.add_argument("campaign")
+    p.add_argument("thread_id")
+    p.add_argument("description")
+
+    p = canon_sub.add_parser("close-thread", help="Close or merge away a thread")
+    p.add_argument("campaign")
+    p.add_argument("thread_id")
+
+    p = canon_sub.add_parser("add-fact", help="Record a canon-level fact (Part C)")
+    p.add_argument("campaign")
+    p.add_argument("session", type=int)
+    p.add_argument("source", help="'DM' or the player's name")
+    p.add_argument("fact")
+
+    p = canon_sub.add_parser("add-item", help="Record an item given to a player (Part E)")
+    p.add_argument("campaign")
+    p.add_argument("session", type=int)
+    p.add_argument("recipient")
+    p.add_argument("item")
+
+    p = canon_sub.add_parser("add-promise", help="Record a promise made to a player (Part F)")
+    p.add_argument("campaign")
+    p.add_argument("session", type=int)
+    p.add_argument("made_to")
+    p.add_argument("promise")
+
+    p = canon_sub.add_parser("fulfill-promise", help="Mark a promise fulfilled by its index in 'canon show'")
+    p.add_argument("campaign")
+    p.add_argument("index", type=int)
+
+    p = canon_sub.add_parser("add-ruling", help="Record a ruling (Part G)")
+    p.add_argument("campaign")
+    p.add_argument("session", type=int)
+    p.add_argument("context")
+    p.add_argument("ruling")
+
+    p = canon_sub.add_parser("session-report", help="Show what is on record for a session, and any gaps (OG Section 11)")
+    p.add_argument("campaign")
+    p.add_argument("session", type=int)
+
+    p = canon_sub.add_parser("close-session", help="Set last_session_written after checking the session report is clean")
+    p.add_argument("campaign")
+    p.add_argument("session", type=int)
+    p.add_argument("--force", action="store_true", help="Close even if the session report has warnings")
+
     return parser
 
 
@@ -148,6 +241,55 @@ def main():
 
         elif args.command == "clear-cache":
             return cache_cmd.execute_clear(args.resource)
+
+        elif args.command == "canon":
+            if not args.canon_command:
+                print("Usage: dnd-cli canon <subcommand> ... (see --help)", file=sys.stderr)
+                return 1
+
+            cc = args.canon_command
+            if cc == "init":
+                return canon_cmd.execute_init(args.campaign)
+            elif cc == "validate":
+                return canon_cmd.execute_validate(args.campaign)
+            elif cc == "show":
+                return canon_cmd.execute_show(args.campaign)
+            elif cc == "add-villain":
+                return canon_cmd.execute_add_villain(args.campaign, args.name, args.goal, args.trait, args.escape_plan)
+            elif cc == "add-clock":
+                return canon_cmd.execute_add_clock(
+                    args.campaign, args.villain, args.clock, args.segments_total, args.description
+                )
+            elif cc == "advance-clock":
+                return canon_cmd.execute_advance_clock(
+                    args.campaign, args.villain, args.clock, args.action_taken, args.warning_ignored
+                )
+            elif cc == "touch-clock":
+                return canon_cmd.execute_touch_clock(args.campaign, args.villain, args.clock)
+            elif cc == "sweep-threads":
+                appeared = [t.strip() for t in args.appeared.split(",") if t.strip()]
+                return canon_cmd.execute_sweep_threads(args.campaign, appeared)
+            elif cc == "add-thread":
+                return canon_cmd.execute_add_thread(args.campaign, args.thread_id, args.description)
+            elif cc == "close-thread":
+                return canon_cmd.execute_close_thread(args.campaign, args.thread_id)
+            elif cc == "add-fact":
+                return canon_cmd.execute_add_fact(args.campaign, args.session, args.source, args.fact)
+            elif cc == "add-item":
+                return canon_cmd.execute_add_item(args.campaign, args.session, args.recipient, args.item)
+            elif cc == "add-promise":
+                return canon_cmd.execute_add_promise(args.campaign, args.session, args.made_to, args.promise)
+            elif cc == "fulfill-promise":
+                return canon_cmd.execute_fulfill_promise(args.campaign, args.index)
+            elif cc == "add-ruling":
+                return canon_cmd.execute_add_ruling(args.campaign, args.session, args.context, args.ruling)
+            elif cc == "session-report":
+                return canon_cmd.execute_session_report(args.campaign, args.session)
+            elif cc == "close-session":
+                return canon_cmd.execute_close_session(args.campaign, args.session, args.force)
+            else:
+                print(f"Unknown canon subcommand: {cc}", file=sys.stderr)
+                return 1
 
         elif args.command == "warmup":
             resource = args.resource or "all"
