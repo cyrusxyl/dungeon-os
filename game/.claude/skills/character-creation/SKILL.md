@@ -522,7 +522,7 @@ Before finalizing character:
 
 ## Integration with Other Skills
 
-- **After creation** → Use worldbuilding skill to establish character's backstory connections to the world
+- **After creation** → Ask the player two questions: "What people or places from your character's past do you want to see again?" and "What unfinished problem does your character have?" Record the answers, then use the worldbuilding skill to weave them into the campaign's Player-Specific Hooks.
 - **In session 0** → Create all party members' characters together
 - **During play** → Character advancement skill handles leveling up
 - **Combat setup** → Combat skill reads these character files for stats

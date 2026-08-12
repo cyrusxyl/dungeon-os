@@ -9,35 +9,50 @@ Create engaging content procedurally: NPCs with personality, locations with atmo
 
 ## Campaign Story Bible
 
-When starting a **new campaign** (no `dm_story.md` exists in the campaign folder), create one before play begins. This file is the DM's private narrative spine — it keeps the story from drifting into incoherence across sessions.
+When starting a **new campaign** (no `dm_story.md` exists in the campaign folder), create one before play begins. Also create `{campaign}/canon.json` alongside it with `uv run dnd-cli canon init {campaign}` — do not create it by hand, so it starts schema-valid. `dm_story.md` is the narrative spine — the story you intend to tell. `canon.json` is the mechanical record the `dm-canon-procedures` skill reads and writes during play — the facts that have actually happened. Both files keep the story from drifting into incoherence across sessions.
+
+Once `dm_story.md` names the campaign's villains and their quests (item 6, below), enter them into `canon.json` the same way — do not write the villain/clock JSON by hand:
+```bash
+uv run dnd-cli canon add-villain {campaign} "{name}" "{goal}" "{trait}" --escape-plan "{how they escape capture}"
+uv run dnd-cli canon add-clock {campaign} "{villain name}" "{clock name}" {4|6|8} --description "{what it tracks}"
+```
+`add-clock` refuses any segment count other than 4, 6, or 8 (Operating Guide 2.2) — the command enforces this, so there is no need to double check it yourself.
 
 ### What to write
 
 Save to `{campaign}/dm_story.md` with these sections:
 
-1. **Core Premise** — One paragraph. The central conflict, the theme, what kind of story this is.
+1. **Core Premise** — One paragraph. The central conflict, the theme, what kind of story this is. Include one hook that pulls the players into the story at session 1.
 
-2. **The Full Conspiracy / Truth** — Everything that is *actually* happening behind the scenes, regardless of what the players know. Include names, motives, relationships, and hidden facts. Be specific.
+2. **World Truths** — 3 to 5 facts that are always true in this world (example: "magic is rare"). Do not write the world's full history — write only what session 1 needs.
 
-3. **Story Branches** — 3-4 major directions the player could take. For each branch:
+3. **The Full Conspiracy / Truth** — Everything that is *actually* happening behind the scenes, regardless of what the players know. Include names, motives, relationships, and hidden facts. Be specific.
+
+4. **Story Branches** — 3-4 major directions the player could take. For each branch:
    - What triggers it
    - Key NPCs unlocked
    - How it escalates
    - What the endpoint looks like if they follow it through
 
-4. **Pacing & Pressure Timers** — A table of world events that happen *on their own* if the players don't act. This makes the world feel alive. Format:
+5. **Pacing & Pressure Timers** — A table of world events that happen *on their own* if the players don't act. This makes the world feel alive. Format:
    ```
    | Event | Trigger | Sessions Until |
    ```
+   Each row that belongs to a villain also becomes a clock in `canon.json` Part A. A clock has 4, 6, or 8 segments — pick the size closest to "Sessions Until" (a 1-3 session timer is a 4-segment clock; a longer or vaguer timer is 6 or 8). This table stays in `dm_story.md` as the human-readable version; the clock in `canon.json` is the one the `dm-canon-procedures` skill actually advances session to session.
 
-5. **Key NPC Profiles** — Full profiles for any NPC who drives the plot. Include:
+6. **Key NPC Profiles** — Full profiles for any NPC who drives the plot. Include:
    - Actual goals (not just the face they show players)
    - Weakness or pressure point
    - What happens if they're killed, captured, or befriended
 
-6. **Player-Specific Hooks** — At least one hook per PC that ties their background/race/class into the main story.
+   For each of the campaign's 1-3 main villains, also give:
+   - **One clear trait** the players will remember them by
+   - **A way to escape capture** — do not let the players kill a main villain in an early encounter
+   - **Three quests toward their goal** — these become the villain's clocks in `canon.json` Part A
 
-7. **World State Tracking** — A table of variables the DM tracks silently (who knows what, who's alerted, what's been discovered).
+7. **Player-Specific Hooks** — At least one hook per PC that ties their background/race/class into the main story.
+
+8. **World State Tracking** — A table of variables the DM tracks silently (who knows what, who's alerted, what's been discovered).
 
 ### Rules for maintaining the bible
 
@@ -45,6 +60,7 @@ Save to `{campaign}/dm_story.md` with these sections:
 - **Never contradict it silently**: If a player action should change a major plot element, update the file to reflect the new reality.
 - **Never show it to players**: Reference it for your own decisions only. The file header should note `<!-- DM EYES ONLY -->`.
 - **Don't let players derail without consequence**: The Pressure Timers section ensures the world moves even if players ignore the main thread.
+- **`dm_story.md` is intent, `canon.json` is record**: this file describes the story you plan to tell. `canon.json` is the file that governs what the AI DM must actually treat as true, per "Canon File & Anti-Drift Rules" in `AGENTS.md`. Session-to-session upkeep of `canon.json` (clock advances, thread staleness, session-end records) is the `dm-canon-procedures` skill's job, not this one's.
 
 ## NPC Generation
 
