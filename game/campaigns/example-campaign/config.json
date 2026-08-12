@@ -2,6 +2,8 @@
   "campaign_name": "Lost Mine of Phandelver",
   "ruleset": "D&D 5e",
   "tone": "High Fantasy",
+  "source_books_allowed": ["Player's Handbook (SRD 5.1)"],
+  "planned_length_sessions": {"min": 6, "max": 10},
   "difficulty": "Normal",
   "max_players": 4,
   "created": "2026-02-07"

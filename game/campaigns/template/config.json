@@ -1,7 +1,9 @@
 {
   "campaign_name": "New Campaign",
   "ruleset": "D&D 5e",
+  "source_books_allowed": ["Player's Handbook (SRD 5.1)"],
   "tone": "High Fantasy",
+  "planned_length_sessions": {"min": 6, "max": 10},
   "difficulty": "Normal",
   "max_players": 5,
   "created": "2026-02-07"

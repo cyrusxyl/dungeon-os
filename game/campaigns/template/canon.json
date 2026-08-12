@@ -1,0 +1,13 @@
+{
+  "campaign_id": "template",
+  "last_session_written": 0,
+  "last_clock_touched": null,
+  "villains": [],
+  "threads": [],
+  "facts": [],
+  "characters": [],
+  "items": [],
+  "promises": [],
+  "rulings": [],
+  "secret": true
+}

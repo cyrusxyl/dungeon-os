@@ -1,0 +1,131 @@
+{
+  "campaign_id": "baldurs-gate",
+  "seeded_from": "Retrofit on 2026-08-11. Villain clocks and threads are estimates built from the existing Pacing & Pressure Timers table in dm_story.md and from session_log.md. Formal clock/thread tracking (Operating Guide Section 2-4) starts at session 3. The dm_story.md row 'Thieves' Guild notices new player in town' is not carried into a thread here: its trigger (Sireth uses thieves' tools visibly) has not happened yet. It stays tracked only in dm_story.md until it triggers, then must be added here.",
+  "last_session_written": 2,
+  "last_clock_touched": null,
+
+  "villains": [
+    {
+      "name": "Commander Voss",
+      "goal": "Keep the Flaming Fist protection racket with the slave-trade pipeline running, and silence anyone who can prove it.",
+      "trait": "Former war hero who rationalizes the racket as controlling chaos, not causing it.",
+      "clocks": [
+        {
+          "name": "Silence the leak",
+          "description": "Find and neutralize Cassara Whitmore before she can act on her copy of the assassination contract.",
+          "segments_total": 4,
+          "segments_filled": 2,
+          "status": "active"
+        },
+        {
+          "name": "Discover the contract was copied",
+          "description": "Voss learns that Cassara copied the assassination contract before House Maren's people find her first.",
+          "segments_total": 4,
+          "segments_filled": 1,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "name": "Councillor Duvane",
+      "goal": "Stay hidden inside the compromised Council, survive Voss's suspicion, and keep his own position.",
+      "trait": "Exhausted, not gleeful, about his own corruption — believes the system is too broken to fix from outside.",
+      "clocks": [
+        {
+          "name": "Neutralize Cassara and Sireth quietly",
+          "description": "Triggers only if the party pursues the legal path (Council Hall archives, magistrates). Duvane moves to quietly remove both threats before they reach the Council floor.",
+          "segments_total": 6,
+          "segments_filled": 0,
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "name": "House Maren",
+      "goal": "Keep the Underdark-to-Amn slave pipeline running undetected behind a public reputation for charity.",
+      "trait": "Publicly the most charitable merchant house in the city.",
+      "clocks": []
+    }
+  ],
+
+  "threads": [
+    {
+      "id": "expose-flaming-fist-corruption",
+      "description": "Main quest: prove the Voss/Harwin/Duvane conspiracy and expose the slave-trade pipeline.",
+      "staleness_count": 0
+    },
+    {
+      "id": "sister-gareth-lead",
+      "description": "Sister Gareth at the Dock Ward chapel has independent evidence; unconfirmed Harper connection. If the party earns her trust, a Harper contact reaches out the session after this meeting (dm_story.md pressure timer).",
+      "staleness_count": 0
+    },
+    {
+      "id": "council-hall-archives-lead",
+      "description": "Council Hall archives could verify the contract signatures — the legal-path alternative to Sister Gareth.",
+      "staleness_count": 0
+    },
+    {
+      "id": "cassara-hidden-second-copy",
+      "description": "Cassara secretly made a second copy of the assassination contract. She has not told Sireth.",
+      "staleness_count": 0
+    }
+  ],
+
+  "facts": [
+    {
+      "fact": "Aldus Thorne was murdered by Flaming Fist assassins six weeks before the campaign start, disguised as a robbery.",
+      "source": "DM",
+      "session": 1
+    },
+    {
+      "fact": "The assassination contract was signed for 500 gold pieces and bears the signatures of Commander Voss and Captain Harwin.",
+      "source": "DM",
+      "session": 1
+    },
+    {
+      "fact": "Cassara Whitmore is a former Council scribe hiding from the Flaming Fist.",
+      "source": "DM",
+      "session": 1
+    },
+    {
+      "fact": "Sister Gareth is present at the Chapel of Ilmater in Dock Ward and recognized Sireth on sight.",
+      "source": "DM",
+      "session": 2
+    }
+  ],
+
+  "characters": [
+    {
+      "name": "Sireth",
+      "abilities_of_note": ["Drow Monk, level 1", "Folk Hero background", "Proficient with thieves' tools"],
+      "notes": "HP 9/9 as of end of session 2."
+    }
+  ],
+
+  "items": [
+    {
+      "item": "30 gold pieces",
+      "recipient": "Sireth",
+      "session": 2
+    }
+  ],
+
+  "promises": [
+    {
+      "promise": "Sireth will investigate the Flaming Fist corruption in exchange for payment and information.",
+      "made_to": "Cassara Whitmore",
+      "session": 2,
+      "fulfilled": false
+    }
+  ],
+
+  "rulings": [
+    {
+      "ruling": "DC 14 Insight check required to tell whether Cassara is hiding something specific beyond her general fear.",
+      "context": "Session 2 negotiation scene with Cassara Whitmore.",
+      "session": 2
+    }
+  ],
+
+  "secret": true
+}
