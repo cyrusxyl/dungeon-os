@@ -12,11 +12,11 @@ def _print(obj) -> int:
 
 
 def _run(campaign: str, fn) -> int:
-    """Resolve the campaign dir, run fn(dir), print CanonError to stderr."""
+    """Resolve the campaign dir, run fn(dir), print CampaignError/CanonError to stderr."""
     try:
         campaign_dir = canon.resolve_campaign_dir(campaign)
         return fn(campaign_dir)
-    except canon.CanonError as e:
+    except canon.CampaignError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 

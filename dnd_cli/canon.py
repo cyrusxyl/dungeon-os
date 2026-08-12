@@ -13,44 +13,24 @@ from typing import Optional
 
 import jsonschema
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+from dnd_cli.campaign import REPO_ROOT, CAMPAIGNS_DIR, CampaignError, resolve_campaign_dir
+
 SCHEMA_PATH = REPO_ROOT / "game" / "schemas" / "canon.schema.json"
-CAMPAIGNS_DIR = REPO_ROOT / "game" / "campaigns"
+
+# Re-exported for callers that import these from dnd_cli.canon.
+__all__ = [
+    "REPO_ROOT", "CAMPAIGNS_DIR", "CampaignError", "resolve_campaign_dir",
+    "CanonError",
+]
 
 
-class CanonError(Exception):
-    """Raised for any canon file problem: missing campaign, bad data, bad arguments."""
+class CanonError(CampaignError):
+    """Raised for any canon file problem: bad data, bad arguments."""
 
 
 def _load_schema() -> dict:
     with open(SCHEMA_PATH) as f:
         return json.load(f)
-
-
-def resolve_campaign_dir(campaign: str) -> Path:
-    """Turn a campaign name or path into a real campaign directory.
-
-    Accepts a bare slug ("baldurs-gate"), a path relative to
-    game/campaigns/, or an absolute path. Raises CanonError if the
-    result does not exist.
-    """
-    candidate = Path(campaign)
-    if candidate.is_absolute():
-        campaign_dir = candidate
-    else:
-        # Strip a leading "campaigns/" or "game/campaigns/" if the caller
-        # pasted a path instead of a bare slug.
-        parts = candidate.parts
-        if parts[:2] == ("game", "campaigns"):
-            campaign_dir = REPO_ROOT / candidate
-        elif parts[:1] == ("campaigns",):
-            campaign_dir = REPO_ROOT / "game" / candidate
-        else:
-            campaign_dir = CAMPAIGNS_DIR / candidate
-
-    if not campaign_dir.is_dir():
-        raise CanonError(f"No campaign directory at {campaign_dir}")
-    return campaign_dir
 
 
 def canon_path(campaign_dir: Path) -> Path:
