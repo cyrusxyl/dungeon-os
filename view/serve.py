@@ -1,4 +1,4 @@
-"""Browser entry point: the exact same ViewApp, served over the web.
+"""Browser entry point: the start menu (and the game it launches), over the web.
 
 Uses textual-serve's Server directly rather than the `textual serve` CLI
 subcommand — that CLI ships with textual-dev, a heavier dev-tooling
@@ -18,12 +18,7 @@ from textual_serve.server import Server
 
 
 def main() -> None:
-    if len(sys.argv) not in (2, 3):
-        print("usage: dungeon-view-web <campaign-slug> [session-id]", file=sys.stderr)
-        raise SystemExit(2)
-
-    args = " ".join(shlex.quote(arg) for arg in sys.argv[1:])
-    command = f"{shlex.quote(sys.executable)} -m view.app {args}"
+    command = f"{shlex.quote(sys.executable)} -m view.menu"
     server = Server(command, host="127.0.0.1", port=8000)
     server.serve()
 

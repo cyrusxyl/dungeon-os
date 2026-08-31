@@ -4,6 +4,27 @@ This is the main repository for Dungeon OS, an open-source operating system for 
 
 This outer folder is for the development of the Dungeon OS kernel, enter the `dungeon-os` folder to experience the Dungeon OS userland.
 
+## Playing
+
+```bash
+uv run dungeon-os            # start menu: Resume, Load Game, New Game, Settings
+uv run dungeon-os --web      # same menu, served to a browser
+uv run dungeon-os <slug>     # skip the menu, start that campaign directly
+```
+
+The start menu runs the DM (`claude` by default) in a real terminal on the
+left, with a live state and character panel on the right.
+
+- **Resume** continues the active campaign (the last one played) from its game
+  files (`state.json`, `session_log.md`, `canon.json`). It starts a fresh DM
+  session that reads those files — it does not need a saved conversation.
+- **Load Game** picks any other saved campaign under `game/campaigns/` and
+  plays it the same way.
+- **New Game** names a brand-new campaign, scaffolds it from the template,
+  and starts Session Zero.
+- **Settings** picks the agent framework and model, saved to
+  `game/settings.json` (per machine, git-ignored).
+
 ## dnd-cli Wrapper
 
 The project includes a Python CLI wrapper (`dnd-cli`) for efficient D&D 5e API access with caching and DM utilities:

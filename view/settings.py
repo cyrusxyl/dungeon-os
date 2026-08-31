@@ -1,0 +1,137 @@
+"""Launcher settings: which agent framework runs the DM, and which model.
+
+Persisted to `game/settings.json` (git-ignored — it is per-machine, and the
+`sessions` block is rewritten every time you start a game). This module never
+writes campaign state; `sessions` maps a campaign slug to the id of the last
+`claude` conversation started for it — the menu uses it to tell that a
+just-created campaign has been played, even before its first session closes.
+
+`build_dm_command` is a pure function: settings in, the `["sh", "-c", ...]`
+command that `view/app.py` hands to the terminal widget out. Keep it pure so
+it stays unit-testable without spawning anything.
+"""
+
+from __future__ import annotations
+
+import json
+import shlex
+import shutil
+from pathlib import Path
+
+from dnd_cli.campaign import GAME_DIR
+
+SETTINGS_PATH = GAME_DIR / "settings.json"
+
+DEFAULTS: dict = {
+    "agent_framework": "claude",
+    "model": "sonnet",
+}
+
+# One entry per framework the menu can offer. `binary` is what must be on PATH
+# for the option to actually work; `models` are presets for the Settings field
+# (which stays free-text, so a stale preset is never a dead end).
+FRAMEWORKS: dict[str, dict] = {
+    "claude": {
+        "label": "Claude Code",
+        "binary": "claude",
+        "models": ["sonnet", "opus", "haiku", "claude-opus-5", "claude-sonnet-5"],
+    },
+    "gemini": {
+        "label": "Gemini CLI",
+        "binary": "gemini",
+        "models": ["gemini-2.5-pro", "gemini-2.5-flash"],
+    },
+    "codex": {
+        "label": "Codex CLI",
+        "binary": "codex",
+        "models": ["gpt-5-codex", "o4-mini"],
+    },
+}
+
+
+def framework_available(key: str) -> bool:
+    spec = FRAMEWORKS.get(key)
+    return bool(spec) and shutil.which(spec["binary"]) is not None
+
+
+def load_settings() -> dict:
+    """Return the saved settings merged over the defaults."""
+    data = dict(DEFAULTS)
+    try:
+        saved = json.loads(SETTINGS_PATH.read_text())
+        if isinstance(saved, dict):
+            data.update({k: v for k, v in saved.items() if k in DEFAULTS})
+            if isinstance(saved.get("sessions"), dict):
+                data["sessions"] = saved["sessions"]
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        pass
+    if data.get("agent_framework") not in FRAMEWORKS:
+        data["agent_framework"] = DEFAULTS["agent_framework"]
+    return data
+
+
+def save_settings(values: dict) -> None:
+    """Persist agent_framework and model, keeping the existing sessions block."""
+    current = load_settings()
+    current["agent_framework"] = values.get(
+        "agent_framework", current["agent_framework"]
+    )
+    current["model"] = values.get("model", current["model"]).strip()
+    _write(current)
+
+
+def get_last_session_id(campaign_slug: str) -> str | None:
+    return load_settings().get("sessions", {}).get(campaign_slug)
+
+
+def set_last_session_id(campaign_slug: str, session_id: str) -> None:
+    data = load_settings()
+    sessions = dict(data.get("sessions", {}))
+    sessions[campaign_slug] = session_id
+    data["sessions"] = sessions
+    _write(data)
+
+
+def _write(data: dict) -> None:
+    payload = {
+        "agent_framework": data.get("agent_framework", DEFAULTS["agent_framework"]),
+        "model": data.get("model", DEFAULTS["model"]),
+        "sessions": data.get("sessions", {}),
+    }
+    SETTINGS_PATH.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def build_dm_command(
+    settings: dict,
+    game_dir: Path,
+    session_id: str,
+    *,
+    resume: bool = False,
+) -> list[str]:
+    """Build the shell command that runs the DM agent in the terminal widget.
+
+    `sh -c "cd <game_dir> && exec <agent> ..."` — cd (not a Popen cwd kwarg)
+    because the terminal widget's spawn interface takes only a command. Every
+    interpolated value is shell-quoted: the model comes from a free-text field.
+    """
+    framework = settings.get("agent_framework", DEFAULTS["agent_framework"])
+    model = (settings.get("model") or "").strip()
+    if framework not in FRAMEWORKS:
+        raise ValueError(f"unknown agent_framework: {framework!r}")
+
+    if framework == "claude":
+        parts = ["claude", "--no-chrome"]
+        if resume:
+            parts += ["--resume", shlex.quote(session_id)]
+        else:
+            parts += ["--session-id", shlex.quote(session_id)]
+        if model:
+            parts += ["--model", shlex.quote(model)]
+    else:
+        # gemini / codex: both take `-m <model>` and no session concept here.
+        parts = [FRAMEWORKS[framework]["binary"]]
+        if model:
+            parts += ["-m", shlex.quote(model)]
+
+    inner = f"cd {shlex.quote(str(game_dir))} && exec " + " ".join(parts)
+    return ["sh", "-c", inner]
