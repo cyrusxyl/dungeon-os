@@ -38,15 +38,17 @@ Unlike traditional AI DMs that hallucinate rules and forget details, DungeonOS:
 
 ### Entering DM Mode
 
-From your workspace:
+From the repo root:
 ```bash
-cd dungeon-os/
+uv run dungeon-os
 ```
 
-When you `cd` into the `dungeon-os/` directory, the agentic coder switches from "coder mode" to "DM mode" by:
-- Loading `AGENT.md` as system prompt
-- Discovering skills in `./.claude/skills/`
-- Reading `campaigns/active.json` to find the active campaign
+This starts Claude Code in DM mode (cwd `game/`, so it loads this
+directory's `CLAUDE.md` as system prompt, discovers skills in
+`./.claude/skills/`, and reads `campaigns/active.json` for the active
+campaign) and opens a live player view at `http://127.0.0.1:8000` in your
+browser. Pass a campaign slug to play a specific one, e.g.
+`uv run dungeon-os baldurs-gate`; use `--no-view` to skip the player view.
 
 ### Starting Your First Session
 

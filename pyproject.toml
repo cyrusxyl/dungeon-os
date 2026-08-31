@@ -10,13 +10,19 @@ dependencies = [
     "roll-cli>=2.0.0",
     "rapidfuzz>=3.0.0",
     "jsonschema>=4.0.0",
+    "textual>=8.2.0",
+    "textual-serve>=1.0.0",
+    "textual-tty>=0.4.0",
 ]
 
 [project.scripts]
 dnd-cli = "dnd_cli.__main__:main"
+dungeon-os = "view.launch:main"
+dungeon-view = "view.app:main"
+dungeon-view-web = "view.serve:main"
 
 [tool.uv]
 package = true
 
 [tool.setuptools.packages.find]
-include = ["dnd_cli", "dnd_cli.*"]
+include = ["dnd_cli", "dnd_cli.*", "view", "view.*"]

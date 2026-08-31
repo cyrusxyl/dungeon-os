@@ -3,7 +3,8 @@
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CAMPAIGNS_DIR = REPO_ROOT / "game" / "campaigns"
+GAME_DIR = REPO_ROOT / "game"
+CAMPAIGNS_DIR = GAME_DIR / "campaigns"
 
 
 class CampaignError(Exception):
