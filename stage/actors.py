@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from stage import lpc
+from stage import beat, lpc
 from stage.assets import ensure_dcss
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
@@ -79,7 +79,7 @@ def load(campaign_dir: Path, actor_id: str) -> dict | None:
         tile = find_tile(base)
     except OSError:
         tile = None
-    return {"name": base.replace("-", " ").replace("_", " ").title(), "tile": tile} if tile else None
+    return {"name": beat.title(base), "tile": tile} if tile else None
 
 
 def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict:
@@ -120,7 +120,7 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict
                 f"unknown setting {key!r}. Use name=, body=, skin=, eyes=, preset=, reset=yes, "
                 "or an item such as robe:white."
             )
-    spec.setdefault("name", actor_id.split("#")[0].replace("-", " ").title())
+    spec.setdefault("name", beat.title(actor_id))
     if "tile" in spec:
         spec.pop("items", None)
         return spec

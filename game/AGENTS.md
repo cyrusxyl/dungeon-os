@@ -37,7 +37,7 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
   uv run dnd-cli info conditions paralyzed # Quick reference
   uv run dnd-cli random monsters --count 3 # Random selection
   ```
-  You can still use direct API calls with curl when needed, but the wrapper provides caching and token efficiency.
+  `uv run dnd-cli get <endpoint>` reaches every API endpoint (`classes/wizard/levels/3`, `races/elf/subraces`). Add `--fields a,b` to keep the answer short. Do not use curl: it stops the game for a permission prompt. Endpoint list: `docs/dnd5e-api-reference.md` (read it only when you need an endpoint you do not know).
 
 - **Dice Rolls**: Use `uv run roll 1d20+5 -v` from your working directory (`game/`).
 - **Command form (all tools)**: Run one `uv run ...` command per Bash call, on one line. Do not prefix it with `cd ... &&`, do not chain commands with `&&`, and never break a line with `\`. A compound command or a backslash line break stops the game for a permission prompt; a plain `uv run` command does not. Several commands in a row are several Bash calls.
@@ -64,85 +64,24 @@ Your skills in `./.claude/skills/` teach you how to handle specific situations:
 
 ### 4. dnd-cli Wrapper
 
-DungeonOS includes a Python CLI wrapper (`dnd-cli`) that provides efficient access to the D&D 5e API with caching and DM utilities.
+`dnd-cli` reads the D&D 5e API with a cache, and holds the DM utilities. Short answers keep your context small:
 
-#### Core Commands
-
-**List resources** (browse all available items):
 ```bash
-uv run dnd-cli list monsters
-uv run dnd-cli list spells
-uv run dnd-cli list equipment
-```
-
-**Get specific resource** (cached after first fetch):
-```bash
-uv run dnd-cli get monsters/goblin
-uv run dnd-cli get spells/fireball
-uv run dnd-cli get equipment/longsword
-
-# Extract minimal fields with jq
-uv run dnd-cli get monsters/goblin --json | jq '{name, hp: .hit_points, ac: .armor_class[0].value}'
-```
-
-**Search with filters** (semantic filtering):
-```bash
-uv run dnd-cli search monsters --name goblin
+uv run dnd-cli list monsters                          # names and indexes
+uv run dnd-cli get monsters/goblin --fields name,hit_points,armor_class,actions
 uv run dnd-cli search spells --level 3 --school evocation
-uv run dnd-cli search equipment --category weapon --name sword
-```
-
-**Random selection** (for encounters, loot):
-```bash
 uv run dnd-cli random monsters --count 3
-uv run dnd-cli random spells --level 1-3 --count 2
+uv run dnd-cli info conditions paralyzed              # formatted quick reference
 ```
 
-**Quick reference** (formatted output for common lookups):
-```bash
-uv run dnd-cli info conditions paralyzed
-uv run dnd-cli info skills stealth
-uv run dnd-cli info damage-types fire
-```
-
-**Cache management**:
-```bash
-uv run dnd-cli cache-info          # Show cache statistics
-uv run dnd-cli clear-cache monsters # Clear specific resource
-uv run dnd-cli clear-cache         # Clear all cache
-```
-
-#### When to Use the Wrapper
-
-- **First lookup**: Fetches from API, saves to cache
-- **Subsequent lookups**: Instant from cache (< 50ms vs 200-300ms API)
-- **Token efficiency**: 35-45% fewer tokens per session vs repeated API calls
-- **Search**: Find monsters by CR, spells by school/level, equipment by category
-- **Random**: Generate encounters, loot, NPCs on-the-fly
-
-#### Cache Location
-
-Caches are stored in `{campaign}/.cache/api/2014/` mirroring the API structure. Cache persists across sessions (D&D 5e rules don't change).
-
-#### Wrapper vs Direct API
-
-Both are valid. Use the wrapper when:
-- You'll access the same resource multiple times
-- You need to search/filter resources
-- You want quick reference formatting
-- Token efficiency matters
-
-Use direct curl when:
-- You need one-time lookups
-- You want to pipe through complex jq filters
-- You're already in a bash pipeline
+A list endpoint (`races`, `classes/wizard/spells`) prints one `- Name (index)` line per entry. `--json` prints the raw response; use it only when you need every field.
 
 ### 5. Multi-Player Awareness
 
-Before every action:
-1. Check `/campaigns/active.json` to find current campaign path
-2. Check `{campaign}/players/{id}.json` to identify which player controls which character
-3. Verify permissions before editing character files
+The session brief lists the players, their characters and their permissions. Then:
+1. Know which player controls which character (`{campaign}/players/{id}.json`)
+2. Verify permissions before editing character files
+3. Re-read a player file only if it may have changed
 4. Only allow players to edit their own characters (unless they're the DM)
 5. Track `active_player_turn` in `state.json` for spotlight management
 
@@ -181,22 +120,19 @@ This section has priority over any other instruction in this file if the two dis
 
 ## Workflow
 
-For every player action:
+The session brief (Session Start) gives you the campaign, state, party and canon. Do not read those files again before every action. For each player action:
 
-1. **READ**: Load active campaign pointer from `campaigns/active.json`
-2. **READ**: Check campaign's `state.json` and relevant character files
-3. **IDENTIFY**: Determine which player is acting (check `players/` directory)
-4. **CLASSIFY**: Determine mode (combat/exploration/social/worldbuilding/magic)
-5. **LOAD SKILL**: Invoke the appropriate skill for instructions
-6. **EXECUTE**: Follow skill instructions:
-   - `curl -sL` to query D&D API
+1. **IDENTIFY**: Which player acts, and with which character.
+2. **CLASSIFY**: The mode (combat, exploration, social, worldbuilding, magic). Load that skill if it is not loaded yet.
+3. **READ**: Only what this action needs and what may have changed since you last read it (a character sheet before a combat change, an NPC file before the NPC acts).
+4. **EXECUTE**: Follow the skill:
+   - `uv run dnd-cli get <endpoint> --fields ...` for rules data
    - `uv run roll XdY+Z -v` (from your working directory, no `cd`) for dice
-   - Edit tool to update HP, inventory, spell slots
-   - Read tool to check current state
-7. **UPDATE**: Write results to campaign files (HP, state, new NPCs, etc.)
-8. **NARRATE**: Describe outcome in immersive narrative
+   - `uv run dnd-cli character apply-damage/heal/cast ...` for HP and spell slots; the Edit tool for inventory and other fields
+5. **UPDATE**: Write results to campaign files (HP, state, new NPCs, etc.)
+6. **NARRATE**: Describe the outcome (on the stage: one beat).
 
-If the player action is a claim about a past event ("you told us the gate was open"), do not skip to step 6. Go to referee mode first: read `canon.json`, state what it records, then continue. See "Canon File & Anti-Drift Rules" above.
+If the player action is a claim about a past event ("you told us the gate was open"), do not skip to step 4. Go to referee mode first: read `canon.json`, state what it records, then continue. See "Canon File & Anti-Drift Rules" above.
 
 ## File Locations
 
@@ -216,13 +152,11 @@ If the player action is a claim about a past event ("you told us the gate was op
 ## Key Behaviors
 
 ### Session Start
-1. Read `campaigns/active.json` to find active campaign
-2. Read campaign's `state.json` to understand current situation
-3. Read `session_players_present` to know who's here
-4. **Read `{campaign}/dm_story.md`** silently — players don't see this. If it doesn't exist yet, this is a new campaign: load the `worldbuilding` skill and follow its "Campaign Story Bible" instructions to draft and save one before proceeding.
-5. **Read `{campaign}/canon.json`** silently — players do not see this. If it does not exist yet, load the `dm-canon-procedures` skill and create one before proceeding. This file is the only source of campaign facts. See "Canon File & Anti-Drift Rules" below.
-6. Greet players and recap last session (from `session_log.md`)
-7. Ask "What do you do?"
+1. Run `uv run dnd-cli session brief` (one call). It prints the active campaign's `state.json` (with `session_players_present`), the party and players, `canon.json`, `dm_story.md`, and the end of `session_log.md`. Do not read those files one by one.
+2. **Story bible** (`dm_story.md`): read it silently — players do not see it. If the brief says it is missing, this is a new campaign: load the `worldbuilding` skill and follow its "Campaign Story Bible" instructions to draft and save one before proceeding.
+3. **Canon** (`canon.json`): read it silently — players do not see it. If the brief says it is missing, load the `dm-canon-procedures` skill and create one before proceeding. This file is the only source of campaign facts. See "Canon File & Anti-Drift Rules" below.
+4. Greet players and recap last session (from the session log in the brief)
+5. Ask "What do you do?"
 
 ### During Play
 - **For each round of interaction within a campaign, ask each player what they plan to do.** On the visual stage, offer options with an `@choices` line (the `stage` skill); the AskUserQuestion tool is blocked there. In the classic terminal view, use the AskUserQuestion tool if available to gather all player actions simultaneously
@@ -277,352 +211,3 @@ DM (you) may use:
 You are not just a chatbot. You are an operating system for collaborative storytelling, where the rules are code and the adventure is data.
 
 **Welcome to DungeonOS. Roll for initiative.**
-
----
-
-## D&D 5e API Reference
-
-DungeonOS integrates with the D&D 5e API at `https://www.dnd5eapi.co/api/2014/` to provide validated rules data. All 47 endpoints are documented below with example usage.
-
-### API Usage Pattern
-
-```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/{endpoint}/{index}" | jq '{fields}'
-```
-
-**Always use `-sL` flags**: Silent mode, follow redirects
-**Always pipe to `jq`**: Parse and format JSON output
-
-### Character Creation Endpoints (10)
-
-Used by: `character-creation` skill
-
-#### Races
-```bash
-# List all races
-curl -sL "https://www.dnd5eapi.co/api/2014/races" | jq -r '.results[] | .name'
-
-# Get race details
-curl -sL "https://www.dnd5eapi.co/api/2014/races/elf" | jq '{
-  name, speed, ability_bonuses, size, languages, traits
-}'
-
-# Get subraces for a race
-curl -sL "https://www.dnd5eapi.co/api/2014/races/elf/subraces" | jq
-
-# Get specific subrace
-curl -sL "https://www.dnd5eapi.co/api/2014/subraces/high-elf" | jq
-
-# Get racial traits
-curl -sL "https://www.dnd5eapi.co/api/2014/traits/darkvision" | jq
-```
-
-#### Classes
-```bash
-# List all classes
-curl -sL "https://www.dnd5eapi.co/api/2014/classes" | jq -r '.results[] | .name'
-
-# Get class details
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/wizard" | jq '{
-  name, hit_die, proficiencies, saving_throws, starting_equipment
-}'
-
-# Get class proficiencies
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/wizard/proficiencies" | jq
-
-# Get class spellcasting info
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/wizard/spellcasting" | jq
-
-# Get subclasses
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/wizard/subclasses" | jq
-
-# Get specific subclass
-curl -sL "https://www.dnd5eapi.co/api/2014/subclasses/evocation" | jq
-```
-
-#### Backgrounds
-```bash
-# List all backgrounds
-curl -sL "https://www.dnd5eapi.co/api/2014/backgrounds" | jq
-
-# Get background details
-curl -sL "https://www.dnd5eapi.co/api/2014/backgrounds/sage" | jq
-```
-
-#### Ability Scores & Skills
-```bash
-# List all ability scores
-curl -sL "https://www.dnd5eapi.co/api/2014/ability-scores" | jq
-
-# Get ability details
-curl -sL "https://www.dnd5eapi.co/api/2014/ability-scores/str" | jq '{
-  name, full_name, desc, skills
-}'
-
-# List all skills
-curl -sL "https://www.dnd5eapi.co/api/2014/skills" | jq
-
-# Get skill details
-curl -sL "https://www.dnd5eapi.co/api/2014/skills/stealth" | jq '{
-  name, desc, ability_score
-}'
-```
-
-#### Proficiencies
-```bash
-# List all proficiencies
-curl -sL "https://www.dnd5eapi.co/api/2014/proficiencies" | jq
-
-# Get proficiency details
-curl -sL "https://www.dnd5eapi.co/api/2014/proficiencies/light-armor" | jq
-```
-
-### Equipment Endpoints (3)
-
-Used by: `worldbuilding` skill
-
-```bash
-# List all equipment
-curl -sL "https://www.dnd5eapi.co/api/2014/equipment" | jq
-
-# Get equipment details (weapon)
-curl -sL "https://www.dnd5eapi.co/api/2014/equipment/longsword" | jq '{
-  name, cost, damage, properties, weight
-}'
-
-# Get equipment details (armor)
-curl -sL "https://www.dnd5eapi.co/api/2014/equipment/chain-mail" | jq '{
-  name, cost, armor_class, armor_category, stealth_disadvantage
-}'
-
-# Browse equipment by category
-curl -sL "https://www.dnd5eapi.co/api/2014/equipment-categories/weapon" | jq '.equipment[] | .name'
-
-# Get weapon property details
-curl -sL "https://www.dnd5eapi.co/api/2014/weapon-properties/finesse" | jq '{
-  name, desc
-}'
-```
-
-### Combat Endpoints (2)
-
-Used by: `combat` skill
-
-```bash
-# List all conditions
-curl -sL "https://www.dnd5eapi.co/api/2014/conditions" | jq
-
-# Get condition details
-curl -sL "https://www.dnd5eapi.co/api/2014/conditions/paralyzed" | jq '{
-  name, desc
-}'
-
-# List all damage types
-curl -sL "https://www.dnd5eapi.co/api/2014/damage-types" | jq
-
-# Get damage type details
-curl -sL "https://www.dnd5eapi.co/api/2014/damage-types/fire" | jq '{
-  name, desc
-}'
-```
-
-### Character Advancement Endpoints (13)
-
-Used by: `character-advancement` skill
-
-```bash
-# List all class levels
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/fighter/levels" | jq
-
-# Get specific level details
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/fighter/levels/5" | jq '{
-  level, ability_score_bonuses, prof_bonus, features, spellcasting, class_specific
-}'
-
-# Get features for a level
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/fighter/levels/5/features" | jq
-
-# Get specific feature details
-curl -sL "https://www.dnd5eapi.co/api/2014/features/extra-attack" | jq '{
-  name, level, class, desc
-}'
-
-# List all feats
-curl -sL "https://www.dnd5eapi.co/api/2014/feats" | jq
-
-# Get feat details
-curl -sL "https://www.dnd5eapi.co/api/2014/feats/grappler" | jq '{
-  name, desc, prerequisites
-}'
-```
-
-### Magic System Endpoints (7)
-
-Used by: `magic` skill
-
-```bash
-# List all spells
-curl -sL "https://www.dnd5eapi.co/api/2014/spells" | jq
-
-# Filter spells by level
-curl -sL "https://www.dnd5eapi.co/api/2014/spells?level=1" | jq
-
-# Get spell details
-curl -sL "https://www.dnd5eapi.co/api/2014/spells/fireball" | jq '{
-  name, level, school, casting_time, range, components, duration,
-  concentration, ritual, attack_type, dc, damage, desc, higher_level
-}'
-
-# Get class spell list
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/wizard/spells" | jq -r '.results[] | .name'
-
-# List all magic schools
-curl -sL "https://www.dnd5eapi.co/api/2014/magic-schools" | jq
-
-# Get magic school details
-curl -sL "https://www.dnd5eapi.co/api/2014/magic-schools/evocation" | jq '{
-  name, desc
-}'
-
-# List magic items (for loot generation)
-curl -sL "https://www.dnd5eapi.co/api/2014/magic-items" | jq
-
-# Get magic item details
-curl -sL "https://www.dnd5eapi.co/api/2014/magic-items/adamantine-armor" | jq
-```
-
-### Exploration Endpoints (2)
-
-Used by: `exploration` skill
-
-```bash
-# Already covered above: skills and ability-scores
-# Skills: perception, investigation, survival, stealth, etc.
-# Abilities: Used for raw ability checks
-```
-
-### Social Interaction Endpoints (2)
-
-Used by: `social` skill
-
-```bash
-# List all languages
-curl -sL "https://www.dnd5eapi.co/api/2014/languages" | jq
-
-# Get language details
-curl -sL "https://www.dnd5eapi.co/api/2014/languages/elvish" | jq '{
-  name, desc, type, typical_speakers, script
-}'
-
-# Social skills (already covered in skills endpoint):
-# - persuasion, deception, intimidation, insight, performance
-```
-
-### Monster & NPC Endpoints (1)
-
-Used by: `combat` and `worldbuilding` skills
-
-```bash
-# List all monsters
-curl -sL "https://www.dnd5eapi.co/api/2014/monsters" | jq
-
-# Get monster details
-curl -sL "https://www.dnd5eapi.co/api/2014/monsters/goblin" | jq '{
-  name, type, hit_points, armor_class, challenge_rating,
-  strength, dexterity, constitution, intelligence, wisdom, charisma,
-  actions, special_abilities
-}'
-```
-
-### Rules Reference Endpoints (2)
-
-Used for: Rules clarification
-
-```bash
-# List all rule sections
-curl -sL "https://www.dnd5eapi.co/api/2014/rule-sections" | jq
-
-# Get specific rule section
-curl -sL "https://www.dnd5eapi.co/api/2014/rule-sections/combat" | jq
-
-# List all rules
-curl -sL "https://www.dnd5eapi.co/api/2014/rules" | jq
-
-# Get specific rule
-curl -sL "https://www.dnd5eapi.co/api/2014/rules/adventuring" | jq
-```
-
-### Other Endpoints (5)
-
-```bash
-# Alignments
-curl -sL "https://www.dnd5eapi.co/api/2014/alignments" | jq
-curl -sL "https://www.dnd5eapi.co/api/2014/alignments/lawful-good" | jq
-
-# Starting equipment options
-curl -sL "https://www.dnd5eapi.co/api/2014/starting-equipment/{class}" | jq
-
-# Character level progression (already covered in class levels)
-```
-
-### API Coverage Summary
-
-**Total endpoints**: 47
-
-**By category**:
-- Character creation: 10 (races, subraces, classes, subclasses, backgrounds, abilities, skills, proficiencies, traits)
-- Equipment: 3 (equipment, equipment-categories, weapon-properties)
-- Combat: 2 (conditions, damage-types)
-- Advancement: 13 (class levels, level features, features, feats, starting-equipment)
-- Magic: 7 (spells, class spells, magic-schools, magic-items)
-- Monsters: 1 (monsters)
-- Social: 2 (languages, skills)
-- Rules: 2 (rules, rule-sections)
-- Other: 7 (alignments, ability-scores, proficiencies)
-
-### When to Use Each Endpoint
-
-| Situation | Endpoint | Skill |
-|-----------|----------|-------|
-| Creating new character | `/races`, `/classes`, `/backgrounds` | character-creation |
-| Character levels up | `/classes/{class}/levels/{level}` | character-advancement |
-| Learning new spell | `/classes/{class}/spells`, `/spells/{spell}` | character-advancement, magic |
-| Casting spell | `/spells/{spell}` | magic |
-| Spell applies condition | `/conditions/{condition}` | combat |
-| Looking up weapon stats | `/equipment/{weapon}` | worldbuilding |
-| Need monster for encounter | `/monsters/{monster}` | combat, worldbuilding |
-| Skill check needed | `/skills/{skill}` | exploration, social |
-| NPC speaks different language | `/languages/{language}` | social |
-| Player takes feat | `/feats/{feat}` | character-advancement |
-| Need to clarify rule | `/rules`, `/rule-sections` | any |
-
-### API Best Practices
-
-1. **Always query, never guess**: If you need spell damage, weapon stats, or condition effects, query the API
-2. **Cache in campaign files**: Save fetched monster/NPC stats to campaign files for reuse
-3. **Show API data to players**: Let them see exact spell descriptions, feat requirements, etc.
-4. **Handle failures gracefully**: If API is down, fall back to manual lookup with player approval
-5. **Use jq for filtering**: Extract only needed fields to keep output clean
-6. **Validate with schemas**: Ensure generated character/NPC files match schemas
-
-### Common API Patterns
-
-**List all resources**:
-```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/{resource}" | jq -r '.results[] | .name'
-```
-
-**Get specific resource**:
-```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/{resource}/{index}" | jq
-```
-
-**Filter nested resources**:
-```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/wizard/spells" | jq -r '.results[] | .name'
-```
-
-**Extract specific fields**:
-```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/monsters/goblin" | jq '{name, hp: .hit_points, ac: .armor_class[0].value}'
-```

@@ -39,6 +39,16 @@ def _free_position(actors: dict) -> str:
     return "center"
 
 
+# An "*_updated" event makes the browser fetch that thing again: versions[key] = seq.
+# Same table as UPDATED in stage/web/src/lib/stage.ts.
+UPDATED = {
+    "scene_updated": ("scene:", "location"),
+    "actor_updated": ("", "actor"),
+    "site_updated": ("site:", "site"),
+    "map_updated": ("map:", "map"),
+}
+
+
 def apply(state: dict, event: dict) -> dict:
     s = copy.deepcopy(state)
     s["seq"] += 1
@@ -53,12 +63,13 @@ def apply(state: dict, event: dict) -> dict:
         s["explore"] = event["site"]
         s["actors"] = {}
         s["choices"] = None
-        s.setdefault("versions", {})["site:" + event["site"]] = s["seq"]
+        # A new @explore can move the party (to a POI): fetch the site again.
+        s["versions"]["site:" + event["site"]] = s["seq"]
     elif kind == "at":
         s["place"] = {"map": event["map"], "place": event["place"]}
-    elif kind in ("site_updated", "map_updated"):
-        key = "site:" + event["site"] if kind == "site_updated" else "map:" + event["map"]
-        s.setdefault("versions", {})[key] = s["seq"]
+    elif kind in UPDATED:
+        prefix, field = UPDATED[kind]
+        s["versions"][prefix + event[field]] = s["seq"]
     elif kind == "enter":
         position = event.get("position") or _free_position(s["actors"])
         s["actors"][event["actor"]] = {"position": position, "emotion": "neutral"}
@@ -78,10 +89,6 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = {"options": event["options"], "seq": s["seq"]}
     elif kind == "roll":
         s["last_roll"] = {k: event.get(k) for k in ("expr", "total", "dice")} | {"seq": s["seq"]}
-    elif kind == "scene_updated":
-        s.setdefault("versions", {})["scene:" + event["location"]] = s["seq"]
-    elif kind == "actor_updated":
-        s.setdefault("versions", {})[event["actor"]] = s["seq"]
     elif kind == "dm_status":
         s["dm"] = {k: v for k, v in event.items() if k in ("status", "reason", "message")}
         if event.get("dm_text"):

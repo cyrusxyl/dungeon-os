@@ -1,21 +1,11 @@
 """site command - set a building or dungeon the party walks through on the visual stage"""
 
-import os
 import random
 import sys
 
-from dnd_cli.campaign import CampaignError
-from dnd_cli.commands.show_cmd import _stage_campaign_dir
+from dnd_cli.commands.show_cmd import notify_stage, preview_path, run_stage
 from stage import actors, beat, crawl, maps
 from stage.assets import AssetError
-
-
-def _run(campaign, fn) -> int:
-    try:
-        return fn(_stage_campaign_dir(campaign))
-    except (CampaignError, OSError, KeyError, crawl.SiteError, AssetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
 
 
 def _summary(site_id: str, site: dict) -> str:
@@ -23,40 +13,36 @@ def _summary(site_id: str, site: dict) -> str:
     lines = [f"{site_id}: {crawl.site_name(site_id, site)}, theme {spec['theme']}, size {spec['size']}, "
              f"danger {spec['danger']}, {len(site['areas'])} areas, {len(site['entered'])} entered."]
     for pid, p in site["pois"].items():
-        where = next((q["where"] for q in spec["pois"] if q["id"] == pid), "?")
-        lines.append(f"  {pid}@{where}:{p['icon']} {'found' if p['found'] else 'not found'}")
+        lines.append(f"  {pid}@{p['where']}:{p['icon']} {'found' if p['found'] else 'not found'}")
     return "\n".join(lines)
 
 
 def execute_set(campaign, site_id: str, tokens: list[str], change: bool = False) -> int:
     def go(campaign_dir):
-        if not crawl.ID_RE.match(site_id):
-            raise crawl.SiteError(f"site id {site_id!r}: use lower-case letters, digits, '-' or '_'.")
+        if not beat.SLUG_RE.match(site_id):
+            raise crawl.SiteError(f"site id {site_id!r}: {beat.ID_RULE}.")
         current = crawl.load(campaign_dir, site_id)
         if current is not None and not change:
             print(f"{site_id!r} is already set; the stage uses it as saved:\n{_summary(site_id, current)}\n"
                   "Nothing changed. Add --change to add points of interest or change name= or danger=.", file=sys.stderr)
             return 1
         is_actor = lambda kind: actors.load(campaign_dir, kind) is not None  # noqa: E731
-        spec, new = crawl.build(tokens, current["spec"] if current else None, is_actor)
         if current is None:
-            spec["pois"] = new
-            site = crawl.generate(spec)
+            spec, new = crawl.build(tokens, None, is_actor)
+            site = crawl.generate(spec, new)
         else:
             site = current
+            site["spec"], new = crawl.build(tokens, site["spec"], is_actor, site["pois"])
             # New points go where the party has not looked yet.
-            crawl.add_pois(site, new, random.Random(), unseen_only=True)
-            spec["pois"] = spec["pois"] + new
-            site["spec"] = spec
+            crawl.add_pois(site, new, random.Random())
         crawl.save(campaign_dir, site_id, site)
-        if os.environ.get("DUNGEON_STAGE_LOG"):
-            beat.append(campaign_dir, [{"type": "site_updated", "site": site_id}])
+        notify_stage(campaign_dir, {"type": "site_updated", "site": site_id})
         print("Saved. " + _summary(site_id, site))
         print(f"Show it with the beat line: @explore {site_id}")
         if current is None and (tip := maps.hint(campaign_dir, site_id)):
             print(tip)
         return 0
-    return _run(campaign, go)
+    return run_stage(campaign, go, crawl.SiteError, AssetError)
 
 
 def execute_show(campaign, site_id: str) -> int:
@@ -67,7 +53,7 @@ def execute_show(campaign, site_id: str) -> int:
             return 1
         print(_summary(site_id, site))
         return 0
-    return _run(campaign, go)
+    return run_stage(campaign, go, crawl.SiteError, AssetError)
 
 
 def execute_preview(campaign, site_id: str) -> int:
@@ -76,12 +62,11 @@ def execute_preview(campaign, site_id: str) -> int:
         if site is None:
             print(f"No site {site_id!r} yet.", file=sys.stderr)
             return 1
-        out = campaign_dir / ".cache" / "stage" / f"site-{site_id}.png"
-        out.parent.mkdir(parents=True, exist_ok=True)
+        out = preview_path(campaign_dir, f"site-{site_id}")
         crawl.render_full(site).save(out)
         print(f"Preview (the whole layout, DM only): {out}")
         return 0
-    return _run(campaign, go)
+    return run_stage(campaign, go, crawl.SiteError, AssetError)
 
 
 def execute_options() -> int:

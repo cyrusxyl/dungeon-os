@@ -1,22 +1,12 @@
 """scene command - set how a location looks on the visual stage"""
 
 import json
-import os
 import sys
 from datetime import date
 
-from dnd_cli.campaign import CampaignError
-from dnd_cli.commands.show_cmd import _stage_campaign_dir
+from dnd_cli.commands.show_cmd import notify_stage, preview_path, run_stage
 from stage import beat, maps, scenes
 from stage.assets import AssetError
-
-
-def _run(campaign, fn) -> int:
-    try:
-        return fn(_stage_campaign_dir(campaign))
-    except (CampaignError, OSError, KeyError, scenes.SceneError, AssetError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
 
 
 def execute_set(campaign, location: str, tokens: list[str], change: bool = False) -> int:
@@ -24,7 +14,7 @@ def execute_set(campaign, location: str, tokens: list[str], change: bool = False
         if not tokens:
             raise scenes.SceneError("give at least one setting, for example template=tavern.")
         if not beat.ID_RE.match(location):
-            raise scenes.SceneError(f"location id {location!r}: use lower-case letters, digits, '-' or '_'.")
+            raise scenes.SceneError(f"location id {location!r}: {beat.ID_RULE}.")
         current = scenes.load(campaign_dir, location)
         if current is not None and not change:
             # A saved place is reused as is; a revisit must not rebuild it.
@@ -42,14 +32,13 @@ def execute_set(campaign, location: str, tokens: list[str], change: bool = False
                 f.write(f"{date.today().isoformat()}\t{location}\t{e.prop}\n")
             raise scenes.SceneError(f"{e} Pick the closest prop and describe the difference in the story.") from e
         saved = scenes.save(campaign_dir, location, spec)
-        if os.environ.get("DUNGEON_STAGE_LOG"):
-            beat.append(campaign_dir, [{"type": "scene_updated", "location": location}])
+        notify_stage(campaign_dir, {"type": "scene_updated", "location": location})
         print(f"Saved {saved.relative_to(campaign_dir)}: template {spec['template']}.")
         print(f"Check it with: uv run dnd-cli scene preview {location}")
         if current is None and (tip := maps.hint(campaign_dir, location)):
             print(tip)
         return 0
-    return _run(campaign, go)
+    return run_stage(campaign, go, scenes.SceneError, AssetError)
 
 
 def execute_show(campaign, location: str) -> int:
@@ -61,7 +50,7 @@ def execute_show(campaign, location: str) -> int:
             return 1
         print(json.dumps({"spec": spec, "resolved": scenes.resolve(spec)}, indent=2))
         return 0
-    return _run(campaign, go)
+    return run_stage(campaign, go, scenes.SceneError, AssetError)
 
 
 def execute_preview(campaign, location: str) -> int:
@@ -70,13 +59,12 @@ def execute_preview(campaign, location: str) -> int:
         if spec is None:
             print(f"No scene for {location!r} yet.", file=sys.stderr)
             return 1
-        out = campaign_dir / ".cache" / "stage" / f"scene-{location}.png"
-        out.parent.mkdir(parents=True, exist_ok=True)
+        out = preview_path(campaign_dir, f"scene-{location}")
         img = scenes.render(spec)
         img.resize((img.width * 3, img.height * 3), 0).save(out)  # 0 = nearest neighbor
         print(f"Preview: {out}")
         return 0
-    return _run(campaign, go)
+    return run_stage(campaign, go, scenes.SceneError, AssetError)
 
 
 def execute_options(what: str | None) -> int:

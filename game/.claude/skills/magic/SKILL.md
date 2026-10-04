@@ -17,24 +17,8 @@ When a player casts a spell:
 # Full spell data (cached)
 uv run dnd-cli get spells/{spell-index}
 
-# Or extract specific fields with jq
-uv run dnd-cli get spells/{spell-index} --json | jq '{
-  name: .name,
-  level: .level,
-  school: .school.name,
-  casting_time: .casting_time,
-  range: .range,
-  components: .components,
-  material: .material,
-  duration: .duration,
-  concentration: .concentration,
-  ritual: .ritual,
-  attack_type: .attack_type,
-  dc: .dc,
-  damage: .damage,
-  desc: .desc,
-  higher_level: .higher_level
-}'
+# Or only the fields you need
+uv run dnd-cli get spells/{spell-index} --fields name,level,school,casting_time,range,components,material,duration,concentration,ritual,attack_type,dc,damage,desc,higher_level
 
 # Search for spells by criteria
 uv run dnd-cli search spells --level 3 --school evocation
@@ -197,7 +181,7 @@ See Character Advancement skill for detailed workflow.
 2. Query class spell list:
    ```bash
    # Get class spell list (cached)
-   uv run dnd-cli get classes/{class-index}/spells --json | jq -r '.results[] | .name'
+   uv run dnd-cli get classes/{class-index}/spells
    ```
 3. Filter by levels character can cast
 4. Player chooses, add to character
@@ -303,10 +287,7 @@ When a creature casts a spell, another caster can use reaction:
 Query school information:
 
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/magic-schools/{school-index}" | jq '{
-  name: .name,
-  desc: .desc
-}'
+uv run dnd-cli get magic-schools/{school-index} --fields name,desc
 ```
 
 **Schools**:
@@ -376,7 +357,7 @@ Get complete class spell list:
 
 ```bash
 # Get class spell list (cached)
-uv run dnd-cli get classes/{class-index}/spells --json | jq -r '.results[] | .name'
+uv run dnd-cli get classes/{class-index}/spells
 ```
 
 **Classes**:

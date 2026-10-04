@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { DiceOverlay } from '@/components/DiceOverlay'
 import { Button } from '@/components/ui/8bit/button'
-import { focusTakesText, postJson, type StageState, useIntegerScale } from '@/lib/stage'
+import { focusTakesText, postJson, type StageState, useIntegerScale, useJson } from '@/lib/stage'
 
 // A window of 15 x 9 tiles of 32 px that follows the party.
 const T = 32
@@ -81,7 +81,7 @@ function draw(ctx: CanvasRenderingContext2D, view: SiteView, pos: Cell, facing: 
   const cy = camera(view.h, VIEW_H, pos[1])
   const tile = (col: number, row: number, px: number, py: number) => atlas && ctx.drawImage(atlas, col * T, row * T, T, T, px, py, T, T)
   const lit = (x: number, y: number) => view.visible[y]?.[x] === '1'
-  const shade = 'rgba(8, 6, 14, 0.62)'
+  ctx.fillStyle = 'rgba(8, 6, 14, 0.62)' // the shade over cells seen before but not in sight now
 
   for (let vy = 0; vy < VIEW_H; vy++) {
     for (let vx = 0; vx < VIEW_W; vx++) {
@@ -99,10 +99,7 @@ function draw(ctx: CanvasRenderingContext2D, view: SiteView, pos: Cell, facing: 
         const special = { '+': 0, "'": 1, '<': 2 }[c]
         if (special !== undefined) tile(special, 2, px, py)
       }
-      if (!lit(x, y)) {
-        ctx.fillStyle = shade
-        ctx.fillRect(px, py, T, T)
-      }
+      if (!lit(x, y)) ctx.fillRect(px, py, T, T)
     }
   }
 
@@ -148,39 +145,34 @@ export function CrawlView({ state, siteId, canAct }: { state: StageState; siteId
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const scale = useIntegerScale(box, W, H)
-  const [view, setView] = useState<SiteView | 'missing' | null>(null)
+  const fetched = useJson<SiteView>(`/api/site/${encodeURIComponent(siteId)}`, state.versions?.[`site:${siteId}`] ?? 0)
+  // A walk's answer, until the next fetch replaces it.
+  const [walked, setWalked] = useState<SiteView | null>(null)
+  const view = walked ?? fetched
+  const viewRef = useRef(view)
+  viewRef.current = view
   const [pos, setPos] = useState<Cell | null>(null)
   const [facing, setFacing] = useState<Facing>('down')
   const [image, tick] = useImages()
   const walking = useRef(false)
   const timer = useRef<number | undefined>(undefined)
-  const version = state.versions?.[`site:${siteId}`] ?? 0
 
   useEffect(() => {
-    let live = true
-    fetch(`/api/site/${encodeURIComponent(siteId)}`)
-      .then((r) => (r.ok ? r.json() : 'missing'))
-      .then((v) => {
-        if (!live) return
-        setView(v)
-        if (v !== 'missing') setPos(v.party)
-      })
-      .catch(() => live && setView('missing'))
-    return () => {
-      live = false
-    }
-  }, [siteId, version])
+    setWalked(null)
+    if (fetched) setPos(fetched.party)
+  }, [fetched])
 
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d')
-    if (ctx && view && view !== 'missing' && pos) draw(ctx, view, pos, facing, image)
+    if (ctx && view && pos) draw(ctx, view, pos, facing, image)
   }, [view, pos, facing, image, tick])
 
   useEffect(() => () => window.clearTimeout(timer.current), [])
 
   const go = useCallback(
     async (body: { dir: Facing } | { to: Cell }) => {
-      if (!canAct || walking.current || !view || view === 'missing') return
+      const view = viewRef.current
+      if (!canAct || walking.current || !view) return
       walking.current = true
       if ('dir' in body) setFacing(body.dir)
       try {
@@ -198,13 +190,13 @@ export function CrawlView({ state, siteId, canAct }: { state: StageState; siteId
           setPos(step)
           prev = step
         }
-        setView(next)
+        setWalked(next)
         setPos(next.party)
       } finally {
         walking.current = false
       }
     },
-    [canAct, view, siteId],
+    [canAct, siteId],
   )
 
   useEffect(() => {
@@ -219,8 +211,8 @@ export function CrawlView({ state, siteId, canAct }: { state: StageState; siteId
     return () => window.removeEventListener('keydown', onKey)
   }, [go])
 
-  if (view === null) return <div ref={box} className="h-full w-full" />
-  if (view === 'missing') {
+  if (view === undefined) return <div ref={box} className="h-full w-full" />
+  if (view === null) {
     return (
       <div ref={box} className="pixel-font grid h-full w-full place-items-center text-[8px] text-[var(--dim)]">
         The DM is still drawing this place…

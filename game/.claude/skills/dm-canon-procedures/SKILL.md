@@ -13,7 +13,7 @@ The only things you write by hand are pieces of text with no arithmetic behind t
 
 ## Session Start: Read the Canon
 
-1. `uv run dnd-cli canon show {campaign}`. If it errors because the file does not exist, run `uv run dnd-cli canon init {campaign}` before doing anything else — do not create the file by hand, so it always starts schema-valid.
+1. Read the canon in the output of `uv run dnd-cli session brief` (AGENTS.md Session Start), or run `uv run dnd-cli canon show {campaign}`. If the file does not exist, run `uv run dnd-cli canon init {campaign}` before doing anything else — do not create the file by hand, so it always starts schema-valid.
 2. Note `last_session_written` and `last_clock_touched` from the output.
 3. Do not repeat this read later in the session from memory. Re-run `canon show` if a question about canon comes up mid-session — the file may have changed since you last looked.
 

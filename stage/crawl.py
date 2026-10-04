@@ -21,10 +21,13 @@ from collections import deque
 from functools import cache, lru_cache
 from pathlib import Path
 
+from stage.beat import SLUG_RE, title
+
 DATA_PATH = Path(__file__).resolve().parent / "data" / "crawl.json"
+_DUNGEON_SIZES = {"small": (32, 22), "medium": (44, 30), "large": (60, 40)}
 SIZES = {
-    "rooms": {"small": (32, 22), "medium": (44, 30), "large": (60, 40)},
-    "cave": {"small": (32, 22), "medium": (44, 30), "large": (60, 40)},
+    "rooms": _DUNGEON_SIZES,
+    "cave": _DUNGEON_SIZES,
     "building": {"small": (20, 14), "medium": (28, 19), "large": (38, 25)},
 }
 DANGER = {"none": 0, "low": 8, "mid": 5, "high": 3}
@@ -34,7 +37,6 @@ WALL, FLOOR, DOOR, OPEN, EXIT = "#", ".", "+", "'", "<"
 WALKABLE = {FLOOR, DOOR, OPEN, EXIT}
 OPAQUE = {WALL, DOOR}
 STEPS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 T = 32
 
 
@@ -322,7 +324,7 @@ def _sight(grid, x: int, y: int, radius: int) -> set[tuple[int, int]]:
 # -- sites -----------------------------------------------------------------
 
 
-def generate(spec: dict) -> dict:
+def generate(spec: dict, pois: list[dict]) -> dict:
     """A new site from its spec: layout, areas with depth, points of interest, party outside."""
     theme = themes()[spec["theme"]]
     style = theme["style"]
@@ -334,8 +336,7 @@ def generate(spec: dict) -> dict:
         except _Retry:
             continue
         ex, ey = entrance
-        if grid[ey][ex] != EXIT:
-            grid[ey][ex] = EXIT
+        grid[ey][ex] = EXIT
         dist = _flood(grid, entrance)
         floor = [(xx, yy) for yy in range(h) for xx in range(w) if grid[yy][xx] in WALKABLE]
         if any(c not in dist for c in floor) or any(_center(a) not in dist for a in areas):
@@ -359,7 +360,7 @@ def generate(spec: dict) -> dict:
         "seen": ["0" * w for _ in range(h)],
         "entered": [],
     }
-    add_pois(site, spec.get("pois", []), random.Random(f"{spec['seed']}:pois"))
+    add_pois(site, pois, random.Random(f"{spec['seed']}:pois"))
     return site
 
 
@@ -389,18 +390,14 @@ def _area_seen(site: dict, i: int) -> bool:
     return site["seen"][a["cy"]][a["cx"]] == "1"
 
 
-def add_pois(site: dict, pois: list[dict], rng: random.Random, unseen_only: bool = False) -> None:
-    """Place each point of interest in a free area of its depth band, near the area center."""
-    used = {p["area"] for p in site["pois"].values()}
+def add_pois(site: dict, pois: list[dict], rng: random.Random) -> None:
+    """Place each point of interest in a free, unseen area of its depth band, near the area center."""
+    used = {site["area_of"][p["y"]][p["x"]] for p in site["pois"].values()}
     taken = {(p["x"], p["y"]) for p in site["pois"].values()} | {tuple(site["entrance"])}
     for poi in pois:
-        band = _band(site, poi["where"])
-        tiers = [
-            [i for i in band if i not in used and not (unseen_only and _area_seen(site, i))],
-            [i for i in band if not (unseen_only and _area_seen(site, i))],
-            [i for i in _band(site, "any") if i not in used and not (unseen_only and _area_seen(site, i))],
-            band,
-        ]
+        band = [i for i in _band(site, poi["where"]) if not _area_seen(site, i)] or _band(site, poi["where"])
+        anywhere = [i for i in _band(site, "any") if i not in used and not _area_seen(site, i)]
+        tiers = [[i for i in band if i not in used], anywhere, band]
         choices = next(t for t in tiers if t)
         area = choices[0] if poi["where"] == "far" else rng.choice(choices)
         a = site["areas"][area]
@@ -413,7 +410,7 @@ def add_pois(site: dict, pois: list[dict], rng: random.Random, unseen_only: bool
         if not cells:
             raise SiteError(f"no room left for the point of interest {poi['id']!r}.")
         x, y = min(cells, key=lambda c: (abs(c[0] - a["cx"]) + abs(c[1] - a["cy"]), c))
-        site["pois"][poi["id"]] = {"x": x, "y": y, "area": area, "icon": poi["icon"], "found": False}
+        site["pois"][poi["id"]] = {"x": x, "y": y, "where": poi["where"], "icon": poi["icon"], "found": False}
         used.add(area)
         taken.add((x, y))
 
@@ -464,8 +461,11 @@ def path_to(site: dict, target: tuple[int, int]) -> list[tuple[int, int]] | None
         if max(abs(target[0] - site["party"][0]), abs(target[1] - site["party"][1])) <= 1:
             return []
         tx, ty = target
-        ends = [_path(site, (tx + dx, ty + dy)) for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1))]
-        options = [(dy == 1, len(p), p) for (dx, dy), p in zip(((-1, 0), (1, 0), (0, -1), (0, 1)), ends) if p is not None]
+        options = []
+        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            path = _path(site, (tx + dx, ty + dy))
+            if path is not None:
+                options.append((dy == 1, len(path), path))
         return min(options)[2] if options else None
     return _path(site, target)
 
@@ -528,7 +528,7 @@ def walk(site: dict, path: list[tuple[int, int]], roll=None) -> dict:
     return result
 
 
-def view(site: dict) -> dict:
+def view(site_id: str, site: dict) -> dict:
     """What the browser may know: seen cells, visible cells, found POIs, the party."""
     grid, seen = site["grid"], site["seen"]
     cells = ["".join(c if s == "1" else " " for c, s in zip(row, srow)) for row, srow in zip(grid, seen)]
@@ -537,13 +537,16 @@ def view(site: dict) -> dict:
     rows = [["0"] * w for _ in range(h)]
     for x, y in vis:
         rows[y][x] = "1"
+    # An object icon, or an actor kind shown as its sprite.
+    url = lambda icon: f"/asset/icon/{icon}.png" if icon in data()["icons"] else f"/asset/actor/{icon}/full.png"  # noqa: E731
     pois = [
-        {"id": pid, "name": title(pid), "x": p["x"], "y": p["y"], "icon": p["icon"]}
+        {"id": pid, "name": title(pid), "x": p["x"], "y": p["y"], "url": url(p["icon"])}
         for pid, p in site["pois"].items()
         if p["found"]
     ]
     return {
-        "name": site["spec"].get("name") or "",
+        "id": site_id,
+        "name": site_name(site_id, site),
         "theme": site["spec"]["theme"],
         "w": w,
         "h": h,
@@ -554,10 +557,6 @@ def view(site: dict) -> dict:
         "pois": pois,
         "tiles": tile_counts(site["spec"]["theme"]),
     }
-
-
-def title(slug: str) -> str:
-    return " ".join(w.capitalize() for w in re.split(r"[-_]", slug.split("#")[0]) if w)
 
 
 def site_name(site_id: str, site: dict) -> str:
@@ -616,7 +615,7 @@ def guess_icon(poi_id: str, is_actor) -> str:
 def parse_poi(value: str, is_actor) -> dict:
     pid, at, rest = value.partition("@")
     where, _, icon = rest.partition(":")
-    if not ID_RE.match(pid) or not at:
+    if not SLUG_RE.match(pid) or not at:
         raise SiteError(f"poi={value}: write poi=<id>@<where>[:<icon>], for example poi=dragon-altar@far:altar.")
     if where not in WHERE:
         raise SiteError(f"poi={value}: where is one of {', '.join(WHERE)}.")
@@ -626,10 +625,12 @@ def parse_poi(value: str, is_actor) -> dict:
     return {"id": pid, "where": where, "icon": icon or guess_icon(pid, is_actor)}
 
 
-def build(tokens: list[str], current: dict | None, is_actor) -> tuple[dict, list[dict]]:
-    """A spec from `key=value` tokens, and the POIs it adds. A saved layout never changes."""
+def build(tokens: list[str], current: dict | None, is_actor, poi_ids=()) -> tuple[dict, list[dict]]:
+    """A spec from `key=value` tokens, and the POIs it adds. A saved layout never changes.
+
+    `poi_ids` are the points of interest the site has already.
+    """
     spec = dict(current or {})
-    spec["pois"] = list(spec.get("pois", []))
     new: list[dict] = []
     for token in tokens:
         key, eq, value = token.partition("=")
@@ -644,7 +645,7 @@ def build(tokens: list[str], current: dict | None, is_actor) -> tuple[dict, list
                 raise SiteError(f"no theme {value!r}. Themes: {', '.join(themes())}.")
             spec["theme"] = value
         elif key == "size":
-            if value not in SIZES["rooms"]:
+            if value not in _DUNGEON_SIZES:
                 raise SiteError("size= is small, medium or large.")
             spec["size"] = value
         elif key == "seed":
@@ -659,7 +660,7 @@ def build(tokens: list[str], current: dict | None, is_actor) -> tuple[dict, list
             spec["name"] = value.replace("_", " ").strip()
         elif key == "poi":
             poi = parse_poi(value, is_actor)
-            if any(p["id"] == poi["id"] for p in spec["pois"] + new):
+            if poi["id"] in poi_ids or any(p["id"] == poi["id"] for p in new):
                 raise SiteError(f"the point of interest {poi['id']!r} is already in this site.")
             new.append(poi)
         else:
@@ -680,7 +681,7 @@ def sites_dir(campaign_dir: Path) -> Path:
 
 
 def load(campaign_dir: Path, site_id: str) -> dict | None:
-    if not ID_RE.match(site_id):
+    if not SLUG_RE.match(site_id):
         return None
     path = sites_dir(campaign_dir) / f"{site_id}.json"
     try:
@@ -723,7 +724,7 @@ def _floor_tiles(name: str) -> list:
     if name.startswith("lpc:"):
         from stage import scenes
 
-        return [scenes._surface_tile(name[4:], col, row) for row in (0, 1) for col in (0, 1)]
+        return [scenes.surface_tile(name[4:], col, row) for row in (0, 1) for col in (0, 1)]
     return [Image.open(p).convert("RGBA") for p in _variants(name)]
 
 
@@ -732,6 +733,7 @@ def _walls(theme: str) -> tuple[str, ...]:
     return _variants(t["wall"])[: t.get("wall_variants", 8)]
 
 
+@cache
 def tile_counts(theme: str) -> dict:
     t = themes()[theme]
     floors = 4 if t["floor"].startswith("lpc:") else len(_variants(t["floor"]))
@@ -778,6 +780,13 @@ def icon_png(name: str) -> bytes | None:
     return buf.getvalue()
 
 
+def variant(x: int, y: int, n: int) -> int:
+    """A stable tile variant per cell, variant 0 about half of the time. Same as variant() in CrawlView.tsx."""
+    h = ((x * 374761393) & 0xFFFFFFFF) ^ ((y * 668265263) & 0xFFFFFFFF)
+    k = (h ^ (h >> 13)) % (n * 2)
+    return k if k < n else 0
+
+
 def render_full(site: dict):
     """The whole layout with every point of interest, for the DM's preview (never sent to players)."""
     from PIL import Image
@@ -793,14 +802,16 @@ def render_full(site: dict):
 
     for y, line in enumerate(grid):
         for x, c in enumerate(line):
-            near_floor = any(
-                0 <= x + dx < w and 0 <= y + dy < h and grid[y + dy][x + dx] in WALKABLE
-                for dy in (-1, 0, 1) for dx in (-1, 0, 1)
-            )
-            if c == WALL and near_floor:
-                img.alpha_composite(tile((x * 7 + y * 13) % counts["walls"], 0), (x * T, y * T))
-            elif c in (FLOOR, DOOR, OPEN, EXIT):
-                img.alpha_composite(tile((x * 7 + y * 13) % counts["floors"], 1), (x * T, y * T))
+            if c == WALL:
+                near_floor = any(
+                    0 <= x + dx < w and 0 <= y + dy < h and grid[y + dy][x + dx] in WALKABLE
+                    for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                )
+                if near_floor:
+                    img.alpha_composite(tile(variant(x, y, counts["walls"]), 0), (x * T, y * T))
+            else:
+                f = (x % 2) + (y % 2) * 2 if counts["pattern"] else variant(x, y, counts["floors"])
+                img.alpha_composite(tile(f, 1), (x * T, y * T))
                 special = {DOOR: 0, OPEN: 1, EXIT: 2}.get(c)
                 if special is not None:
                     img.alpha_composite(tile(special, 2), (x * T, y * T))

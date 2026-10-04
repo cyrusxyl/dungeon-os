@@ -73,7 +73,7 @@ def prop_image(name: str) -> Image.Image:
     return _crop(p["sheet"], p["rect"])
 
 
-def _surface_tile(name: str, col: int, row: int) -> Image.Image:
+def surface_tile(name: str, col: int, row: int) -> Image.Image:
     cat = catalog()
     if name in cat["floors"]:
         c, r = cat["floors"][name]
@@ -211,7 +211,7 @@ def render(spec: dict) -> Image.Image:
     for row in range(first_floor_row, ROWS):
         surface = r["rows"].get(str(row), r["floor"])
         for col in range(COLS):
-            img.alpha_composite(_surface_tile(surface, col, row), (col * T, row * T))
+            img.alpha_composite(surface_tile(surface, col, row), (col * T, row * T))
     if walls:
         span = COLS // len(walls)
         for i, style in enumerate(walls):

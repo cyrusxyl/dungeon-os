@@ -46,11 +46,7 @@ Match action to skill:
 ### Step 2: Query Skill Details (if needed)
 
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/skills/{skill-index}" | jq '{
-  name: .name,
-  desc: .desc,
-  ability_score: .ability_score.name
-}'
+uv run dnd-cli get skills/{skill-index} --fields name,desc,ability_score
 ```
 
 Use this to clarify what a skill covers or which ability score it uses.
@@ -304,11 +300,7 @@ Required for picking locks and disarming traps.
 
 **Query proficiency**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/proficiencies/thieves-tools" | jq '{
-  name: .name,
-  desc: .desc,
-  classes: .classes
-}'
+uv run dnd-cli get proficiencies/thieves-tools --fields name,desc,classes
 ```
 
 **Check**: DEX (Sleight of Hand) + proficiency bonus (if proficient)
@@ -323,7 +315,7 @@ curl -sL "https://www.dnd5eapi.co/api/2014/proficiencies/thieves-tools" | jq '{
 
 **Query any tool**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/proficiencies/{tool-index}" | jq
+uv run dnd-cli get proficiencies/{tool-index}
 ```
 
 ## API Endpoints Reference

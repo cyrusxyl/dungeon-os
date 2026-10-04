@@ -105,9 +105,6 @@ class Stage:
         self.log_path.touch()
         self.state = stage_state.empty()
         self.offset = 0
-        # True from a prompt we typed until the DM takes it (UserPromptSubmit
-        # sets "busy"): no walking in that gap.
-        self.awaiting_dm = False
         self.event_clients: set[WebSocket] = set()
         self.pty_clients: set[WebSocket] = set()
         self.loop: asyncio.AbstractEventLoop | None = None
@@ -140,8 +137,6 @@ class Stage:
         out = []
         for event in events:
             self.state = stage_state.apply(self.state, event)
-            if event.get("type") == "dm_status" and event.get("status") != "idle":
-                self.awaiting_dm = False
             out.append({**event, "seq": self.state["seq"]})
         return out
 
@@ -188,7 +183,9 @@ class Stage:
         line = " ".join(text.split())
         if not line:
             return
-        self.awaiting_dm = True
+        if self.dm.alive:
+            # Busy at once, not when the hook reports it: no walk or travel slips into the gap.
+            await self._local_event({"type": "dm_status", "status": "busy"})
         self.dm.write(line)
         # A short gap so the TUI does not take the Enter as part of a paste.
         await asyncio.sleep(0.08)
@@ -196,7 +193,7 @@ class Stage:
 
 
     def dm_ready(self) -> bool:
-        return self.state["dm"].get("status") == "idle" and not self.awaiting_dm
+        return self.state["dm"].get("status") == "idle"
 
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost"}
@@ -287,19 +284,19 @@ def _lead(campaign_dir: Path) -> str | None:
 
 
 def site_view(campaign_dir: Path, site_id: str, site: dict) -> dict:
-    view = crawl.view(site)
-    for poi in view["pois"]:
-        icon = poi.pop("icon")
-        poi["url"] = (f"/asset/icon/{icon}.png" if icon in crawl.data()["icons"]
-                      else f"/asset/actor/{icon}/full.png")
-    return {**view, "id": site_id, "name": crawl.site_name(site_id, site), "lead": _lead(campaign_dir)}
+    return {**crawl.view(site_id, site), "lead": _lead(campaign_dir)}
+
+
+def error(text: str, status: int = 409) -> JSONResponse:
+    return JSONResponse({"error": text}, status_code=status)
 
 
 def stage_first_prompt(campaign_slug: str) -> str:
     # Name the campaign: without it, the DM may "correct" active.json from memory.
     return (
         f"Start the session for the campaign `{campaign_slug}`. campaigns/active.json "
-        "already points at it; do not change that file. The players watch the visual "
+        "already points at it; do not change that file. Begin with `uv run dnd-cli session brief`. "
+        "The players watch the visual "
         "stage, so show every scene, narration line and NPC line with "
         "`uv run dnd-cli show beat` (load the `stage` skill first)."
     )
@@ -461,7 +458,7 @@ def create_app(
                 slug = str(body.get("campaign", ""))
             campaign = resolve_campaign_dir(slug)
         except (CampaignError, OSError) as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
+            return error(str(e), 400)
         await table.start(campaign)
         return JSONResponse({"game": campaign.name})
 
@@ -474,7 +471,7 @@ def create_app(
 
         body = await request.json()
         if body.get("agent_framework") not in FRAMEWORKS:
-            return JSONResponse({"error": "unknown agent framework"}, status_code=400)
+            return error("unknown agent framework", 400)
         save_settings({"agent_framework": body["agent_framework"], "model": str(body.get("model", ""))})
         return JSONResponse(_menu(table))
 
@@ -526,16 +523,13 @@ def create_app(
     async def api_actor(request: Request):
         actor_id = request.path_params["actor_id"]
         spec = actors.load(need().campaign_dir, actor_id) or {}
-        name = spec.get("name") or actor_id.split("#")[0].replace("-", " ").title()
+        name = spec.get("name") or beat.title(actor_id)
         if "#" in actor_id and actor_id.split("#")[1]:
             name = f"{name} {actor_id.split('#')[1]}"
         return JSONResponse({"id": actor_id, "name": name, "has_look": bool(spec)})
 
     async def api_party(request: Request):
         return JSONResponse(_party(need().campaign_dir))
-
-    def error(text: str, status: int = 409) -> JSONResponse:
-        return JSONResponse({"error": text}, status_code=status)
 
     def site_or_none(stage: Stage, request: Request) -> tuple[str, dict | None]:
         site_id = request.path_params["site_id"]
@@ -554,7 +548,8 @@ def create_app(
             crawl.save(stage.campaign_dir, site_id, site)
         return JSONResponse(site_view(stage.campaign_dir, site_id, site))
 
-    async def api_site_move(request: Request):
+    async def exploring(request: Request):
+        """(stage, body, site_id, site), or an error response, for an action in the site the party explores."""
         stage = need()
         # Read the body first: no await between loading and saving the site.
         body = await request.json()
@@ -563,6 +558,13 @@ def create_app(
             return error("The party is not exploring this site.")
         if not stage.dm_ready():
             return error("The DM is busy.")
+        return stage, body, site_id, site
+
+    async def api_site_move(request: Request):
+        got = await exploring(request)
+        if isinstance(got, Response):
+            return got
+        stage, body, site_id, site = got
         px, py = site["party"]
         if body.get("dir") in crawl.STEPS:
             dx, dy = crawl.STEPS[body["dir"]]
@@ -585,13 +587,10 @@ def create_app(
                              "path": result["path"], "stopped": result["stopped"]})
 
     async def api_site_act(request: Request):
-        stage = need()
-        body = await request.json()
-        site_id, site = site_or_none(stage, request)
-        if site is None or site["party"] is None or stage.state.get("explore") != site_id:
-            return error("The party is not exploring this site.")
-        if not stage.dm_ready():
-            return error("The DM is busy.")
+        got = await exploring(request)
+        if isinstance(got, Response):
+            return got
+        stage, body, site_id, site = got
         px, py = site["party"]
         if body.get("kind") == "examine":
             poi = site["pois"].get(str(body.get("poi")))
@@ -608,33 +607,36 @@ def create_app(
 
     async def api_map_levels(request: Request):
         stage = need()
+        found = maps.all_maps(stage.campaign_dir)
         out = []
-        for level in maps.chain(stage.campaign_dir, stage.state.get("explore"), stage.state.get("place")):
+        for level in maps.chain(found, stage.state.get("explore"), stage.state.get("place")):
             if level["kind"] == "site":
                 site = crawl.load(stage.campaign_dir, level["id"])
-                name = crawl.site_name(level["id"], site) if site else crawl.title(level["id"])
+                name = crawl.site_name(level["id"], site) if site else beat.title(level["id"])
             else:
-                name = (maps.load(stage.campaign_dir, level["id"]) or {}).get("name", level["id"])
+                name = found[level["id"]]["name"]
             out.append({**level, "name": name})
         return JSONResponse({"levels": out})
 
     async def api_map(request: Request):
         stage = need()
         map_id = request.path_params["map_id"]
-        m = maps.load(stage.campaign_dir, map_id)
+        found = maps.all_maps(stage.campaign_dir)
+        m = found.get(map_id)
         if m is None:
             return error("No such map.", 404)
-        here = maps.here(stage.campaign_dir, map_id, stage.state.get("explore"), stage.state.get("place"))
+        here = maps.here(found, map_id, stage.state.get("explore"), stage.state.get("place"))
         return JSONResponse(maps.view(m, map_id, here))
 
     async def api_map_travel(request: Request):
         stage = need()
         body = await request.json()
         map_id, dest = str(body.get("map", "")), str(body.get("to", ""))
-        m = maps.load(stage.campaign_dir, map_id)
+        found = maps.all_maps(stage.campaign_dir)
+        m = found.get(map_id)
         if m is None or dest not in m["places"] or not m["places"][dest]["known"]:
             return error("No such known place.", 400)
-        origin = maps.here(stage.campaign_dir, map_id, stage.state.get("explore"), stage.state.get("place"))
+        origin = maps.here(found, map_id, stage.state.get("explore"), stage.state.get("place"))
         if origin is None:
             return error("The party is not on this map.", 400)
         if origin == dest:

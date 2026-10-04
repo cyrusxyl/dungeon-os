@@ -95,7 +95,7 @@
 
 | Clause | Requirement | Status | Where |
 |---|---|---|---|
-| CL-7.1 | Review each character, find a hook | PARTIAL | `AGENTS.md` Session Start reads character files, but does not force a hook-finding step |
+| CL-7.1 | Review each character, find a hook | PARTIAL | `AGENTS.md` Session Start (`dnd-cli session brief`) shows the party, but does not force a hook-finding step |
 | CL-7.2 | Strong start in the first five minutes | N/A | Written for a human prepping on paper before a session. The AI DM improvises the opening from `state.json` and the recap; there is no offline prep step to check this against. |
 | CL-7.3 | Bullet-point scene list, not full scenes | N/A | Same reason as CL-7.2 — the AI DM generates content live via the `worldbuilding` skill instead of pre-writing scenes. |
 | CL-7.4 | About ten loose clues, not tied to one location | N/A | Same reason. Live generation replaces pre-writing. |
@@ -192,7 +192,7 @@
 | Clause | Requirement | Status | Where |
 |---|---|---|---|
 | CL-16.1 | Write a short recap | DONE | `dm-craft-principles`, "After Each Session"; feeds `session_log.md` |
-| CL-16.2 | Read the recap at the start of next session | DONE | `AGENTS.md`, Session Start step 6 |
+| CL-16.2 | Read the recap at the start of next session | DONE | `AGENTS.md`, Session Start step 4 (log from `dnd-cli session brief`) |
 | CL-16.3 | Ask players for feedback | DONE | `dm-craft-principles`, "After Each Session" |
 | CL-16.4 | Adjust prepared material to player interest | DONE (corrected) | OG Correction 14.3, in `AGENTS.md` Canon rule 6 and `dm-craft-principles`: adjust scenes, not clocks |
 
@@ -210,7 +210,7 @@ This guide has priority over the Checklist. Its rules had **no prior implementat
 | OG-1.2 | Keep it outside the conversation | DONE | It is a file on disk, read fresh each time |
 | OG-1.3 | If a fact is not in the canon file, it is not true | DONE | `AGENTS.md`, Canon rule 1 |
 | OG-1.4 | Do not use conversation history as a fact record | DONE | Same rule |
-| OG-1.5 | Read the canon file at session start | DONE | `AGENTS.md`, Session Start step 5 |
+| OG-1.5 | Read the canon file at session start | DONE | `AGENTS.md`, Session Start steps 1 and 3 (`dnd-cli session brief` prints `canon.json`) |
 | OG-1.6 | Write to it at session end | DONE | `AGENTS.md`, Session End; procedure in `dm-canon-procedures` |
 | OG-1.7 | Seven parts, A through G | DONE | `canon.schema.json`: `villains`, `threads`, `facts`, `characters`, `items`, `promises`, `rulings` |
 

@@ -24,14 +24,15 @@ Rules that apply to all levels:
 ```json
 {
   "name": "Sword Coast",
-  "in": null,
   "places": {
     "baldurs-gate": {"name": "Baldur's Gate", "icon": "city", "at": [0, 0], "known": true, "visited": true},
     "candlekeep":   {"name": "Candlekeep", "icon": "tower", "at": [0, -2], "known": true, "visited": false}
   },
-  "routes": [{"a": "baldurs-gate", "b": "candlekeep", "travel": "2 days", "known": true}]
+  "routes": [{"a": "baldurs-gate", "b": "candlekeep", "travel": "2 days"}]
 }
 ```
+
+- **Known routes.** A route shows when the players know both of its places.
 
 - **Nesting.** A map with `"in": "sword-coast"` is the inside of the place with the same id in `sword-coast`. The city map `baldurs-gate` is the inside of the place `baldurs-gate`. A site is the inside of the place with the same id as the site.
 - **Unique ids.** A place id is unique in the campaign. It is also the location id of the scene (`@scene chapel-of-ilmater`).
@@ -108,13 +109,12 @@ uv run dnd-cli site preview sunless-citadel
 
 ```json
 {
-  "spec": {"name": "Sunless Citadel", "theme": "crypt", "size": "medium", "seed": 81723, "danger": "low",
-           "pois": [{"id": "dragon-altar", "where": "far", "icon": "altar"}]},
+  "spec": {"name": "Sunless Citadel", "theme": "crypt", "size": "medium", "seed": 81723, "danger": "low"},
   "grid": ["##########", "#....+...#", "..."],
   "areas": [{"x": 3, "y": 4, "w": 6, "h": 5, "cx": 6, "cy": 6, "depth": 0}],
   "area_of": ["....", "..."],
   "entrance": [6, 6],
-  "pois": {"dragon-altar": {"x": 30, "y": 9, "area": 7, "icon": "altar", "found": false}},
+  "pois": {"dragon-altar": {"x": 30, "y": 9, "where": "far", "icon": "altar", "found": false}},
   "party": [6, 6],
   "seen": ["0000111100", "..."],
   "entered": [0]

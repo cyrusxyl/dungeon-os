@@ -15,6 +15,7 @@ from collections import deque
 from pathlib import Path
 
 from stage import crawl
+from stage.beat import ID_RULE, SLUG_RE, title
 
 DIRS = {"n": (0, -1), "ne": (1, -1), "e": (1, 0), "se": (1, 1), "s": (0, 1), "sw": (-1, 1), "w": (-1, 0), "nw": (-1, -1)}
 STEP = 2
@@ -29,7 +30,7 @@ def maps_dir(campaign_dir: Path) -> Path:
 
 
 def load(campaign_dir: Path, map_id: str) -> dict | None:
-    if not crawl.ID_RE.match(map_id):
+    if not SLUG_RE.match(map_id):
         return None
     try:
         return json.loads((maps_dir(campaign_dir) / f"{map_id}.json").read_text())
@@ -50,14 +51,14 @@ def all_maps(campaign_dir: Path) -> dict[str, dict]:
     return out
 
 
-def find_place(campaign_dir: Path, place_id: str) -> str | None:
-    """The map that holds this place, if any."""
-    return next((mid for mid, m in all_maps(campaign_dir).items() if place_id in m["places"]), None)
+def find_place(found: dict[str, dict], place_id: str) -> str | None:
+    """The map (of `all_maps()`) that holds this place, if any."""
+    return next((mid for mid, m in found.items() if place_id in m["places"]), None)
 
 
 def _check_id(value: str, what: str) -> str:
-    if not crawl.ID_RE.match(value):
-        raise MapError(f"{what} {value!r}: use lower-case letters, digits, '-' or '_'.")
+    if not SLUG_RE.match(value):
+        raise MapError(f"{what} {value!r}: {ID_RULE}.")
     return value
 
 
@@ -83,14 +84,15 @@ def place(campaign_dir: Path, map_id: str, place_id: str, tokens: list[str]) -> 
         if not eq or key not in ("name", "icon", "from", "dir", "travel", "in", "hidden"):
             raise MapError(f"{token!r}: use name=, icon=, from=, dir=, travel=, in=, hidden=yes.")
         opts[key] = value
-    m = load(campaign_dir, map_id) or {"name": crawl.title(map_id), "in": None, "places": {}, "routes": []}
+    found = all_maps(campaign_dir)
+    m = found.get(map_id) or {"name": title(map_id), "places": {}, "routes": []}
     if place_id in m["places"]:
         raise MapError(f"{place_id!r} is already on {map_id}. Use `map route` or `map reveal` to change what is known.")
-    other = find_place(campaign_dir, place_id)
+    other = find_place(found, place_id)
     if other and other != map_id:
         raise MapError(f"{place_id!r} is already a place on the map {other!r}. A place id is on one map only.")
     if "in" in opts:
-        parent = load(campaign_dir, _check_id(opts["in"], "in="))
+        parent = found.get(_check_id(opts["in"], "in="))
         if parent is None or map_id not in parent["places"]:
             raise MapError(f"in={opts['in']}: first put the place {map_id!r} on the map {opts['in']!r}.")
         m["in"] = opts["in"]
@@ -110,14 +112,14 @@ def place(campaign_dir: Path, map_id: str, place_id: str, tokens: list[str]) -> 
         raise MapError(f"icon={icon}: use one of {', '.join(crawl.data()['icons'])}.")
     known = opts.get("hidden", "no").lower() not in ("yes", "true", "1")
     m["places"][place_id] = {
-        "name": opts.get("name", "").replace("_", " ").strip() or (site and site["spec"].get("name")) or crawl.title(place_id),
+        "name": opts.get("name", "").replace("_", " ").strip() or (site and site["spec"].get("name")) or title(place_id),
         "icon": icon,
         "at": at,
         "known": known,
         "visited": False,
     }
     if "from" in opts:
-        m["routes"].append({"a": opts["from"], "b": place_id, "travel": opts.get("travel", "").replace("_", " "), "known": known})
+        m["routes"].append({"a": opts["from"], "b": place_id, "travel": opts.get("travel", "").replace("_", " ")})
     save(campaign_dir, map_id, m)
     return m
 
@@ -131,33 +133,29 @@ def route(campaign_dir: Path, map_id: str, a: str, b: str, travel: str = "") -> 
             raise MapError(f"no place {p!r} on {map_id}. Places: {', '.join(m['places'])}.")
     r = _route(m, a, b)
     if r is None:
-        m["routes"].append({"a": a, "b": b, "travel": travel.replace("_", " "), "known": True})
-    else:
-        r["known"] = True
-        r["travel"] = travel.replace("_", " ") or r["travel"]
+        m["routes"].append({"a": a, "b": b, "travel": travel.replace("_", " ")})
+    elif travel:
+        r["travel"] = travel.replace("_", " ")
     save(campaign_dir, map_id, m)
     return m
 
 
 def reveal(campaign_dir: Path, map_id: str, place_id: str) -> dict:
-    """Show a hidden place, with its routes to places the players know."""
+    """Show a hidden place. A route shows when the players know both of its places."""
     m = load(campaign_dir, map_id)
     if m is None or place_id not in m["places"]:
         raise MapError(f"no place {place_id!r} on the map {map_id!r}.")
     m["places"][place_id]["known"] = True
-    for r in m["routes"]:
-        if place_id in (r["a"], r["b"]) and all(m["places"][p]["known"] for p in (r["a"], r["b"])):
-            r["known"] = True
     save(campaign_dir, map_id, m)
     return m
 
 
-def visit(campaign_dir: Path, place_id: str) -> str | None:
+def visit(campaign_dir: Path, found: dict[str, dict], place_id: str) -> str | None:
     """Mark a place known and visited when the party is there. Returns its map."""
-    map_id = find_place(campaign_dir, place_id)
+    map_id = find_place(found, place_id)
     if map_id is None:
         return None
-    m = load(campaign_dir, map_id)
+    m = found[map_id]
     p = m["places"][place_id]
     if not (p["known"] and p["visited"]):
         p["known"] = p["visited"] = True
@@ -167,42 +165,34 @@ def visit(campaign_dir: Path, place_id: str) -> str | None:
 
 def hint(campaign_dir: Path, place_id: str) -> str | None:
     """For a new place that is on no map: how to put it on one."""
-    if find_place(campaign_dir, place_id):
+    found = all_maps(campaign_dir)
+    if find_place(found, place_id):
         return None
-    known = ", ".join(all_maps(campaign_dir)) or "none yet"
+    known = ", ".join(found) or "none yet"
     return (f"Map: {place_id!r} is on no map. If the players can travel to it (not a room inside another place), "
             f"put it on one: uv run dnd-cli map place <map-id> {place_id} from=<place-id> dir=<n|ne|e|se|s|sw|w|nw> "
             f"(maps: {known}; see uv run dnd-cli map options).")
 
 
-def chain(campaign_dir: Path, explore: str | None, place: dict | None) -> list[dict]:
-    """The levels from the current one up: the site (if exploring), then the maps."""
-    levels: list[dict] = []
-    map_id = None
-    if explore:
-        levels.append({"kind": "site", "id": explore})
-        map_id = find_place(campaign_dir, explore)
-    if map_id is None and place:
-        map_id = place.get("map")
-    seen = set()
-    while map_id and map_id not in seen:
-        m = load(campaign_dir, map_id)
-        if m is None:
-            break
-        seen.add(map_id)
+def chain(found: dict[str, dict], explore: str | None, place: dict | None) -> list[dict]:
+    """The levels from the current one up: the site (if exploring), then the maps.
+
+    `place` is the stage state's last `at` event; `@explore` of a site that is
+    a place sets it too.
+    """
+    levels: list[dict] = [{"kind": "site", "id": explore}] if explore else []
+    map_id = place.get("map") if place else None
+    while map_id in found and all(lvl["id"] != map_id for lvl in levels):
         levels.append({"kind": "map", "id": map_id})
-        map_id = m.get("in")
+        map_id = found[map_id].get("in")
     return levels
 
 
-def here(campaign_dir: Path, map_id: str, explore: str | None, place: dict | None) -> str | None:
+def here(found: dict[str, dict], map_id: str, explore: str | None, place: dict | None) -> str | None:
     """The party's place on this map: the current place, or the place that holds it."""
-    m = load(campaign_dir, map_id)
-    if m is None:
-        return None
-    ids = [explore, place.get("place") if place else None]
-    ids += [lvl["id"] for lvl in chain(campaign_dir, explore, place)]
-    return next((i for i in ids if i and i in m["places"]), None)
+    places = found.get(map_id, {}).get("places", {})
+    ids = [place.get("place") if place else None] + [lvl["id"] for lvl in chain(found, explore, place)]
+    return next((i for i in ids if i in places), None)
 
 
 def view(m: dict, map_id: str, here_id: str | None) -> dict:
@@ -217,7 +207,7 @@ def view(m: dict, map_id: str, here_id: str | None) -> dict:
         "routes": [
             {k: r[k] for k in ("a", "b", "travel")}
             for r in m["routes"]
-            if r["known"] and r["a"] in places and r["b"] in places
+            if r["a"] in places and r["b"] in places
         ],
     }
 
@@ -235,7 +225,7 @@ def shortest(m: dict, a: str, b: str) -> list[str] | None:
                 cur = prev[cur]
             return out[::-1]
         for r in m["routes"]:
-            if r["known"] and cur in (r["a"], r["b"]):
+            if cur in (r["a"], r["b"]):
                 nxt = r["b"] if cur == r["a"] else r["a"]
                 if nxt not in prev and m["places"][nxt]["known"]:
                     prev[nxt] = cur

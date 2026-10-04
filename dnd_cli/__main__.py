@@ -26,6 +26,7 @@ from dnd_cli.commands import actor_cmd
 from dnd_cli.commands import scene_cmd
 from dnd_cli.commands import site_cmd
 from dnd_cli.commands import map_cmd
+from dnd_cli.commands import session_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -46,6 +47,7 @@ def create_parser():
     get_parser = subparsers.add_parser("get", help="Get specific resource")
     get_parser.add_argument("endpoint", help="API endpoint (e.g., monsters/goblin)")
     get_parser.add_argument("--json", action="store_true", help="Output raw JSON")
+    get_parser.add_argument("--fields", default=None, help="Only these top-level fields, comma-separated (e.g. name,desc)")
 
     # Search command
     search_parser = subparsers.add_parser("search", help="Search resources with filters")
@@ -278,6 +280,12 @@ def create_parser():
     p = scene_sub.add_parser("options", help="List templates, walls, floors, props, moods, slots")
     p.add_argument("what", nargs="?", default=None)
 
+    # Session command group
+    session_parser = subparsers.add_parser("session", help="Session helpers for the DM")
+    session_sub = session_parser.add_subparsers(dest="session_command", help="Session subcommand")
+    p = session_sub.add_parser("brief", help="Print state, party, players, canon, story bible and recent log in one go")
+    p.add_argument("--campaign", default=None)
+
     # Site command group (generated buildings and dungeons the party walks through)
     site_parser = subparsers.add_parser("site", help="Set a building or dungeon the party explores on the visual stage")
     site_sub = site_parser.add_subparsers(dest="site_command", help="Site subcommand")
@@ -339,7 +347,7 @@ def main():
             return cmd_list.execute(args.resource)
 
         elif args.command == "get":
-            return cmd_get.execute(args.endpoint, args.json)
+            return cmd_get.execute(args.endpoint, args.json, args.fields)
 
         elif args.command == "search":
             filters = {}
@@ -487,6 +495,12 @@ def main():
             if sc == "options":
                 return scene_cmd.execute_options(args.what)
             print("Usage: dnd-cli scene set|show|preview|options ... (see --help)", file=sys.stderr)
+            return 1
+
+        elif args.command == "session":
+            if args.session_command == "brief":
+                return session_cmd.execute_brief(args.campaign)
+            print("Usage: dnd-cli session brief [--campaign C]", file=sys.stderr)
             return 1
 
         elif args.command == "site":

@@ -216,9 +216,8 @@ def test_local_only() -> None:
 def _site(theme="dungeon", pois=(("altar", "far", "altar"),), seed=7, danger="none"):
     from stage import crawl
 
-    spec = {"theme": theme, "size": "small", "seed": seed, "danger": danger,
-            "pois": [{"id": i, "where": w, "icon": c} for i, w, c in pois]}
-    return crawl.generate(spec)
+    spec = {"theme": theme, "size": "small", "seed": seed, "danger": danger}
+    return crawl.generate(spec, [{"id": i, "where": w, "icon": c} for i, w, c in pois])
 
 
 def test_crawl() -> None:
@@ -237,13 +236,14 @@ def test_crawl() -> None:
     check("every floor cell and POI can be reached, POIs never on a wall or door", ok)
     check("the same seed gives the same layout", _site(seed=3)["grid"] == _site(seed=3)["grid"])
     site = _site(pois=(("near-thing", "near", "chest"), ("far-thing", "far", "chest")))
-    depth = lambda pid: site["areas"][site["pois"][pid]["area"]]["depth"]  # noqa: E731
+    area = lambda pid: site["area_of"][site["pois"][pid]["y"]][site["pois"][pid]["x"]]  # noqa: E731
+    depth = lambda pid: site["areas"][area(pid)]["depth"]  # noqa: E731
     check("a far POI is deeper than a near one", depth("far-thing") > depth("near-thing"))
 
     site = _site()
     crawl.arrive(site)
     check("arrival puts the party at the entrance", site["party"] == site["entrance"])
-    view = crawl.view(site)
+    view = crawl.view("crypt", site)
     hidden = all(c == " " for row, srow in zip(view["cells"], site["seen"]) for c, s in zip(row, srow) if s == "0")
     check("the view has no unseen cell", hidden and any(c == " " for row in view["cells"] for c in row))
     check("the view has no unfound POI", view["pois"] == [] and "altar" not in json.dumps(view))
@@ -259,7 +259,7 @@ def test_crawl() -> None:
     result = crawl.walk(site, path)
     check("a newly seen POI stops the walk", result["stopped"] == "poi" and result["pois"] == ["altar"]
           and len(result["path"]) < len(path))
-    check("a found POI is in the view", [p["id"] for p in crawl.view(site)["pois"]] == ["altar"])
+    check("a found POI is in the view", [p["id"] for p in crawl.view("crypt", site)["pois"]] == ["altar"])
     check("the prompt names the found POI and how to resume",
           "altar" in crawl.prompt_found("crypt", site, ["altar"]) and "@explore crypt" in crawl.prompt_found("crypt", site, ["altar"]))
     check("walking into a wall is blocked", crawl.walk(site, [(0, 0)])["stopped"] == "blocked")
@@ -334,10 +334,12 @@ def test_maps() -> None:
                 check(f"{label} is refused", True)
         maps.reveal(c, "coast", "lair")
         check("reveal shows the place and its route", "lair" in json.dumps(maps.view(maps.load(c, "coast"), "coast", None)))
-        check("visit returns the map", maps.visit(c, "inn") == "city")
+        found = maps.all_maps(c)
+        check("visit returns the map", maps.visit(c, found, "inn") == "city")
         place = {"map": "city", "place": "inn"}
-        check("the level chain goes up", [l["id"] for l in maps.chain(c, None, place)] == ["city", "coast"])
-        check("here on a parent map is the place that holds the party", maps.here(c, "coast", None, place) == "city")
+        check("the level chain goes up", [l["id"] for l in maps.chain(found, None, place)] == ["city", "coast"])
+        check("here on a parent map is the place that holds the party", maps.here(found, "coast", None, place) == "city")
+        check("a site level sits on top of the chain", [l["id"] for l in maps.chain(found, "crypt", place)] == ["crypt", "city", "coast"])
         prompt = maps.travel_prompt(maps.load(c, "coast"), "city", "ruin")
         check("travel takes the known route and names the arrival scene",
               "Big City → Tower → Ruin" in prompt and "2 days, 1 day" in prompt and "@scene ruin" in prompt)
@@ -360,6 +362,7 @@ def test_explore_beat() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         c = Path(tmp)
         maps.place(c, "city", "crypt", [])
+        (c / "state.json").write_text('{"location": "somewhere"}')
         site = _site(pois=(("stairs-down", "far", "stairs-down"),))
         crawl.save(c, "crypt", site)
         _sys.stdin = io.StringIO("@explore crypt stairs-down\n")
@@ -370,6 +373,23 @@ def test_explore_beat() -> None:
         p = site["pois"]["stairs-down"]
         check("@explore <site> <poi> puts the party at the POI", rc == 0 and site["party"] == [p["x"], p["y"]])
         check("a site that is a place moves the map marker", lines[1]["type"] == "at" and lines[1]["place"] == "crypt")
+        check("state.json follows the map", json.loads((c / "state.json").read_text())["location"] == "Crypt, City")
+
+
+def test_session_brief() -> None:
+    print("session brief")
+    from dnd_cli.commands.session_cmd import brief
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp)
+        (c / "characters").mkdir()
+        (c / "players").mkdir()
+        (c / "state.json").write_text('{"location": "Inn"}')
+        (c / "characters" / "aria.json").write_text('{"name": "Aria", "class": "Fighter", "level": 2, "hp": {"current": 5, "max": 12, "temp": 0}}')
+        text = brief(c)
+        check("the brief has state, party and HP", '"location":"Inn"' in text and "Aria" in text and "HP 5/12" in text)
+        check("the brief says what to do when canon or the story bible is missing",
+              "canon init" in text and "Campaign Story Bible" in text)
 
 
 if __name__ == "__main__":
@@ -385,5 +405,6 @@ if __name__ == "__main__":
     test_crawl()
     test_maps()
     test_explore_beat()
+    test_session_brief()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

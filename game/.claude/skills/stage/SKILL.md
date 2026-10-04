@@ -120,7 +120,7 @@ uv run dnd-cli map reveal sword-coast cloakwood
 - Add a place when the players learn of it (a rumor, a map, a guide) or arrive. Not before: a place you add is on their map at once. To plan ahead, add it with `hidden=yes` and `map reveal` it later.
 - The first place of a map needs nothing else. Every later place needs `from=` (a place on that map) and `dir=` (`n` `ne` `e` `se` `s` `sw` `w` `nw`); `travel=` is the time on that route. The stage does the layout.
 - A city map is the inside of the region place with the same id: give `in=<region-map>` with the first place of the city map.
-- **The place id is the location id.** `@scene chapel-of-ilmater` moves the party marker there. A site's id is its place id too.
+- **The place id is the location id.** `@scene chapel-of-ilmater` moves the party marker there and writes the location in `state.json` for you. A site's id is its place id too.
 - Icons: `uv run dnd-cli map options`. Check the whole map, hidden places too: `uv run dnd-cli map show`.
 
 ## Sites: dungeons and buildings

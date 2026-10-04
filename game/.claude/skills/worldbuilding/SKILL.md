@@ -107,22 +107,7 @@ For NPCs who might fight:
 
 1. **Fetch monster stats** if using standard creature:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/monsters/{creature}" | jq '{
-     name: .name,
-     type: .type,
-     hp: .hit_points,
-     armor_class: .armor_class[0].value,
-     challenge_rating: .challenge_rating,
-     ability_scores: {
-       strength: .strength,
-       dexterity: .dexterity,
-       constitution: .constitution,
-       intelligence: .intelligence,
-       wisdom: .wisdom,
-       charisma: .charisma
-     },
-     actions: .actions
-   }'
+   uv run dnd-cli get monsters/{creature} --fields name,type,hit_points,armor_class,challenge_rating,strength,dexterity,constitution,intelligence,wisdom,charisma,actions
    ```
 
 2. **Customize**: Add personality, motivation, secret
@@ -227,7 +212,7 @@ Use CR to determine appropriate loot:
 
 Query API for item details:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/magic-items/{item-name}" | jq
+uv run dnd-cli get magic-items/{item-name}
 ```
 
 Or create custom items:
@@ -261,13 +246,7 @@ When players want to know about a weapon, armor, or gear:
    uv run dnd-cli get equipment/{equipment-index}
 
    # Or extract specific fields
-   uv run dnd-cli get equipment/{equipment-index} --json | jq '{
-     name: .name,
-     equipment_category: .equipment_category.name,
-     cost: .cost,
-     weight: .weight,
-     desc: .desc
-   }'
+   uv run dnd-cli get equipment/{equipment-index} --fields name,equipment_category,cost,weight,desc
 
    # Search for equipment
    uv run dnd-cli search equipment --category weapon --name sword
@@ -275,27 +254,12 @@ When players want to know about a weapon, armor, or gear:
 
 2. **For weapons**, get additional stats:
    ```bash
-   uv run dnd-cli get equipment/{weapon-index} --json | jq '{
-     name: .name,
-     cost: .cost,
-     damage: .damage,
-     range: .range,
-     properties: .properties,
-     weapon_category: .weapon_category,
-     weapon_range: .weapon_range
-   }'
+   uv run dnd-cli get equipment/{weapon-index} --fields name,cost,damage,range,properties,weapon_category,weapon_range
    ```
 
 3. **For armor**, get AC details:
    ```bash
-   uv run dnd-cli get equipment/{armor-index} --json | jq '{
-     name: .name,
-     cost: .cost,
-     armor_category: .armor_category,
-     armor_class: .armor_class,
-     str_minimum: .str_minimum,
-     stealth_disadvantage: .stealth_disadvantage
-   }'
+   uv run dnd-cli get equipment/{armor-index} --fields name,cost,armor_category,armor_class,str_minimum,stealth_disadvantage
    ```
 
 4. **Query weapon properties** for clarification:
@@ -303,11 +267,8 @@ When players want to know about a weapon, armor, or gear:
    # Quick reference
    uv run dnd-cli info weapon-properties {property-index}
 
-   # Or with jq extraction
-   uv run dnd-cli get weapon-properties/{property-index} --json | jq '{
-     name: .name,
-     desc: .desc
-   }'
+   # Or only the fields you need
+   uv run dnd-cli get weapon-properties/{property-index} --fields name,desc
    ```
 
    Common properties: `finesse`, `versatile`, `light`, `heavy`, `reach`, `thrown`, `two-handed`, `ammunition`, `loading`
@@ -321,7 +282,7 @@ When players visit a shop:
 2. **Browse equipment by category**:
    ```bash
    # Get equipment category list (cached)
-   uv run dnd-cli get equipment-categories/{category-index} --json | jq '.equipment[] | .name'
+   uv run dnd-cli get equipment-categories/{category-index} --fields equipment
 
    # Or search by category
    uv run dnd-cli search equipment --category weapon
@@ -407,12 +368,7 @@ Before allowing equipment use:
 
 4. **Query proficiency details** if needed:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/proficiencies/{proficiency-index}" | jq '{
-     name: .name,
-     type: .type,
-     classes: .classes,
-     races: .races
-   }'
+   uv run dnd-cli get proficiencies/{proficiency-index} --fields name,type,classes,races
    ```
 
 ### Merchant Inventory Templates

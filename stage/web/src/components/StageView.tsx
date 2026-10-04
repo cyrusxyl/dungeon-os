@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { DiceOverlay } from '@/components/DiceOverlay'
-import { type Position, type StageState, titleCase, useIntegerScale } from '@/lib/stage'
+import { type Position, type StageState, titleCase, useIntegerScale, useJson } from '@/lib/stage'
 
 // Logical stage size in source pixels: a 10 x 6 room of 32 px LPC tiles.
 export const STAGE_W = 320
@@ -46,19 +46,7 @@ const MOOD_FILTER: Record<string, string> = {
 }
 
 function useMood(scene: string | null, version: number): string {
-  const [mood, setMood] = useState('day')
-  useEffect(() => {
-    if (!scene) return setMood('day')
-    let live = true
-    fetch(`/api/scene/${encodeURIComponent(scene)}`)
-      .then((r) => r.json())
-      .then((d) => live && setMood(d.mood))
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [scene, version])
-  return mood
+  return useJson<{ mood: string }>(scene ? `/api/scene/${encodeURIComponent(scene)}` : null, version)?.mood ?? 'day'
 }
 
 export function StageView({ state, speaker }: { state: StageState; speaker?: string }) {

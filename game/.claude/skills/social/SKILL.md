@@ -17,11 +17,7 @@ When players engage in social interaction:
 
 **Query skill**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/skills/persuasion" | jq '{
-  name: .name,
-  desc: .desc,
-  ability_score: .ability_score.name
-}'
+uv run dnd-cli get skills/persuasion --fields name,desc,ability_score
 ```
 
 **Ability**: Charisma
@@ -50,11 +46,7 @@ curl -sL "https://www.dnd5eapi.co/api/2014/skills/persuasion" | jq '{
 
 **Query skill**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/skills/deception" | jq '{
-  name: .name,
-  desc: .desc,
-  ability_score: .ability_score.name
-}'
+uv run dnd-cli get skills/deception --fields name,desc,ability_score
 ```
 
 **Ability**: Charisma
@@ -84,11 +76,7 @@ curl -sL "https://www.dnd5eapi.co/api/2014/skills/deception" | jq '{
 
 **Query skill**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/skills/intimidation" | jq '{
-  name: .name,
-  desc: .desc,
-  ability_score: .ability_score.name
-}'
+uv run dnd-cli get skills/intimidation --fields name,desc,ability_score
 ```
 
 **Ability**: Charisma (sometimes Strength at DM discretion)
@@ -121,11 +109,7 @@ curl -sL "https://www.dnd5eapi.co/api/2014/skills/intimidation" | jq '{
 
 **Query skill**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/skills/insight" | jq '{
-  name: .name,
-  desc: .desc,
-  ability_score: .ability_score.name
-}'
+uv run dnd-cli get skills/insight --fields name,desc,ability_score
 ```
 
 **Ability**: Wisdom
@@ -151,11 +135,7 @@ curl -sL "https://www.dnd5eapi.co/api/2014/skills/insight" | jq '{
 
 **Query skill**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/skills/performance" | jq '{
-  name: .name,
-  desc: .desc,
-  ability_score: .ability_score.name
-}'
+uv run dnd-cli get skills/performance --fields name,desc,ability_score
 ```
 
 **Ability**: Charisma
@@ -234,13 +214,7 @@ uv run roll 2d6+{charisma_modifier} -v
 
 **Query language details**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/languages/{language-index}" | jq '{
-  name: .name,
-  desc: .desc,
-  type: .type,
-  typical_speakers: .typical_speakers,
-  script: .script
-}'
+uv run dnd-cli get languages/{language-index} --fields name,desc,type,typical_speakers,script
 ```
 
 **Common languages**:

@@ -22,7 +22,14 @@ from pathlib import Path
 
 EMOTIONS = ("neutral", "happy", "angry", "sad", "shock", "blush", "shame", "eyeroll", "closed")
 POSITIONS = ("left", "center", "right", "far-left", "far-right")
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*(#\d+)?$")
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # a file id: sites, maps, places
+ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*(#\d+)?$")  # a slug, or an actor of a kind: goblin#2
+ID_RULE = "use lower-case letters, digits, '-' or '_'"
+
+
+def title(slug: str) -> str:
+    """Display name from an id: 'sister-gareth' -> 'Sister Gareth', 'goblin#2' -> 'Goblin'."""
+    return " ".join(w.capitalize() for w in re.split(r"[-_]", slug.split("#")[0]) if w)
 
 USAGE = (
     "Beat lines: @scene <location-id> | @enter <actor-id> [position] | "

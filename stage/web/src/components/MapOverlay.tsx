@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import type { SiteView } from '@/components/CrawlView'
 import { Button } from '@/components/ui/8bit/button'
-import { postJson, type StageState } from '@/lib/stage'
+import { postJson, type StageState, useJson } from '@/lib/stage'
 
 interface Level {
   kind: 'site' | 'map'
@@ -30,14 +30,7 @@ const SITE_COLORS: Record<string, string> = {
 
 function SiteMap({ id, version }: { id: string; version: number }) {
   const canvas = useRef<HTMLCanvasElement>(null)
-  const [view, setView] = useState<SiteView | null>(null)
-
-  useEffect(() => {
-    fetch(`/api/site/${encodeURIComponent(id)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setView)
-      .catch(() => setView(null))
-  }, [id, version])
+  const view = useJson<SiteView>(`/api/site/${encodeURIComponent(id)}`, version)
 
   const cell = view ? Math.max(4, Math.min(14, Math.floor(640 / view.w))) : 8
   useEffect(() => {
@@ -81,16 +74,9 @@ function SiteMap({ id, version }: { id: string; version: number }) {
 const GAP = 96
 
 function GraphMap({ id, version, canAct, onTravel }: { id: string; version: number; canAct: boolean; onTravel: () => void }) {
-  const [m, setM] = useState<MapView | null>(null)
+  const m = useJson<MapView>(`/api/map/${encodeURIComponent(id)}`, version)
   const [pick, setPick] = useState<string | null>(null)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    fetch(`/api/map/${encodeURIComponent(id)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setM)
-      .catch(() => setM(null))
-  }, [id, version])
 
   if (!m) return <p className="text-[var(--dim)]">No map yet.</p>
   if (!m.places.length) return <p className="text-[var(--dim)]">No known places yet.</p>
@@ -174,18 +160,12 @@ function GraphMap({ id, version, canAct, onTravel }: { id: string; version: numb
 
 /** The current level of the world, and the levels above it. Looking costs no DM turn; only Travel does. */
 export function MapOverlay({ open, onClose, state, canAct }: { open: boolean; onClose: () => void; state: StageState; canAct: boolean }) {
-  const [levels, setLevels] = useState<Level[] | null>(null)
-  const [index, setIndex] = useState(0)
   const where = `${state.explore}|${state.place?.place}`
+  const data = useJson<{ levels: Level[] }>(open ? '/api/map' : null, where)
+  const levels = data === undefined ? null : (data?.levels ?? [])
+  const [index, setIndex] = useState(0)
 
-  useEffect(() => {
-    if (!open) return
-    setIndex(0)
-    fetch('/api/map')
-      .then((r) => r.json())
-      .then((d) => setLevels(d.levels))
-      .catch(() => setLevels([]))
-  }, [open, where])
+  useEffect(() => setIndex(0), [open, where])
 
   useEffect(() => {
     if (!open) return

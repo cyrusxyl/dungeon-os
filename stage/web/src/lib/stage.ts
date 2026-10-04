@@ -12,6 +12,27 @@ export function focusTakesText(e: KeyboardEvent): boolean {
   return Boolean((e.target as HTMLElement).closest?.('input, textarea, select, [contenteditable], .xterm'))
 }
 
+/**
+ * JSON from a URL, fetched again when `version` changes. Undefined while the
+ * first fetch runs; null when the server has nothing (or no URL).
+ */
+export function useJson<T>(url: string | null, version: number | string = 0): T | null | undefined {
+  const [data, setData] = useState<{ url: string; value: T | null }>()
+  useEffect(() => {
+    if (!url) return
+    let live = true
+    fetch(url)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((value) => live && setData({ url, value }))
+    return () => {
+      live = false
+    }
+  }, [url, version])
+  if (!url) return null
+  return data?.url === url ? data.value : undefined
+}
+
 /** The largest whole-number scale at which a w x h picture fits the element. */
 export function useIntegerScale(ref: React.RefObject<HTMLDivElement | null>, w: number, h: number): number {
   const [scale, setScale] = useState(2)
@@ -99,19 +120,31 @@ function freePosition(actors: StageState['actors']): Position {
   return AUTO.find((p) => !taken.has(p)) ?? 'center'
 }
 
+// An "*_updated" event makes the browser fetch that thing again. Same table as UPDATED in stage/state.py.
+const UPDATED: Record<string, [string, string]> = {
+  scene_updated: ['scene:', 'location'],
+  actor_updated: ['', 'actor'],
+  site_updated: ['site:', 'site'],
+  map_updated: ['map:', 'map'],
+}
+
+function bump(s: StageState, key: string, seq: number): StageState {
+  return { ...s, versions: { ...(s.versions ?? {}), [key]: seq } }
+}
+
 export function apply(state: StageState, e: StageEvent): StageState {
+  if (e.type in UPDATED) {
+    const [prefix, field] = UPDATED[e.type]
+    return bump({ ...state, seq: e.seq }, prefix + (e[field] as string), e.seq)
+  }
   const s: StageState = { ...state, seq: e.seq, actors: { ...state.actors } }
   switch (e.type) {
     case 'scene':
       return { ...s, scene: e.location as string, actors: {}, choices: null, explore: null }
     case 'explore':
-      return { ...s, explore: e.site as string, actors: {}, choices: null, versions: { ...(s.versions ?? {}), [`site:${e.site as string}`]: e.seq } }
+      return bump({ ...s, explore: e.site as string, actors: {}, choices: null }, `site:${e.site as string}`, e.seq)
     case 'at':
       return { ...s, place: { map: e.map as string, place: e.place as string } }
-    case 'site_updated':
-      return { ...s, versions: { ...(s.versions ?? {}), [`site:${e.site as string}`]: e.seq } }
-    case 'map_updated':
-      return { ...s, versions: { ...(s.versions ?? {}), [`map:${e.map as string}`]: e.seq } }
     case 'enter':
       s.actors[e.actor as string] = {
         position: (e.position as Position) ?? freePosition(s.actors),
@@ -136,10 +169,6 @@ export function apply(state: StageState, e: StageEvent): StageState {
       return { ...s, choices: { options: e.options as string[], seq: e.seq } }
     case 'roll':
       return { ...s, last_roll: { expr: e.expr as string, total: e.total as number, dice: (e.dice as Roll['dice']) ?? [], seq: e.seq } }
-    case 'scene_updated':
-      return { ...s, versions: { ...(s.versions ?? {}), [`scene:${e.location as string}`]: e.seq } }
-    case 'actor_updated':
-      return { ...s, versions: { ...(s.versions ?? {}), [e.actor as string]: e.seq } }
     case 'dm_status': {
       const dm = { status: e.status, reason: e.reason, message: e.message } as StageState['dm']
       const dm_log = e.dm_text ? [...s.dm_log, e.dm_text as string].slice(-30) : s.dm_log

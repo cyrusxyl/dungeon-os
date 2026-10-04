@@ -18,14 +18,8 @@ When combat begins:
      # Quick lookup (full data, cached)
      uv run dnd-cli get monsters/{monster-name}
 
-     # Extract minimal fields with jq
-     uv run dnd-cli get monsters/{monster-name} --json | jq '{
-       name: .name,
-       hp: .hit_points,
-       ac: .armor_class[0].value,
-       dex_mod: ((.dexterity - 10) / 2 | floor),
-       actions: .actions
-     }'
+     # Only the fields you need
+     uv run dnd-cli get monsters/{monster-name} --fields name,hit_points,armor_class,dexterity,actions
 
      # Search for appropriate monster
      uv run dnd-cli search monsters --name {query}
@@ -128,13 +122,7 @@ Player declares: "I cast Fire Bolt at the goblin"
 uv run dnd-cli get spells/{spell-name}
 
 # Or extract minimal fields
-uv run dnd-cli get spells/{spell-name} --json | jq '{
-  name: .name,
-  level: .level,
-  damage: .damage,
-  attack_type: .attack_type,
-  dc: .dc
-}'
+uv run dnd-cli get spells/{spell-name} --fields name,level,damage,attack_type,dc
 ```
 
 **Step 2: Check spell slots** (if spell level > 0)
@@ -202,10 +190,7 @@ When a spell, ability, or effect applies a condition:
    uv run dnd-cli info conditions {condition-index}
 
    # Or get raw data for minimal extraction
-   uv run dnd-cli get conditions/{condition-index} --json | jq '{
-     name: .name,
-     desc: .desc
-   }'
+   uv run dnd-cli get conditions/{condition-index} --fields name,desc
    ```
 
    Common conditions: `blinded`, `charmed`, `deafened`, `frightened`, `grappled`, `incapacitated`, `invisible`, `paralyzed`, `petrified`, `poisoned`, `prone`, `restrained`, `stunned`, `unconscious`, `exhaustion`
@@ -383,10 +368,7 @@ When a concentrating caster takes damage:
 Query damage type information:
 
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/damage-types/{damage-type}" | jq '{
-  name: .name,
-  desc: .desc
-}'
+uv run dnd-cli get damage-types/{damage-type} --fields name,desc
 ```
 
 Common types: `acid`, `bludgeoning`, `cold`, `fire`, `force`, `lightning`, `necrotic`, `piercing`, `poison`, `psychic`, `radiant`, `slashing`, `thunder`

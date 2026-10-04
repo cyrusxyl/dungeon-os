@@ -22,11 +22,11 @@ uv run dnd-cli get races/elf
 # Search for options
 uv run dnd-cli search classes --name wizard
 
-# Extract minimal fields with jq when needed
-uv run dnd-cli get races/elf --json | jq '{name, speed, ability_bonuses}'
+# Only the fields you need (a short answer saves context)
+uv run dnd-cli get races/elf --fields name,speed,ability_bonuses
 ```
 
-The wrapper caches all API responses for speed and token efficiency. All examples below can use either the wrapper or direct curl commands.
+The wrapper caches all API responses for speed and token efficiency. Use `--fields` to keep the answer short. Do not use curl: it stops the game for a permission prompt.
 
 ## Character Creation Workflow
 
@@ -36,42 +36,27 @@ When a player wants to create a new character, follow this guided workflow:
 
 1. **List available races**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/races" | jq -r '.results[] | "- \(.name) (\(.index))"'
+   uv run dnd-cli get races
    ```
 
 2. **Player selects race**, then fetch details:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/races/{race-index}" | jq '{
-     name: .name,
-     speed: .speed,
-     ability_bonuses: .ability_bonuses,
-     size: .size,
-     languages: .languages,
-     traits: .traits
-   }'
+   uv run dnd-cli get races/{race-index} --fields name,speed,ability_bonuses,size,languages,traits
    ```
 
 3. **Check for subraces** (Elf, Dwarf, Halfling, Gnome have subraces):
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/races/{race-index}/subraces" | jq -r '.results[] | "- \(.name) (\(.index))"'
+   uv run dnd-cli get races/{race-index}/subraces
    ```
 
    If subraces exist, player chooses one:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/subraces/{subrace-index}" | jq '{
-     name: .name,
-     desc: .desc,
-     ability_bonuses: .ability_bonuses,
-     racial_traits: .racial_traits
-   }'
+   uv run dnd-cli get subraces/{subrace-index} --fields name,desc,ability_bonuses,racial_traits
    ```
 
 4. **Fetch racial traits** (if player wants details):
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/traits/{trait-index}" | jq '{
-     name: .name,
-     desc: .desc
-   }'
+   uv run dnd-cli get traits/{trait-index} --fields name,desc
    ```
 
 5. **Record**: Note race, subrace (if any), ability bonuses, speed, languages, traits
@@ -80,39 +65,24 @@ When a player wants to create a new character, follow this guided workflow:
 
 1. **List available classes**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/classes" | jq -r '.results[] | "- \(.name) (\(.index))"'
+   uv run dnd-cli get classes
    ```
 
 2. **Player selects class**, then fetch details:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}" | jq '{
-     name: .name,
-     hit_die: .hit_die,
-     proficiency_choices: .proficiency_choices,
-     proficiencies: .proficiencies,
-     saving_throws: .saving_throws,
-     starting_equipment: .starting_equipment,
-     starting_equipment_options: .starting_equipment_options
-   }'
+   uv run dnd-cli get classes/{class-index} --fields name,hit_die,proficiency_choices,proficiencies,saving_throws,starting_equipment,starting_equipment_options
    ```
 
 3. **Get spellcasting info** (if applicable):
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}/spellcasting" | jq '{
-     spellcasting_ability: .spellcasting_ability.name,
-     info: .info
-   }'
+   uv run dnd-cli get classes/{class-index}/spellcasting --fields spellcasting_ability,info
    ```
 
 4. **Player chooses skill proficiencies**:
    - Class provides proficiency_choices (e.g., "Choose 2 from Arcana, History, Insight...")
    - Query each skill for description if needed:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/skills/{skill-index}" | jq '{
-     name: .name,
-     desc: .desc,
-     ability_score: .ability_score.name
-   }'
+   uv run dnd-cli get skills/{skill-index} --fields name,desc,ability_score
    ```
 
 5. **Record**: Class, hit die, proficiencies, saving throws, spellcasting ability
@@ -121,18 +91,12 @@ When a player wants to create a new character, follow this guided workflow:
 
 1. **List available backgrounds**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/backgrounds" | jq -r '.results[] | "- \(.name) (\(.index))"'
+   uv run dnd-cli get backgrounds
    ```
 
 2. **Player selects background**, then fetch details:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/backgrounds/{background-index}" | jq '{
-     name: .name,
-     starting_proficiencies: .starting_proficiencies,
-     language_options: .language_options,
-     starting_equipment: .starting_equipment,
-     feature: .feature
-   }'
+   uv run dnd-cli get backgrounds/{background-index} --fields name,starting_proficiencies,language_options,starting_equipment,feature
    ```
 
 3. **Record**: Background, additional proficiencies, languages, equipment, feature
@@ -163,12 +127,7 @@ uv run roll 4d6kh3 -v
 
 4. **Query ability score info** (optional, for player reference):
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/ability-scores/{ability-index}" | jq '{
-     name: .name,
-     full_name: .full_name,
-     desc: .desc,
-     skills: .skills
-   }'
+   uv run dnd-cli get ability-scores/{ability-index} --fields name,full_name,desc,skills
    ```
    Ability indexes: `str`, `dex`, `con`, `int`, `wis`, `cha`
 
@@ -219,15 +178,7 @@ uv run roll 4d6kh3 -v
 
 3. **Query equipment details** as needed:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/equipment/{equipment-index}" | jq '{
-     name: .name,
-     equipment_category: .equipment_category.name,
-     cost: .cost,
-     weight: .weight,
-     armor_class: .armor_class,
-     damage: .damage,
-     properties: .properties
-   }'
+   uv run dnd-cli get equipment/{equipment-index} --fields name,equipment_category,cost,weight,armor_class,damage,properties
    ```
 
 4. **Calculate starting gold** (if using gold instead of equipment):
@@ -238,7 +189,7 @@ uv run roll 4d6kh3 -v
 
 1. **Get class spell list**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}/spells" | jq -r '.results[] | .name'
+   uv run dnd-cli get classes/{class-index}/spells
    ```
 
 2. **Player chooses cantrips and spells** (consult class rules for number):
@@ -248,16 +199,7 @@ uv run roll 4d6kh3 -v
 
 3. **Query spell details**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/spells/{spell-index}" | jq '{
-     name: .name,
-     level: .level,
-     school: .school.name,
-     casting_time: .casting_time,
-     range: .range,
-     components: .components,
-     duration: .duration,
-     desc: .desc
-   }'
+   uv run dnd-cli get spells/{spell-index} --fields name,level,school,casting_time,range,components,duration,desc
    ```
 
 4. **Set spell slots**:

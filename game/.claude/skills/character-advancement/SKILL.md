@@ -42,14 +42,7 @@ When a character gains a level:
 Get class features for the new level:
 
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}/levels/{level}" | jq '{
-  level: .level,
-  ability_score_bonuses: .ability_score_bonuses,
-  prof_bonus: .prof_bonus,
-  features: .features,
-  spellcasting: .spellcasting,
-  class_specific: .class_specific
-}'
+uv run dnd-cli get classes/{class-index}/levels/{level} --fields level,ability_score_bonuses,prof_bonus,features,spellcasting,class_specific
 ```
 
 This returns:
@@ -98,16 +91,12 @@ If `ability_score_bonuses > 0` (typically levels 4, 8, 12, 16, 19):
 
 1. **List available feats**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/feats" | jq -r '.results[] | "- \(.name) (\(.index))"'
+   uv run dnd-cli get feats
    ```
 
 2. **Player selects feat**, query details:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/feats/{feat-index}" | jq '{
-     name: .name,
-     desc: .desc,
-     prerequisites: .prerequisites
-   }'
+   uv run dnd-cli get feats/{feat-index} --fields name,desc,prerequisites
    ```
 
 3. **Check prerequisites**: Verify character meets requirements (ability scores, proficiencies, etc.)
@@ -123,12 +112,7 @@ For each feature in the level's `features` array:
 
 1. **Query feature details**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/features/{feature-index}" | jq '{
-     name: .name,
-     level: .level,
-     class: .class.name,
-     desc: .desc
-   }'
+   uv run dnd-cli get features/{feature-index} --fields name,level,class,desc
    ```
 
 2. **Add to character**:
@@ -145,7 +129,7 @@ For each feature in the level's `features` array:
 
 **Get spell slots for new level**:
 ```bash
-curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}/levels/{level}" | jq '.spellcasting'
+uv run dnd-cli get classes/{class-index}/levels/{level} --fields spellcasting
 ```
 
 Returns spell slots by level and spells known/prepared count.
@@ -160,23 +144,14 @@ Returns spell slots by level and spells known/prepared count.
 1. **Check spells known at this level**: From class level data
 2. **Get class spell list**:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/classes/{class-index}/spells" | jq -r '.results[] | .name'
+   uv run dnd-cli get classes/{class-index}/spells
    ```
 
 3. **Filter by level**: Only show spells of levels the character can cast
 4. **Player chooses**: Add to `spellcasting.spells_known[]`
 5. **Query spell details** for reference:
    ```bash
-   curl -sL "https://www.dnd5eapi.co/api/2014/spells/{spell-index}" | jq '{
-     name: .name,
-     level: .level,
-     school: .school.name,
-     casting_time: .casting_time,
-     range: .range,
-     components: .components,
-     duration: .duration,
-     desc: .desc
-   }'
+   uv run dnd-cli get spells/{spell-index} --fields name,level,school,casting_time,range,components,duration,desc
    ```
 
 **Wizard Spell Learning**:
