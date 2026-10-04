@@ -7,7 +7,7 @@ import { PartyPanel } from '@/components/PartyPanel'
 import { StageView } from '@/components/StageView'
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
-import { sendInput, titleCase, useStage } from '@/lib/stage'
+import { postJson, sendInput, titleCase, useStage } from '@/lib/stage'
 
 const STATUS_TEXT: Record<string, string> = {
   starting: 'The DM is getting ready…',
@@ -41,7 +41,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
     const status = state?.dm.status
     if (ending === 'sent' && status === 'busy') setEnding('working')
     if (ending === 'working' && (status === 'idle' || status === 'exited')) {
-      fetch('/api/game/quit', { method: 'POST' }).then(onMenu)
+      postJson('/api/game/quit').then(onMenu)
     }
   }, [ending, state?.dm.status, onMenu])
 
@@ -89,7 +89,13 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           Console
         </Button>
         {ending !== 'no' ? (
-          <span className="pixel-font animate-pulse text-[10px] text-[var(--ember)]">The DM is writing the session record…</span>
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="pixel-font animate-pulse text-[10px] text-[var(--ember)]">The DM is writing the session record…</span>
+            {/* A way out if the DM never finishes (it exited, or never started the turn). */}
+            <Button size="sm" variant="outline" onClick={() => postJson('/api/game/quit').then(onMenu)} className="text-[10px]">
+              Leave without saving
+            </Button>
+          </span>
         ) : confirmQuit ? (
           <span className="flex flex-wrap items-center gap-2">
             <Button
@@ -106,7 +112,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
             >
               End session
             </Button>
-            <Button size="sm" variant="outline" onClick={() => fetch('/api/game/quit', { method: 'POST' }).then(onMenu)} className="text-[10px]">
+            <Button size="sm" variant="outline" onClick={() => postJson('/api/game/quit').then(onMenu)} className="text-[10px]">
               Leave without saving
             </Button>
             <Button size="sm" variant="outline" onClick={() => setConfirmQuit(false)} className="text-[10px]">
@@ -130,7 +136,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           {state.dm.status === 'exited' ? (
             <div className="flex items-center gap-3">
               <span className="text-[var(--dim)]">The DM session ended.</span>
-              <Button onClick={() => fetch('/api/restart', { method: 'POST' })} className="text-[10px]">
+              <Button onClick={() => postJson('/api/restart')} className="text-[10px]">
                 Start a new DM session
               </Button>
             </div>

@@ -36,16 +36,24 @@ from dnd_cli.campaign import (
 from view.settings import build_dm_command, load_settings, set_last_session_id
 
 WEB_VIEW_URL = "http://127.0.0.1:8000"
+def _newest(paths) -> float:
+    return max((p.stat().st_mtime for p in paths if p.is_file()), default=0.0)
+
+
 def ensure_web_build() -> None:
-    """Build the stage UI once, if it is missing and npm is available."""
+    """Build the stage UI if it is missing or older than its sources (after a pull or an edit)."""
     web = REPO_ROOT / "stage" / "web"
-    if (web / "dist" / "index.html").exists():
+    built = web / "dist" / "index.html"
+    sources = [*web.joinpath("src").rglob("*"), web / "index.html", web / "package.json", web / "vite.config.ts"]
+    if built.exists() and built.stat().st_mtime >= _newest(sources):
         return
     if not shutil.which("npm"):
-        print("dungeon-os: the stage UI is not built and npm is not on PATH.", file=sys.stderr)
+        print("dungeon-os: the stage UI needs a build and npm is not on PATH.", file=sys.stderr)
         return
-    print("dungeon-os: building the stage UI (first run only)…", file=sys.stderr)
-    subprocess.run(["npm", "install", "--silent"], cwd=web, check=True)
+    print("dungeon-os: building the stage UI…", file=sys.stderr)
+    modules = web / "node_modules" / ".package-lock.json"
+    if not modules.exists() or modules.stat().st_mtime < _newest([web / "package-lock.json"]):
+        subprocess.run(["npm", "install", "--silent"], cwd=web, check=True)
     subprocess.run(["npm", "run", "build", "--silent"], cwd=web, check=True)
 
 

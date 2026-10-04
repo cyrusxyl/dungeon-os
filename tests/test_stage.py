@@ -198,6 +198,21 @@ def test_rolls() -> None:
     check("the state keeps the last roll", s["last_roll"]["total"] == 13 and s["last_roll"]["seq"] == 1)
 
 
+def test_local_only() -> None:
+    print("server: local browser tab only")
+    from stage.server import request_allowed
+
+    local = {"host": "127.0.0.1:8000"}
+    check("same-origin websocket is allowed", request_allowed("websocket", "GET", {**local, "origin": "http://127.0.0.1:8000"}))
+    check("a websocket from another site is refused", not request_allowed("websocket", "GET", {**local, "origin": "https://evil.example"}))
+    check("a websocket from another local port is refused", not request_allowed("websocket", "GET", {**local, "origin": "http://127.0.0.1:9999"}))
+    check("a JSON POST from the tab is allowed",
+          request_allowed("http", "POST", {**local, "origin": "http://127.0.0.1:8000", "content-type": "application/json"}))
+    check("a text/plain POST is refused", not request_allowed("http", "POST", {**local, "content-type": "text/plain"}))
+    check("a foreign Host (DNS rebinding) is refused", not request_allowed("http", "GET", {"host": "evil.example:8000"}))
+    check("a GET with no Origin (page load, image) is allowed", request_allowed("http", "GET", {"host": "localhost:8000"}))
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -207,5 +222,6 @@ if __name__ == "__main__":
     test_actors()
     test_scenes()
     test_rolls()
+    test_local_only()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

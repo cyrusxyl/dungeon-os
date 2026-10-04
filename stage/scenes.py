@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-from functools import cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
@@ -300,7 +300,7 @@ def build(tokens: list[str], current: dict | None) -> dict:
     return spec
 
 
-@cache
+@lru_cache(maxsize=256)
 def _png(spec_json: str) -> bytes:
     buf = io.BytesIO()
     render(json.loads(spec_json)).save(buf, "PNG")

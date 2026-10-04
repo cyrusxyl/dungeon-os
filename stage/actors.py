@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import io
 import json
-from functools import cache
+from functools import cache, lru_cache
 from pathlib import Path
 
 from PIL import Image
@@ -141,7 +141,7 @@ def save(campaign_dir: Path, actor_id: str, spec: dict) -> Path:
 FACING = {"left": "right", "far-left": "right", "right": "left", "far-right": "left"}
 
 
-@cache
+@lru_cache(maxsize=256)
 def _png(spec_json: str, kind: str, facing: str, emotion: str | None) -> bytes:
     spec = json.loads(spec_json)
     if "tile" in spec:

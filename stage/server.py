@@ -30,6 +30,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
+from starlette.middleware import Middleware
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
@@ -184,6 +185,49 @@ class Stage:
         # A short gap so the TUI does not take the Enter as part of a paste.
         await asyncio.sleep(0.08)
         self.dm.write("\r")
+
+
+LOCAL_HOSTS = {"127.0.0.1", "localhost"}
+
+
+def request_allowed(scope_type: str, method: str, headers: dict[str, str]) -> bool:
+    """Only this machine's own browser tab may drive the DM.
+
+    The DM terminal accepts keystrokes, so a web page on another site must not
+    reach it: WebSockets have no CORS, and a cross-site text/plain POST needs
+    no preflight. Rules: the Host is a loopback name (also stops DNS
+    rebinding); an Origin, when sent, is this same host and port; a POST is
+    JSON (a plain cross-site form cannot send that without a preflight).
+    """
+    host = headers.get("host", "")
+    if host.rsplit(":", 1)[0] not in LOCAL_HOSTS:
+        return False
+    origin = headers.get("origin")
+    if origin is not None and origin.split("://", 1)[-1].rstrip("/") != host:
+        return False
+    if scope_type == "http" and method == "POST":
+        return headers.get("content-type", "").split(";")[0].strip() == "application/json"
+    return True
+
+
+class LocalOnly:
+    """ASGI middleware: refuse anything `request_allowed` refuses, websockets included."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
+            if not request_allowed(scope["type"], scope.get("method", "GET"), headers):
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                else:
+                    await send({"type": "http.response.start", "status": 403,
+                                "headers": [(b"content-type", b"text/plain")]})
+                    await send({"type": "http.response.body", "body": b"Forbidden: local browser tab only."})
+                return
+        await self.app(scope, receive, send)
 
 
 def _party(campaign_dir: Path) -> dict:
@@ -484,7 +528,7 @@ def create_app(
     ]
     if (WEB_DIST / "assets").is_dir():
         routes.append(Mount("/assets", StaticFiles(directory=WEB_DIST / "assets")))
-    app = Starlette(routes=routes, lifespan=lifespan)
+    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(LocalOnly)])
     app.state.table = table
     return app
 

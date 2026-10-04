@@ -22,7 +22,7 @@ def execute_set(campaign, actor_id: str, tokens: list[str], change: bool = False
     def go(campaign_dir):
         if not tokens:
             raise lpc.ActorError("give at least one setting, for example name=Sireth body=female.")
-        if not lpc.slug(actor_id) == actor_id.split("#")[0] and "#" not in actor_id:
+        if not beat.ID_RE.match(actor_id):
             raise lpc.ActorError(f"actor id {actor_id!r}: use lower-case letters, digits, '-' or '_'.")
         current = json.loads(path.read_text()) if (path := actors.actors_dir(campaign_dir) / f"{actor_id}.json").exists() else None
         if current is not None and not change:

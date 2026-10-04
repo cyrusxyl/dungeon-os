@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
+import { postJson } from '@/lib/stage'
 
 interface Campaign {
   slug: string
@@ -27,8 +28,7 @@ export interface MenuData {
 type Panel = 'main' | 'load' | 'new' | 'settings'
 
 async function post(url: string, body: unknown): Promise<Record<string, unknown>> {
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-  return r.json()
+  return (await postJson(url, body)).json()
 }
 
 function Panel({ title, children, onBack }: { title: string; children: React.ReactNode; onBack: () => void }) {
