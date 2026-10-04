@@ -60,6 +60,20 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
 - `name=` is the name on the dialogue box (use `_` for spaces). `body=` is `male`, `female`, `muscular`, `teen`, `pregnant`, or `child`. `skin=` and `eyes=` are palettes.
 - Every other word is an item, optionally with a color: `robe:white`. Names of the head, ears, hair, clothes, legs, shoes, hats, weapons and more: `uv run dnd-cli actor options` (types) and `uv run dnd-cli actor options <type> --body female` (items and colors that fit).
 - Start from a kind with `preset=guard` and change pieces: `uv run dnd-cli actor set captain-voss preset=guard name=Captain_Voss hair_buzzcut:black`. Presets: goblin, hobgoblin, orc, troll, skeleton, zombie, vampire, kobold, lizardfolk, gnoll, werewolf, minotaur, bandit, thug, guard, knight, cultist, commoner, merchant, noble, priest, wizard, sailor.
+- **Race features.** Add these to clothes and hair, or the race does not show:
+
+  | Race | Add |
+  |---|---|
+  | Elf, half-elf | `elven` |
+  | Drow | `elven skin=blue` (or `skin=black`), often `eyes=red`, white or platinum hair |
+  | Dwarf | `body=muscular` (or `male`), a beard such as `beard:chestnut` |
+  | Halfling, gnome | `body=teen`; gnome also `elven` |
+  | Half-orc | `heads_orc_male` or `heads_orc_female`, `skin=pale_green` (or `green`, `dark_green`) |
+  | Dragonborn | `body=muscular heads_lizard_male tail_lizard` (or `heads_lizard_female`), a scale color as `skin=` |
+  | Tiefling | `horns_curled` (or `horns_backwards`) and `tail_lizard`, an unusual `skin=` such as `lavender` or `fur_copper` |
+  | Human | nothing extra |
+
+  The `child` body fits only a few items. Use `teen` for small folk.
 - A second `actor set` on the same id changes only the pieces you give; one item per type, the new one wins.
 - A warning "has no sprite for body ..." means the item will not show on that body. Pick an item the warning says fits.
 - Unnamed monsters need nothing: `goblin#1` and `goblin#2` use the `goblin` preset. A beast with no preset (`wolf#1`, `rat#2`) finds a matching monster tile by its name.
