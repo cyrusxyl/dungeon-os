@@ -37,6 +37,7 @@ For any clue the players must find to move the story forward, place **three** cl
 - If the group stalls in planning, add a new event: a guard arrives, a noise sounds, time runs out.
 - Move the spotlight between players often; keep individual scenes short.
 - End a session on a cliffhanger when the fiction naturally gives you one — do not force it.
+- Keep each beat short. Follow the "Narration Budget" in AGENTS.md: at most 3 sentences of narration, at most 2 sentences per NPC line, end on a prompt to the player. A short beat gives the players more turns, and more turns is good pacing.
 
 ## Improvisation: "Yes, and" / "Yes, but"
 
