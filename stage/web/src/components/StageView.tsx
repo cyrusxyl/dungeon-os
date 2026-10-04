@@ -1,0 +1,97 @@
+import { useEffect, useRef, useState } from 'react'
+
+import { type Position, type StageState, titleCase } from '@/lib/stage'
+
+// Logical stage size in source pixels: a 10 x 6 room of 32 px LPC tiles.
+export const STAGE_W = 320
+export const STAGE_H = 192
+const FRAME = 64
+const FLOOR_Y = 100
+const SLOT_X: Record<Position, number> = {
+  'far-left': 8,
+  left: 56,
+  center: 128,
+  right: 200,
+  'far-right': 248,
+}
+
+function useIntegerScale(ref: React.RefObject<HTMLDivElement | null>): number {
+  const [scale, setScale] = useState(2)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      setScale(Math.max(1, Math.floor(Math.min(width / STAGE_W, height / STAGE_H))))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref])
+  return scale
+}
+
+function Img({ src, fallback, className }: { src: string; fallback: React.ReactNode; className?: string }) {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [src])
+  if (failed) return <>{fallback}</>
+  return <img src={src} alt="" draggable={false} className={`pixelated ${className ?? ''}`} onError={() => setFailed(true)} />
+}
+
+function Silhouette({ id }: { id: string }) {
+  // Shown until an actor has an appearance: a plain figure shape, never a guess.
+  return (
+    <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
+      <ellipse cx="32" cy="60" rx="12" ry="3" fill="#000" opacity="0.35" />
+      <circle cx="32" cy="22" r="8" fill="#3a3350" />
+      <rect x="22" y="31" width="20" height="26" rx="3" fill="#3a3350" />
+      <title>{titleCase(id)}</title>
+    </svg>
+  )
+}
+
+export function StageView({ state, speaker }: { state: StageState; speaker?: string }) {
+  const box = useRef<HTMLDivElement>(null)
+  const scale = useIntegerScale(box)
+  const scene = state.scene
+
+  return (
+    <div ref={box} className="flex h-full w-full items-center justify-center overflow-hidden">
+      <div
+        className="relative shrink-0 overflow-hidden"
+        style={{ width: STAGE_W, height: STAGE_H, transform: `scale(${scale})`, transformOrigin: 'center' }}
+      >
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(#221d30 0 52%, #2c2536 52% 100%)' }} />
+        {scene && (
+          <Img
+            key={scene}
+            src={`/asset/scene/${scene}.png`}
+            className="absolute inset-0 h-full w-full"
+            fallback={
+              <div className="absolute inset-x-0 top-6 text-center text-[8px] tracking-wider text-[var(--dim)] pixel-font">
+                {titleCase(scene)}
+              </div>
+            }
+          />
+        )}
+        {Object.entries(state.actors).map(([id, actor]) => {
+          const x = SLOT_X[actor.position] ?? SLOT_X.center
+          const talking = id === speaker
+          return (
+            <div
+              key={id}
+              className="absolute transition-[left] duration-300"
+              style={{ left: x, top: FLOOR_Y - (talking ? 2 : 0), width: FRAME, height: FRAME }}
+            >
+              <Img src={`/asset/actor/${encodeURIComponent(id)}/full.png?f=${actor.position}`} fallback={<Silhouette id={id} />} className="h-full w-full" />
+            </div>
+          )
+        })}
+        {!scene && Object.keys(state.actors).length === 0 && (
+          <div className="absolute inset-0 grid place-items-center text-[8px] text-[var(--dim)] pixel-font">
+            {state.dm.status === 'starting' ? 'The DM sets the table…' : 'No scene yet'}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

@@ -7,12 +7,21 @@ This outer folder is for the development of the Dungeon OS kernel, enter the `du
 ## Playing
 
 ```bash
-uv run dungeon-os            # start menu: Resume, Load Game, New Game, Settings
-uv run dungeon-os --web      # same menu, served to a browser
-uv run dungeon-os <slug>     # skip the menu, start that campaign directly
+uv run dungeon-os            # visual stage in a browser, for the active campaign
+uv run dungeon-os <slug>     # visual stage for that campaign
+uv run dungeon-os --classic  # earlier terminal view: Resume, Load Game, New Game, Settings
 ```
 
-The start menu runs the DM (`claude` by default) in a real terminal on the
+The visual stage runs the DM (`claude` by default) in a terminal that the
+stage server owns, and shows the game in a pixel-art web page: the room, the
+characters in it, a dialogue box with portraits, choice buttons, and the party
+panel. The DM drives it with `uv run dnd-cli show beat` (see the `stage`
+skill in `game/.claude/skills/`). A browser reload reconnects to the same DM
+session. The DM's raw terminal is in the Console drawer.
+
+The first launch builds the web UI with npm (Node 22+).
+
+In `--classic` mode, the start menu runs the DM in a real terminal on the
 left, with a live state and character panel on the right.
 
 - **Resume** continues the active campaign (the last one played) from its game

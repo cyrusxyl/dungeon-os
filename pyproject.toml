@@ -13,6 +13,10 @@ dependencies = [
     "textual>=8.2.0",
     "textual-serve>=1.0.0",
     "textual-tty>=0.4.0",
+    "starlette>=1.7.0",
+    "uvicorn[standard]>=0.54.0",
+    "ptyprocess>=0.7.0",
+    "pillow>=12.3.0",
 ]
 
 [project.scripts]
@@ -25,4 +29,4 @@ dungeon-view-web = "view.serve:main"
 package = true
 
 [tool.setuptools.packages.find]
-include = ["dnd_cli", "dnd_cli.*", "view", "view.*"]
+include = ["dnd_cli", "dnd_cli.*", "view", "view.*", "stage", "stage.*"]

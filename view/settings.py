@@ -107,12 +107,15 @@ def build_dm_command(
     session_id: str,
     *,
     resume: bool = False,
+    initial_prompt: str | None = None,
 ) -> list[str]:
     """Build the shell command that runs the DM agent in the terminal widget.
 
     `sh -c "cd <game_dir> && exec <agent> ..."` — cd (not a Popen cwd kwarg)
     because the terminal widget's spawn interface takes only a command. Every
     interpolated value is shell-quoted: the model comes from a free-text field.
+    `initial_prompt` starts the interactive session with that first message,
+    so the DM opens the game without waiting for the player to type.
     """
     framework = settings.get("agent_framework", DEFAULTS["agent_framework"])
     model = (settings.get("model") or "").strip()
@@ -132,6 +135,12 @@ def build_dm_command(
         parts = [FRAMEWORKS[framework]["binary"]]
         if model:
             parts += ["-m", shlex.quote(model)]
+        if initial_prompt and framework == "gemini":
+            parts += ["-i", shlex.quote(initial_prompt)]
+            initial_prompt = None
+
+    if initial_prompt:
+        parts.append(shlex.quote(initial_prompt))
 
     inner = f"cd {shlex.quote(str(game_dir))} && exec " + " ".join(parts)
     return ["sh", "-c", inner]

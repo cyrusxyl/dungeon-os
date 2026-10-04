@@ -21,6 +21,7 @@ from dnd_cli.commands import info as cmd_info
 from dnd_cli.commands import cache_cmd
 from dnd_cli.commands import canon_cmd
 from dnd_cli.commands import character_cmd
+from dnd_cli.commands import show_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -221,6 +222,16 @@ def create_parser():
     p.add_argument("name")
     p.add_argument("--level", type=int, choices=range(1, 10), default=None)
 
+    # Show command group (the visual stage)
+    show_parser = subparsers.add_parser(
+        "show",
+        help="Put story on the visual stage: scene, actors, narration, dialogue, choices"
+    )
+    show_sub = show_parser.add_subparsers(dest="show_command", help="Show subcommand")
+    p = show_sub.add_parser("beat", help="Read beat markup from stdin (or --file) and show it")
+    p.add_argument("--campaign", default=None, help="Campaign slug (default: the active campaign)")
+    p.add_argument("--file", default=None, help="Read the beat from this file instead of stdin")
+
     return parser
 
 
@@ -355,6 +366,12 @@ def main():
             else:
                 print(f"Unknown character subcommand: {cc}", file=sys.stderr)
                 return 1
+
+        elif args.command == "show":
+            if args.show_command == "beat":
+                return show_cmd.execute_beat(args.campaign, args.file)
+            print("Usage: dnd-cli show beat [--campaign C] [--file F] (see --help)", file=sys.stderr)
+            return 1
 
         elif args.command == "warmup":
             resource = args.resource or "all"

@@ -1,0 +1,57 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run:*)",
+      "Edit(./campaigns/**)",
+      "Write(./campaigns/**)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || python3 \"$DUNGEON_STAGE_HOOK\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || python3 \"$DUNGEON_STAGE_HOOK\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|elicitation_dialog|agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || python3 \"$DUNGEON_STAGE_HOOK\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"The game runs on the visual stage. Ask the players with an @choices line in a dnd-cli show beat instead of AskUserQuestion.\"}}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

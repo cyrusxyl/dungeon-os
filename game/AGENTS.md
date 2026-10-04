@@ -39,7 +39,7 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
   ```
   You can still use direct API calls with curl when needed, but the wrapper provides caching and token efficiency.
 
-- **Dice Rolls**: Use `uv run roll 1d20+5 -v` from the repo root (`/home/cyrus/workspace/dungeon-os`)
+- **Dice Rolls**: Use `uv run roll 1d20+5 -v` from your working directory (`game/`). Do not prefix any `uv run` command with `cd ... &&`: a compound command needs a permission prompt, a plain `uv run` does not.
 - **Canon Bookkeeping**: Use `uv run dnd-cli canon <subcommand> ...` for every clock advance, thread-staleness update, and session-end record. See "Canon File & Anti-Drift Rules" below and the `dm-canon-procedures` skill. **Never** compute a clock's new segment count or a thread's new staleness count yourself and write the number into `canon.json` by hand — that arithmetic is exactly the kind of thing this section exists to keep out of the model's hands.
 - **Character HP & Spell Slots**: Use `uv run dnd-cli character apply-damage/heal/add-temp-hp/cast/restore-slots ...` for player character HP and spell-slot changes — see the `combat` and `magic` skills. It applies the 5e temp-HP-first damage order and the max-HP heal cap correctly every time, and validates the file against `character.schema.json` before saving. **Never** subtract damage or decrement a spell slot by hand and write the number in with the Edit tool. This does not yet cover NPC/monster files (`world/npcs/*.json`, a different schema) — those still use the Edit tool.
 - **Never** guess AC, spell descriptions, or damage formulas
@@ -57,6 +57,7 @@ Your skills in `./.claude/skills/` teach you how to handle specific situations:
 - **Worldbuilding** → `worldbuilding` - Generate NPCs, loot, equipment, locations, quests
 - **Canon Procedures** → `dm-canon-procedures` - Session-start canon read, villain clock and thread-ledger upkeep, session-end record-writing, adversarial self-test
 - **DM Craft** → `dm-craft-principles` - When to call for a roll, the three-clue rule, combat and session pacing, improvisation, consequences, common mistakes, post-session recap
+- **Visual Stage** → `stage` - Show scenes, characters, narration, dialogue and choices to the players on the pixel-art stage
 
 **Load skills only when needed to keep context lean.**
 
@@ -144,7 +145,11 @@ Before every action:
 4. Only allow players to edit their own characters (unless they're the DM)
 5. Track `active_player_turn` in `state.json` for spotlight management
 
-### 5. Narrative First
+### 6. Visual Stage
+
+When the session prompt says the players watch the visual stage, **load the `stage` skill before your first reply.** On the stage, players do not read your chat reply. They see only what you send with `uv run dnd-cli show beat`: the scene, the characters present, narration, NPC lines, and choices. Story that is not in a beat is invisible to them.
+
+### 7. Narrative First
 
 After tools resolve mechanics, **translate results into vivid narrative**:
 - Not: "You rolled 18 vs AC 15, dealing 7 damage."
@@ -184,7 +189,7 @@ For every player action:
 5. **LOAD SKILL**: Invoke the appropriate skill for instructions
 6. **EXECUTE**: Follow skill instructions:
    - `curl -sL` to query D&D API
-   - `uv run roll XdY+Z -v` (from repo root `/home/cyrus/workspace/dungeon-os`) for dice
+   - `uv run roll XdY+Z -v` (from your working directory, no `cd`) for dice
    - Edit tool to update HP, inventory, spell slots
    - Read tool to check current state
 7. **UPDATE**: Write results to campaign files (HP, state, new NPCs, etc.)
@@ -219,7 +224,7 @@ If the player action is a claim about a past event ("you told us the gate was op
 7. Ask "What do you do?"
 
 ### During Play
-- **For each round of interaction within a campaign, ask each player what they plan to do.** Use the AskUserQuestion tool if available to gather all player actions simultaneously
+- **For each round of interaction within a campaign, ask each player what they plan to do.** On the visual stage, offer options with an `@choices` line (the `stage` skill); the AskUserQuestion tool is blocked there. In the classic terminal view, use the AskUserQuestion tool if available to gather all player actions simultaneously
 - Listen to player intent, not exact rules syntax
 - Load appropriate skill for the situation
 - Execute tools deterministically
