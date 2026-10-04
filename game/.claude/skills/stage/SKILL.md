@@ -51,7 +51,7 @@ A character speaking with `@say` is put on stage if it is not there yet. A warni
 
 ## Characters: how they look
 
-Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Looks are saved in the campaign and reused in every later session. Do not check or redo them. **Set a look only when `show beat` warns** "no appearance for ..." (the stage showed a silhouette), then send the beat again or go on:
+Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Looks are saved in the campaign and reused in every later session. Do not check or redo them. **Set a look only when `show beat` warns** "no appearance for ..." (the stage showed a silhouette), and **do not send the beat again**: the stage swaps the silhouette for the new picture by itself, and a resent beat makes the players read every line twice.
 
 ```bash
 uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin=light eyes=green hair_bob:chestnut blouse_longsleeve:white corset:maroon skirt_straight:black shoes_basic:black
@@ -84,7 +84,7 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
 
 ## Places: how they look
 
-Each location shows as a room or outdoor place built from LPC tiles. Places are saved in the campaign and reused on every visit. **Set a place only when `show beat` warns** "no look for location ..." (the stage showed a blank room). The location id in `scene set` and in `@scene` must be the same. For a new place you know you will show, you can set it before the beat.
+Each location shows as a room or outdoor place built from LPC tiles. Places are saved in the campaign and reused on every visit. **Set a place only when `show beat` warns** "no look for location ..." (the stage showed a blank room). Do not send the beat again; the room appears by itself. The location id in `scene set` and in `@scene` must be the same. For a new place you know you will show, you can set it before the beat.
 
 ```bash
 uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center=bust +plant@front_left
@@ -106,9 +106,9 @@ uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center
 
 1. **Each reply is a beat.** Follow the Narration Budget in AGENTS.md: at most 3 sentences of narration, at most 2 sentences per NPC line, then a prompt to the player.
 2. **Split long speech.** One `@say` is one dialogue-box page. Two short `@say` lines read better than one long one.
-3. **Show the result of a roll in the story text**, for example `@narrate Your blade bites deep (18 vs AC 15) — 7 damage.`
+3. **Dice show on the stage by themselves.** Every `uv run roll ...` appears as a dice box the players watch. Still say what the roll means in the story text, for example `@narrate Your blade bites deep (18 vs AC 15) — 7 damage.` For a roll behind the DM screen (a hidden check, a secret DC), end the command with the shell comment `# secret`: `uv run roll 1d20+3 -v  # secret`. It then never reaches the stage.
 4. **Use `@choices` to ask the players.** The AskUserQuestion tool is blocked on the stage. Give 2 to 4 short options. The player can still type anything.
-5. **Never speak or act for a player character.** Do not write `@say` lines for PCs, and do not decide what they do or feel. Put PCs on stage with `@enter`, describe the world and the NPCs, then let the players answer with `@choices` or free text.
+5. **Never speak or act for a player character.** Never write an `@say` line for a PC, even when the player said what the character does: tell the action with `@narrate` ("Aragorn's longsword sings through the air…") and leave the words to the player. Do not decide what a PC does, says, or feels beyond what the player stated. Put PCs on stage with `@enter`, describe the world and the NPCs, then let the players answer with `@choices` or free text.
 6. **Hidden information stays hidden.** A beat is shown to the players. Never put DM-only facts, villain plans, or clock counts in a beat. A disguised NPC uses an actor id and name the players know.
 7. **Referee mode is a beat too.** A ruling is an `@narrate` line, short and plain (AGENTS.md rule 5).
 8. **If the command fails**, read the error, fix the line it names, and send the beat again. Do not tell the story in chat instead.

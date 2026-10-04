@@ -20,6 +20,8 @@ import asyncio
 import json
 import os
 import threading
+import uuid
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -27,6 +29,7 @@ import ptyprocess
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
@@ -215,11 +218,103 @@ def _party(campaign_dir: Path) -> dict:
     return out
 
 
-def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
-    stage = Stage(campaign_dir, dm_command)
-    # Restore the stage from earlier sessions without broadcasting it.
-    stage.fold(stage.read_new_events())
-    stage.state["dm"] = {"status": "starting"}
+def stage_first_prompt(campaign_slug: str) -> str:
+    # Name the campaign: without it, the DM may "correct" active.json from memory.
+    return (
+        f"Start the session for the campaign `{campaign_slug}`. campaigns/active.json "
+        "already points at it; do not change that file. The players watch the visual "
+        "stage, so show every scene, narration line and NPC line with "
+        "`uv run dnd-cli show beat` (load the `stage` skill first)."
+    )
+
+
+def default_command(campaign_dir: Path) -> list[str]:
+    """Make the campaign active and build a fresh DM session for it."""
+    from dnd_cli.campaign import GAME_DIR, set_active_campaign
+    from view.settings import build_dm_command, load_settings, set_last_session_id
+
+    set_active_campaign(campaign_dir.name)
+    session_id = str(uuid.uuid4())
+    set_last_session_id(campaign_dir.name, session_id)
+    return build_dm_command(
+        load_settings(), GAME_DIR, session_id, initial_prompt=stage_first_prompt(campaign_dir.name)
+    )
+
+
+class Table:
+    """The one game this server runs, or none (the start menu)."""
+
+    def __init__(self, command_factory: Callable[[Path], list[str]]):
+        self.command_factory = command_factory
+        self.stage: Stage | None = None
+        self.tail_task: asyncio.Task | None = None
+        self.loop: asyncio.AbstractEventLoop | None = None
+
+    async def start(self, campaign_dir: Path, dm_command: list[str] | None = None) -> Stage:
+        await self.stop()
+        stage = Stage(campaign_dir, dm_command or self.command_factory(campaign_dir))
+        stage.loop = self.loop
+        # Restore the stage from earlier sessions without broadcasting it.
+        stage.fold(stage.read_new_events())
+        stage.state["dm"] = {"status": "starting"}
+        stage.dm.start()
+        self.tail_task = asyncio.ensure_future(stage.tail())
+        self.stage = stage
+        return stage
+
+    async def stop(self) -> None:
+        stage, self.stage = self.stage, None
+        if stage is None:
+            return
+        if self.tail_task:
+            self.tail_task.cancel()
+        stage.dm.stop()
+        # Clients of the old game go back to the menu.
+        for ws in list(stage.event_clients) + list(stage.pty_clients):
+            try:
+                await ws.close()
+            except Exception:
+                pass
+
+
+def _menu(table: Table) -> dict:
+    from dnd_cli.campaign import CAMPAIGNS_DIR, active_campaign_slug, list_campaigns
+    from view.settings import FRAMEWORKS, campaign_in_progress, framework_available, load_settings
+
+    campaigns = [
+        {"slug": slug, "name": name, "in_progress": campaign_in_progress(CAMPAIGNS_DIR / slug)}
+        for slug, name in list_campaigns()
+    ]
+    try:
+        active = active_campaign_slug()
+    except (OSError, ValueError, KeyError):
+        active = None
+    resume = next((c for c in campaigns if c["slug"] == active and c["in_progress"]), None)
+    settings = load_settings()
+    return {
+        "game": table.stage.campaign_dir.name if table.stage else None,
+        "campaigns": campaigns,
+        "resume": resume,
+        "settings": {"agent_framework": settings["agent_framework"], "model": settings["model"]},
+        "frameworks": [
+            {"key": k, "label": v["label"], "available": framework_available(k), "models": v["models"]}
+            for k, v in FRAMEWORKS.items()
+        ],
+    }
+
+
+def create_app(
+    campaign_dir: Path | None = None,
+    dm_command: list[str] | None = None,
+    command_factory: Callable[[Path], list[str]] = default_command,
+) -> Starlette:
+    """Serve the stage. With a campaign, start it at once; without one, open the start menu."""
+    table = Table(command_factory)
+
+    def need() -> Stage:
+        if table.stage is None:
+            raise HTTPException(409, "No game is running.")
+        return table.stage
 
     async def index(request: Request):
         page = WEB_DIST / "index.html"
@@ -232,7 +327,11 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
 
     async def ws_events(ws: WebSocket):
         await ws.accept()
-        await ws.send_json({"kind": "snapshot", "state": stage.state, "campaign": campaign_dir.name})
+        stage = table.stage
+        if stage is None:
+            await ws.close(code=4000)
+            return
+        await ws.send_json({"kind": "snapshot", "state": stage.state, "campaign": stage.campaign_dir.name})
         stage.event_clients.add(ws)
         try:
             while True:
@@ -242,6 +341,10 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
 
     async def ws_pty(ws: WebSocket):
         await ws.accept()
+        stage = table.stage
+        if stage is None:
+            await ws.close(code=4000)
+            return
         await ws.send_bytes(bytes(stage.dm.scrollback))
         stage.pty_clients.add(ws)
         try:
@@ -256,18 +359,52 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
 
     async def api_input(request: Request):
         body = await request.json()
-        await stage.submit(str(body.get("text", "")))
+        await need().submit(str(body.get("text", "")))
         return JSONResponse({"ok": True})
 
     async def api_restart(request: Request):
+        stage = need()
         if not stage.dm.alive:
+            stage.dm.command = table.command_factory(stage.campaign_dir)
             stage.dm.start()
             await stage._local_event({"type": "dm_status", "status": "starting"})
         return JSONResponse({"ok": True, "alive": stage.dm.alive})
 
+    async def api_menu(request: Request):
+        return JSONResponse(_menu(table))
+
+    async def api_game_start(request: Request):
+        from dnd_cli.campaign import CampaignError, create_campaign, resolve_campaign_dir
+
+        body = await request.json()
+        try:
+            if body.get("new_name"):
+                slug = create_campaign(str(body["new_name"]))
+            else:
+                slug = str(body.get("campaign", ""))
+            campaign = resolve_campaign_dir(slug)
+        except (CampaignError, OSError) as e:
+            return JSONResponse({"error": str(e)}, status_code=400)
+        await table.start(campaign)
+        return JSONResponse({"game": campaign.name})
+
+    async def api_game_quit(request: Request):
+        await table.stop()
+        return JSONResponse({"game": None})
+
+    async def api_settings(request: Request):
+        from view.settings import FRAMEWORKS, save_settings
+
+        body = await request.json()
+        if body.get("agent_framework") not in FRAMEWORKS:
+            return JSONResponse({"error": "unknown agent framework"}, status_code=400)
+        save_settings({"agent_framework": body["agent_framework"], "model": str(body.get("model", ""))})
+        return JSONResponse(_menu(table))
+
     async def asset_actor(request: Request):
+        campaign = need().campaign_dir
         actor_id = request.path_params["actor_id"]
-        spec = actors.load(campaign_dir, actor_id)
+        spec = actors.load(campaign, actor_id)
         if spec is None:
             return Response(status_code=404)
         emotion = request.path_params.get("emotion")
@@ -281,7 +418,7 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
         return Response(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
 
     async def asset_scene(request: Request):
-        spec = scenes.load(campaign_dir, request.path_params["location"])
+        spec = scenes.load(need().campaign_dir, request.path_params["location"])
         if spec is None:
             return Response(status_code=404)
         try:
@@ -290,8 +427,18 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
             return Response(status_code=404)
         return Response(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
 
+    async def asset_template(request: Request):
+        """A template with no campaign, for the start menu's backdrop."""
+        name = request.path_params["name"]
+        spec = {"template": name, "mood": request.query_params.get("mood", "day")}
+        try:
+            png = await run_in_threadpool(scenes.png, spec)
+        except (AssetError, ValueError, OSError):
+            return Response(status_code=404)
+        return Response(png, media_type="image/png")
+
     async def api_scene(request: Request):
-        spec = scenes.load(campaign_dir, request.path_params["location"])
+        spec = scenes.load(need().campaign_dir, request.path_params["location"])
         try:
             mood = scenes.resolve(spec)["mood"] if spec else "day"
         except ValueError:
@@ -300,32 +447,36 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
 
     async def api_actor(request: Request):
         actor_id = request.path_params["actor_id"]
-        spec = actors.load(campaign_dir, actor_id) or {}
+        spec = actors.load(need().campaign_dir, actor_id) or {}
         name = spec.get("name") or actor_id.split("#")[0].replace("-", " ").title()
         if "#" in actor_id and actor_id.split("#")[1]:
             name = f"{name} {actor_id.split('#')[1]}"
         return JSONResponse({"id": actor_id, "name": name, "has_look": bool(spec)})
 
     async def api_party(request: Request):
-        return JSONResponse(_party(campaign_dir))
+        return JSONResponse(_party(need().campaign_dir))
 
     @asynccontextmanager
     async def lifespan(app):
-        stage.loop = asyncio.get_running_loop()
-        stage.dm.start()
-        tail = asyncio.ensure_future(stage.tail())
+        table.loop = asyncio.get_running_loop()
+        if campaign_dir is not None:
+            await table.start(campaign_dir, dm_command)
         yield
-        tail.cancel()
-        stage.dm.stop()
+        await table.stop()
 
     routes = [
         Route("/", index),
+        Route("/api/menu", api_menu),
+        Route("/api/game/start", api_game_start, methods=["POST"]),
+        Route("/api/game/quit", api_game_quit, methods=["POST"]),
+        Route("/api/settings", api_settings, methods=["POST"]),
         Route("/api/input", api_input, methods=["POST"]),
         Route("/api/restart", api_restart, methods=["POST"]),
         Route("/api/party", api_party),
         Route("/api/actor/{actor_id}", api_actor),
         Route("/asset/scene/{location}.png", asset_scene),
         Route("/api/scene/{location}", api_scene),
+        Route("/asset/template/{name}.png", asset_template),
         Route("/asset/actor/{actor_id}/full.png", asset_actor),
         Route("/asset/actor/{actor_id}/portrait/{emotion}.png", asset_actor),
         WebSocketRoute("/ws", ws_events),
@@ -334,11 +485,16 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
     if (WEB_DIST / "assets").is_dir():
         routes.append(Mount("/assets", StaticFiles(directory=WEB_DIST / "assets")))
     app = Starlette(routes=routes, lifespan=lifespan)
-    app.state.stage = stage
+    app.state.table = table
     return app
 
 
-def serve(campaign_dir: Path, dm_command: list[str], host: str = "127.0.0.1", port: int = 8000) -> None:
+def serve(
+    campaign_dir: Path | None = None,
+    dm_command: list[str] | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
     import uvicorn
 
     uvicorn.run(create_app(campaign_dir, dm_command), host=host, port=port, log_level="warning")

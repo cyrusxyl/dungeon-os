@@ -15,7 +15,6 @@ and the browser (via view/serve.py) alike.
 
 from __future__ import annotations
 
-import json
 import uuid
 
 from textual.app import App, ComposeResult
@@ -37,8 +36,8 @@ from view.app import ViewApp
 from view.settings import (
     FRAMEWORKS,
     build_dm_command,
+    campaign_in_progress,
     framework_available,
-    get_last_session_id,
     load_settings,
     save_settings,
     set_last_session_id,
@@ -108,29 +107,6 @@ def _safe_active_slug() -> str | None:
         return active_campaign_slug()
     except (OSError, ValueError, KeyError):
         return None
-
-
-def _campaign_in_progress(campaign_dir) -> bool:
-    """True if this campaign has been played and can be resumed from its files.
-
-    Signals, any of: a DM session was started for it earlier this run; the
-    canon file records a closed session; a quest is on the state log.
-    """
-    if get_last_session_id(campaign_dir.name):
-        return True
-    try:
-        canon = json.loads((campaign_dir / "canon.json").read_text())
-        if canon.get("last_session_written", 0) >= 1:
-            return True
-    except (OSError, json.JSONDecodeError):
-        pass
-    try:
-        state = json.loads((campaign_dir / "state.json").read_text())
-        if state.get("quest_log"):
-            return True
-    except (OSError, json.JSONDecodeError):
-        pass
-    return False
 
 
 class SettingsScreen(ModalScreen):
@@ -406,7 +382,7 @@ class MenuApp(App):
             campaign_dir = resolve_campaign_dir(active_campaign_slug())
         except (OSError, ValueError, KeyError, CampaignError):
             return None
-        if not _campaign_in_progress(campaign_dir):
+        if not campaign_in_progress(campaign_dir):
             return None
         return campaign_dir.name, campaign_display_name(campaign_dir)
 

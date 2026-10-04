@@ -179,6 +179,25 @@ def test_scenes() -> None:
         check("an unknown prop names itself for the gap log", e.prop == "statue_of_ilmater")
 
 
+def test_rolls() -> None:
+    print("dice hook / roll state")
+    import sys as _sys
+    _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "stage"))
+    import hook
+
+    out = {"stdout": "Rolled: 2d6: [6, 4]\nAdding: 10 + 3 = 13\n13\n"}
+    e = hook.roll_event({"tool_input": {"command": "uv run roll 2d6+3 -v"}, "tool_response": out})
+    check("a roll gives expr, total and faces",
+          e == {"type": "roll", "expr": "2d6+3", "total": 13, "dice": [{"die": "2d6", "faces": [6, 4]}]})
+    check("a # secret roll stays behind the screen",
+          hook.roll_event({"tool_input": {"command": "uv run roll 1d20 -v  # secret"}, "tool_response": out}) is None)
+    check("other commands are not rolls", hook.roll_event({"tool_input": {"command": "ls"}, "tool_response": out}) is None)
+    check("plain-text tool output works too",
+          hook.roll_event({"tool_input": {"command": "uv run roll 1d20 -v"}, "tool_output": "Rolled: 1d20: [20]\n20"})["total"] == 20)
+    s = state.apply(state.empty(), e)
+    check("the state keeps the last roll", s["last_roll"]["total"] == 13 and s["last_roll"]["seq"] == 1)
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -187,5 +206,6 @@ if __name__ == "__main__":
     test_initial_prompt()
     test_actors()
     test_scenes()
+    test_rolls()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

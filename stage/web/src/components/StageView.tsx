@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { DiceOverlay } from '@/components/DiceOverlay'
 import { type Position, type StageState, titleCase } from '@/lib/stage'
 
 // Logical stage size in source pixels: a 10 x 6 room of 32 px LPC tiles.
@@ -82,7 +83,8 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
   const mood = useMood(scene, state.versions?.[`scene:${scene}`] ?? 0)
 
   return (
-    <div ref={box} className="flex h-full w-full items-center justify-center overflow-hidden">
+    <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
+      <DiceOverlay roll={state.last_roll ?? null} />
       <div
         className="relative shrink-0 overflow-hidden"
         style={{ width: STAGE_W, height: STAGE_H, transform: `scale(${scale})`, transformOrigin: 'center' }}
@@ -92,7 +94,7 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
           <Img
             key={scene}
             src={`/asset/scene/${scene}.png?v=${state.versions?.[`scene:${scene}`] ?? 0}`}
-            className="absolute inset-0 h-full w-full"
+            className="scene-in absolute inset-0 h-full w-full"
             fallback={
               <div className="absolute inset-x-0 top-6 text-center text-[8px] tracking-wider text-[var(--dim)] pixel-font">
                 {titleCase(scene)}

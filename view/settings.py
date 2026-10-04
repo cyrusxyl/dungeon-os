@@ -144,3 +144,26 @@ def build_dm_command(
 
     inner = f"cd {shlex.quote(str(game_dir))} && exec " + " ".join(parts)
     return ["sh", "-c", inner]
+
+
+def campaign_in_progress(campaign_dir: Path) -> bool:
+    """True if this campaign has been played and can be resumed from its files.
+
+    Signals, any of: a DM session was started for it earlier this run; the
+    canon file records a closed session; a quest is on the state log.
+    """
+    if get_last_session_id(campaign_dir.name):
+        return True
+    try:
+        canon = json.loads((campaign_dir / "canon.json").read_text())
+        if canon.get("last_session_written", 0) >= 1:
+            return True
+    except (OSError, json.JSONDecodeError):
+        pass
+    try:
+        state = json.loads((campaign_dir / "state.json").read_text())
+        if state.get("quest_log"):
+            return True
+    except (OSError, json.JSONDecodeError):
+        pass
+    return False

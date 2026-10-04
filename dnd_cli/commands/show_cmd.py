@@ -42,14 +42,14 @@ def execute_beat(campaign: str | None, file: str | None) -> int:
         if actors.load(campaign_dir, actor) is None:
             print(f"Warning: no appearance for {actor!r} yet; the stage shows a silhouette. "
                   f"Set one with: uv run dnd-cli actor set {actor.split('#')[0]} ... "
-                  "(see: uv run dnd-cli actor options)", file=sys.stderr)
+                  "(see: uv run dnd-cli actor options). The stage updates the picture by itself: do not send this beat again.", file=sys.stderr)
 
     # Same for a place: the stage shows a blank room until it has a look.
     for location in sorted({e["location"] for e in events if e["type"] == "scene"}):
         if scenes.load(campaign_dir, location) is None:
             print(f"Warning: no look for location {location!r} yet; the stage shows a blank room. "
                   f"Set one with: uv run dnd-cli scene set {location} template=... "
-                  "(see: uv run dnd-cli scene options)", file=sys.stderr)
+                  "(see: uv run dnd-cli scene options). The stage updates the picture by itself: do not send this beat again.", file=sys.stderr)
 
     print(f"Shown: {len(events)} event(s): " + ", ".join(e["type"] for e in events))
     return 0

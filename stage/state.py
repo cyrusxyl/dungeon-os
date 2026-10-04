@@ -25,6 +25,7 @@ def empty() -> dict:
         "dm": {"status": "starting"},
         "dm_log": [],
         "versions": {},
+        "last_roll": None,
     }
 
 
@@ -62,6 +63,8 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = None
     elif kind == "choices":
         s["choices"] = {"options": event["options"], "seq": s["seq"]}
+    elif kind == "roll":
+        s["last_roll"] = {k: event.get(k) for k in ("expr", "total", "dice")} | {"seq": s["seq"]}
     elif kind == "scene_updated":
         s.setdefault("versions", {})["scene:" + event["location"]] = s["seq"]
     elif kind == "actor_updated":
