@@ -20,6 +20,8 @@ const STATUS_TEXT: Record<string, string> = {
 export function GameView({ onMenu }: { onMenu: () => void }) {
   const { state, campaign, connected } = useStage(onMenu)
   const [confirmQuit, setConfirmQuit] = useState(false)
+  // End session: ask the DM to write the session record, then leave once it is idle again.
+  const [ending, setEnding] = useState<'no' | 'sent' | 'working'>('no')
   const [logOpen, setLogOpen] = useState(false)
   const [readSeq, setReadSeq] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
@@ -34,6 +36,14 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   useEffect(() => {
     if (state?.dm.status === 'waiting') setConsoleOpen(true)
   }, [state?.dm.status])
+
+  useEffect(() => {
+    const status = state?.dm.status
+    if (ending === 'sent' && status === 'busy') setEnding('working')
+    if (ending === 'working' && (status === 'idle' || status === 'exited')) {
+      fetch('/api/game/quit', { method: 'POST' }).then(onMenu)
+    }
+  }, [ending, state?.dm.status, onMenu])
 
   if (!state) {
     return <div className="pixel-font grid h-full place-items-center text-xs text-[var(--dim)]">Connecting to the table…</div>
@@ -78,11 +88,26 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         <Button size="sm" variant="outline" onClick={() => setConsoleOpen((v) => !v)} className="text-[10px]">
           Console
         </Button>
-        {confirmQuit ? (
-          <span className="flex items-center gap-2">
-            <span className="text-sm text-[var(--dim)]">End this DM session?</span>
-            <Button size="sm" onClick={() => fetch('/api/game/quit', { method: 'POST' }).then(onMenu)} className="text-[10px]">
-              Yes, to menu
+        {ending !== 'no' ? (
+          <span className="pixel-font animate-pulse text-[10px] text-[var(--ember)]">The DM is writing the session record…</span>
+        ) : confirmQuit ? (
+          <span className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              disabled={state.dm.status !== 'idle'}
+              onClick={() => {
+                setEnding('sent')
+                sendInput(
+                  'End the session now. Follow the session-end procedure in the dm-canon-procedures skill ' +
+                    '(session log, state, canon records, close-session), then say goodbye in one short beat.',
+                )
+              }}
+              className="text-[10px]"
+            >
+              End session
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => fetch('/api/game/quit', { method: 'POST' }).then(onMenu)} className="text-[10px]">
+              Leave without saving
             </Button>
             <Button size="sm" variant="outline" onClick={() => setConfirmQuit(false)} className="text-[10px]">
               Stay
