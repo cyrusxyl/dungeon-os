@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
-from stage import beat
+from stage import actors, beat
 
 
 def _stage_campaign_dir(campaign: str | None) -> Path:
@@ -38,11 +38,11 @@ def execute_beat(campaign: str | None, file: str | None) -> int:
     beat.append(campaign_dir, events)
 
     # An unknown actor is not an error: the stage shows a silhouette.
-    actors_dir = campaign_dir / "stage" / "actors"
-    for actor in sorted({e["actor"].split("#")[0] for e in events if "actor" in e}):
-        if not (actors_dir / f"{actor}.json").exists():
+    for actor in sorted({e["actor"] for e in events if "actor" in e}):
+        if actors.load(campaign_dir, actor) is None:
             print(f"Warning: no appearance for {actor!r} yet; the stage shows a silhouette. "
-                  f"Set one with: uv run dnd-cli actor set {actor} ...", file=sys.stderr)
+                  f"Set one with: uv run dnd-cli actor set {actor.split('#')[0]} ... "
+                  "(see: uv run dnd-cli actor options)", file=sys.stderr)
 
     print(f"Shown: {len(events)} event(s): " + ", ".join(e["type"] for e in events))
     return 0

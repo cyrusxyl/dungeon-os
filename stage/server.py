@@ -26,12 +26,14 @@ from pathlib import Path
 import ptyprocess
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse, HTMLResponse, JSONResponse
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from stage import beat, state as stage_state
+from stage import actors, beat, state as stage_state
+from stage.assets import AssetError
 
 STAGE_DIR = Path(__file__).resolve().parent
 WEB_DIST = STAGE_DIR / "web" / "dist"
@@ -263,6 +265,29 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
             await stage._local_event({"type": "dm_status", "status": "starting"})
         return JSONResponse({"ok": True, "alive": stage.dm.alive})
 
+    async def asset_actor(request: Request):
+        actor_id = request.path_params["actor_id"]
+        spec = actors.load(campaign_dir, actor_id)
+        if spec is None:
+            return Response(status_code=404)
+        emotion = request.path_params.get("emotion")
+        kind = "portrait" if emotion else "full"
+        try:
+            png = await run_in_threadpool(
+                actors.png, spec, kind, request.query_params.get("f"), emotion if emotion != "neutral" else None
+            )
+        except (AssetError, ValueError, OSError):
+            return Response(status_code=404)
+        return Response(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+    async def api_actor(request: Request):
+        actor_id = request.path_params["actor_id"]
+        spec = actors.load(campaign_dir, actor_id) or {}
+        name = spec.get("name") or actor_id.split("#")[0].replace("-", " ").title()
+        if "#" in actor_id and actor_id.split("#")[1]:
+            name = f"{name} {actor_id.split('#')[1]}"
+        return JSONResponse({"id": actor_id, "name": name, "has_look": bool(spec)})
+
     async def api_party(request: Request):
         return JSONResponse(_party(campaign_dir))
 
@@ -280,6 +305,9 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
         Route("/api/input", api_input, methods=["POST"]),
         Route("/api/restart", api_restart, methods=["POST"]),
         Route("/api/party", api_party),
+        Route("/api/actor/{actor_id}", api_actor),
+        Route("/asset/actor/{actor_id}/full.png", asset_actor),
+        Route("/asset/actor/{actor_id}/portrait/{emotion}.png", asset_actor),
         WebSocketRoute("/ws", ws_events),
         WebSocketRoute("/ws/pty", ws_pty),
     ]

@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 
-import { type StoryLine, titleCase } from '@/lib/stage'
+import { type StoryLine, titleCase, useActorName } from '@/lib/stage'
 
 const CHARS_PER_SECOND = 60
 
-function Portrait({ actor, emotion }: { actor: string; emotion: string }) {
+function Portrait({ actor, emotion, version }: { actor: string; emotion: string; version: number }) {
   const [failed, setFailed] = useState(false)
-  useEffect(() => setFailed(false), [actor, emotion])
+  useEffect(() => setFailed(false), [actor, emotion, version])
   return (
     <div className="grid size-24 shrink-0 place-items-center border-2 border-[var(--gold)] bg-[var(--panel-2)] sm:size-28">
       {failed ? (
         <span className="pixel-font text-lg text-[var(--dim)]">{titleCase(actor).slice(0, 1)}</span>
       ) : (
         <img
-          src={`/asset/actor/${encodeURIComponent(actor)}/portrait/${emotion}.png`}
+          src={`/asset/actor/${encodeURIComponent(actor)}/portrait/${emotion}.png?v=${version}`}
           alt={titleCase(actor)}
           className="pixelated h-full w-full"
           onError={() => setFailed(true)}
@@ -50,12 +50,15 @@ export function DialogueBox({
   line,
   pending,
   onAdvance,
+  versions,
 }: {
   line: StoryLine | undefined
   pending: number
   onAdvance: () => void
+  versions: Record<string, number>
 }) {
   const [typed, done, finish] = useTypewriter(line?.text ?? '', line?.seq ?? 0)
+  const speakerName = useActorName(line?.type === 'say' ? line.actor : undefined)
 
   const click = () => {
     if (!done) finish()
@@ -86,9 +89,9 @@ export function DialogueBox({
       onClick={click}
       className="relative flex min-h-32 w-full gap-4 border-4 border-[var(--gold)] bg-[var(--panel)] p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--ember)] sm:p-4"
     >
-      {speaking && <Portrait actor={line.actor!} emotion={line.emotion ?? 'neutral'} />}
+      {speaking && <Portrait actor={line.actor!} emotion={line.emotion ?? 'neutral'} version={versions[line.actor!] ?? 0} />}
       <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {speaking && <div className="pixel-font text-[10px] tracking-wider text-[var(--gold)]">{titleCase(line.actor!)}</div>}
+        {speaking && <div className="pixel-font text-[10px] tracking-wider text-[var(--gold)]">{speakerName}</div>}
         <p className={`text-xl leading-snug sm:text-2xl ${speaking ? '' : 'italic text-[var(--parchment)]/90'}`}>{typed}</p>
       </div>
       {done && pending > 0 && (

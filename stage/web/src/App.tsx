@@ -79,7 +79,7 @@ export default function App() {
           <div className="min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
             <StageView state={state} speaker={speaker} />
           </div>
-          <DialogueBox line={current} pending={pending} onAdvance={advance} />
+          <DialogueBox line={current} pending={pending} onAdvance={advance} versions={state.versions ?? {}} />
 
           {state.dm.status === 'exited' ? (
             <div className="flex items-center gap-3">

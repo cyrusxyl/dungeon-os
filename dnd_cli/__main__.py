@@ -22,6 +22,7 @@ from dnd_cli.commands import cache_cmd
 from dnd_cli.commands import canon_cmd
 from dnd_cli.commands import character_cmd
 from dnd_cli.commands import show_cmd
+from dnd_cli.commands import actor_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -232,6 +233,27 @@ def create_parser():
     p.add_argument("--campaign", default=None, help="Campaign slug (default: the active campaign)")
     p.add_argument("--file", default=None, help="Read the beat from this file instead of stdin")
 
+    # Actor command group (how characters look on the visual stage)
+    actor_parser = subparsers.add_parser(
+        "actor",
+        help="Set how a character looks on the visual stage (LPC pixel art)"
+    )
+    actor_sub = actor_parser.add_subparsers(dest="actor_command", help="Actor subcommand")
+    p = actor_sub.add_parser("set", help="Set or change an actor's look: name= body= skin= eyes= preset= and items like robe:white")
+    p.add_argument("actor_id")
+    p.add_argument("tokens", nargs="+")
+    p.add_argument("--campaign", default=None)
+    p = actor_sub.add_parser("show", help="Print an actor's look (its file, else the preset for its kind)")
+    p.add_argument("actor_id")
+    p.add_argument("--campaign", default=None)
+    p = actor_sub.add_parser("preview", help="Render front, side and portrait to a PNG you can look at")
+    p.add_argument("actor_id")
+    p.add_argument("--emotion", default=None)
+    p.add_argument("--campaign", default=None)
+    p = actor_sub.add_parser("options", help="List settings, item types, or the items of one type")
+    p.add_argument("item_type", nargs="?", default=None)
+    p.add_argument("--body", default=None, help="Only items that fit this body type")
+
     return parser
 
 
@@ -371,6 +393,19 @@ def main():
             if args.show_command == "beat":
                 return show_cmd.execute_beat(args.campaign, args.file)
             print("Usage: dnd-cli show beat [--campaign C] [--file F] (see --help)", file=sys.stderr)
+            return 1
+
+        elif args.command == "actor":
+            ac = args.actor_command
+            if ac == "set":
+                return actor_cmd.execute_set(args.campaign, args.actor_id, args.tokens)
+            if ac == "show":
+                return actor_cmd.execute_show(args.campaign, args.actor_id)
+            if ac == "preview":
+                return actor_cmd.execute_preview(args.campaign, args.actor_id, args.emotion)
+            if ac == "options":
+                return actor_cmd.execute_options(args.item_type, args.body)
+            print("Usage: dnd-cli actor set|show|preview|options ... (see --help)", file=sys.stderr)
             return 1
 
         elif args.command == "warmup":

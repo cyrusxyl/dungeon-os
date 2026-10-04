@@ -1,0 +1,291 @@
+{
+  "_comment": "Default looks for monster and NPC kinds. An actor id with no appearance file uses the preset for its kind: 'goblin#2' uses 'goblin'. A campaign's stage/actors/<id>.json always wins.",
+  "goblin": {
+    "name": "Goblin",
+    "body": "teen",
+    "skin": "green",
+    "eyes": "red",
+    "items": [
+      "heads_goblin",
+      "shorts:brown",
+      "belt_leather",
+      "weapon_sword_arming"
+    ]
+  },
+  "hobgoblin": {
+    "name": "Hobgoblin",
+    "body": "male",
+    "skin": "fur_copper",
+    "eyes": "yellow",
+    "items": [
+      "heads_goblin",
+      "leather",
+      "pants:brown",
+      "boots_basic:brown",
+      "weapon_sword_scimitar"
+    ]
+  },
+  "orc": {
+    "name": "Orc",
+    "body": "muscular",
+    "skin": "dark_green",
+    "eyes": "red",
+    "items": [
+      "heads_orc_male",
+      "pants:brown",
+      "boots_basic:brown",
+      "weapon_blunt_waraxe"
+    ]
+  },
+  "troll": {
+    "name": "Troll",
+    "body": "muscular",
+    "skin": "pale_green",
+    "eyes": "yellow",
+    "items": [
+      "heads_troll",
+      "pants:brown",
+      "weapon_blunt_club"
+    ]
+  },
+  "skeleton": {
+    "name": "Skeleton",
+    "body": "male",
+    "skin": "light",
+    "items": [
+      "body_skeleton",
+      "heads_skeleton",
+      "weapon_sword_arming"
+    ]
+  },
+  "zombie": {
+    "name": "Zombie",
+    "body": "male",
+    "skin": "zombie",
+    "items": [
+      "body_zombie",
+      "heads_zombie",
+      "pants:gray",
+      "tshirt:gray"
+    ]
+  },
+  "vampire": {
+    "name": "Vampire",
+    "body": "male",
+    "skin": "light",
+    "eyes": "red",
+    "items": [
+      "heads_vampire",
+      "hair_parted:black",
+      "longsleeve_formal:white",
+      "frock:black",
+      "formal:black",
+      "shoes_basic:black",
+      "cape_solid:maroon"
+    ]
+  },
+  "kobold": {
+    "name": "Kobold",
+    "body": "teen",
+    "skin": "brown",
+    "eyes": "yellow",
+    "items": [
+      "heads_lizard_male",
+      "shorts:tan",
+      "weapon_polearm_spear"
+    ]
+  },
+  "lizardfolk": {
+    "name": "Lizardfolk",
+    "body": "male",
+    "skin": "green",
+    "eyes": "yellow",
+    "items": [
+      "heads_lizard_male",
+      "shorts:brown",
+      "weapon_polearm_spear"
+    ]
+  },
+  "gnoll": {
+    "name": "Gnoll",
+    "body": "muscular",
+    "skin": "fur_tan",
+    "eyes": "red",
+    "items": [
+      "heads_wolf_male",
+      "pants:brown",
+      "weapon_polearm_spear"
+    ]
+  },
+  "werewolf": {
+    "name": "Werewolf",
+    "body": "muscular",
+    "skin": "fur_grey",
+    "eyes": "yellow",
+    "items": [
+      "heads_wolf_male",
+      "pants:brown"
+    ]
+  },
+  "minotaur": {
+    "name": "Minotaur",
+    "body": "muscular",
+    "skin": "fur_brown",
+    "eyes": "red",
+    "items": [
+      "heads_minotaur",
+      "pants:brown",
+      "weapon_blunt_waraxe"
+    ]
+  },
+  "bandit": {
+    "name": "Bandit",
+    "body": "male",
+    "skin": "olive",
+    "eyes": "brown",
+    "items": [
+      "hair_messy1:dark_brown",
+      "beard:dark_brown",
+      "leather",
+      "pants:brown",
+      "boots_fold:brown",
+      "bandana:red",
+      "weapon_sword_dagger"
+    ]
+  },
+  "thug": {
+    "name": "Thug",
+    "body": "male",
+    "skin": "taupe",
+    "eyes": "brown",
+    "items": [
+      "hair_buzzcut:black",
+      "sleeveless:charcoal",
+      "pants:brown",
+      "boots_basic:black",
+      "weapon_blunt_club"
+    ]
+  },
+  "guard": {
+    "name": "Guard",
+    "body": "male",
+    "skin": "light",
+    "eyes": "blue",
+    "items": [
+      "chainmail",
+      "tabard:maroon",
+      "pants:gray",
+      "boots_basic:black",
+      "nasal",
+      "weapon_polearm_spear"
+    ]
+  },
+  "knight": {
+    "name": "Knight",
+    "body": "male",
+    "skin": "light",
+    "eyes": "blue",
+    "items": [
+      "plate",
+      "legs_armour",
+      "feet_armour",
+      "arms_armour",
+      "greathelm",
+      "weapon_sword_longsword",
+      "shield_kite"
+    ]
+  },
+  "cultist": {
+    "name": "Cultist",
+    "body": "male",
+    "skin": "light",
+    "eyes": "gray",
+    "items": [
+      "longsleeve:black",
+      "skirts_plain:black",
+      "belt_robe:white",
+      "hood_cloth:black",
+      "slippers"
+    ]
+  },
+  "commoner": {
+    "name": "Commoner",
+    "body": "male",
+    "skin": "amber",
+    "eyes": "brown",
+    "items": [
+      "hair_plain:chestnut",
+      "longsleeve:tan",
+      "pants:brown",
+      "shoes_basic:brown"
+    ]
+  },
+  "merchant": {
+    "name": "Merchant",
+    "body": "male",
+    "skin": "light",
+    "eyes": "brown",
+    "items": [
+      "heads_human_male_plump",
+      "hair_balding:gray",
+      "longsleeve:white",
+      "vest",
+      "pants:brown",
+      "shoes_basic:brown"
+    ]
+  },
+  "noble": {
+    "name": "Noble",
+    "body": "female",
+    "skin": "light",
+    "eyes": "green",
+    "items": [
+      "hair_bangs_bun:blonde",
+      "slit",
+      "shoes_basic:black",
+      "formal_tiara"
+    ]
+  },
+  "priest": {
+    "name": "Priest",
+    "body": "male",
+    "skin": "bronze",
+    "eyes": "brown",
+    "items": [
+      "heads_human_male_elderly",
+      "hair_balding:white",
+      "longsleeve:white",
+      "skirts_plain:white",
+      "belt_robe:white",
+      "slippers"
+    ]
+  },
+  "wizard": {
+    "name": "Wizard",
+    "body": "male",
+    "skin": "light",
+    "eyes": "blue",
+    "items": [
+      "heads_human_male_elderly",
+      "hair_long:white",
+      "winter:white",
+      "longsleeve:blue",
+      "skirts_plain:blue",
+      "magic_wizard",
+      "weapon_magic_gnarled",
+      "slippers"
+    ]
+  },
+  "sailor": {
+    "name": "Sailor",
+    "body": "male",
+    "skin": "bronze",
+    "eyes": "brown",
+    "items": [
+      "hair_messy2:black",
+      "sleeveless_striped",
+      "pantaloons:navy",
+      "bandana:navy"
+    ]
+  }
+}

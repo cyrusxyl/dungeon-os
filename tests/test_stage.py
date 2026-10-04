@@ -113,11 +113,44 @@ def test_initial_prompt() -> None:
     check("gemini takes the prompt with -i", "-i Go" in cmd[2])
 
 
+def test_actors() -> None:
+    print("lpc / actors")
+    from stage import actors, lpc
+    from stage.assets import LPC_DIR
+
+    if not (LPC_DIR / "sheet_definitions").is_dir():
+        print("  skip (LPC art not fetched; run uv run dungeon-os once)")
+        return
+    spec = actors.build("sireth", ["name=Sireth", "body=female", "skin=blue", "eyes=red", "elven", "robe:dark_gray"])
+    check("build sets name and body", spec["name"] == "Sireth" and spec["body"] == "female")
+    check("a known spec validates clean", lpc.validate(spec) == [])
+    check("'_' in a color matches a space", dict((i.id, c) for i, c in lpc.resolve(spec)[1])["robe"] == "dark gray")
+    frame = lpc.render(spec, "down")
+    check("render gives one 64x64 frame with pixels", frame.size == (64, 64) and frame.getbbox() is not None)
+    check("portrait is 36x36", lpc.portrait(spec, "angry").size == (36, 36))
+    check("an item for another body only warns", lpc.validate({"body": "male", "items": ["robe"]}) != [])
+    try:
+        lpc.validate({"body": "female", "items": ["robe:neon"]})
+        check("a bad color raises", False)
+    except lpc.ActorError:
+        check("a bad color raises", True)
+    check("later item of a type wins", lpc.normalize_items(["robe:white", "hair_bob", "robe:black"]) == ["robe:black", "hair_bob"])
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        check("goblin#2 falls back to the goblin preset", actors.load(d, "goblin#2")["name"] == "Goblin")
+        actors.save(d, "goblin", {"name": "Snik", "body": "teen", "items": []})
+        check("a campaign actor file beats the preset", actors.load(d, "goblin#2")["name"] == "Snik")
+        check("an unknown kind has no look", actors.load(d, "stranger") is None)
+    bad = [k for k, p in actors.presets().items() if lpc.validate(p)]
+    check(f"every preset validates without warnings {bad}", not bad)
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
     test_append()
     test_state()
     test_initial_prompt()
+    test_actors()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

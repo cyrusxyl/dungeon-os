@@ -49,6 +49,24 @@ A line with no `@` continues the line before it.
 
 A character speaking with `@say` is put on stage if it is not there yet. A warning "no appearance for ..." is not an error: the stage shows a silhouette.
 
+## Characters: how they look
+
+Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Give every named character a look **the first time it appears**, before the beat:
+
+```bash
+uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin=light eyes=green hair_bob:chestnut blouse_longsleeve:white corset:maroon skirt_straight:black shoes_basic:black
+```
+
+- `name=` is the name on the dialogue box (use `_` for spaces). `body=` is `male`, `female`, `muscular`, `teen`, `pregnant`, or `child`. `skin=` and `eyes=` are palettes.
+- Every other word is an item, optionally with a color: `robe:white`. Names of the head, ears, hair, clothes, legs, shoes, hats, weapons and more: `uv run dnd-cli actor options` (types) and `uv run dnd-cli actor options <type> --body female` (items and colors that fit).
+- Start from a kind with `preset=guard` and change pieces: `uv run dnd-cli actor set captain-voss preset=guard name=Captain_Voss hair_buzzcut:black`. Presets: goblin, hobgoblin, orc, troll, skeleton, zombie, vampire, kobold, lizardfolk, gnoll, werewolf, minotaur, bandit, thug, guard, knight, cultist, commoner, merchant, noble, priest, wizard, sailor.
+- A second `actor set` on the same id changes only the pieces you give; one item per type, the new one wins.
+- A warning "has no sprite for body ..." means the item will not show on that body. Pick an item the warning says fits.
+- Unnamed monsters need nothing: `goblin#1` and `goblin#2` use the `goblin` preset.
+- Look from the players' side: a disguised NPC wears the disguise. Use what the players can see, never the secret.
+- To check a look: `uv run dnd-cli actor preview <id>` writes a PNG you can read. Use it once for an important character, not every turn.
+- Player characters need a look too. If a character file has none, make one from the sheet (race, class, gear), and ask the player in a beat if a detail matters to them.
+
 ## Rules
 
 1. **Each reply is a beat.** Follow the Narration Budget in AGENTS.md: at most 3 sentences of narration, at most 2 sentences per NPC line, then a prompt to the player.

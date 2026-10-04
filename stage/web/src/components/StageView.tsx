@@ -82,7 +82,7 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
               className="absolute transition-[left] duration-300"
               style={{ left: x, top: FLOOR_Y - (talking ? 2 : 0), width: FRAME, height: FRAME }}
             >
-              <Img src={`/asset/actor/${encodeURIComponent(id)}/full.png?f=${actor.position}`} fallback={<Silhouette id={id} />} className="h-full w-full" />
+              <Img src={`/asset/actor/${encodeURIComponent(id)}/full.png?f=${actor.position}&v=${state.versions?.[id] ?? 0}`} fallback={<Silhouette id={id} />} className="h-full w-full" />
             </div>
           )
         })}

@@ -24,6 +24,7 @@ def empty() -> dict:
         "choices": None,
         "dm": {"status": "starting"},
         "dm_log": [],
+        "versions": {},
     }
 
 
@@ -61,6 +62,8 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = None
     elif kind == "choices":
         s["choices"] = {"options": event["options"], "seq": s["seq"]}
+    elif kind == "actor_updated":
+        s.setdefault("versions", {})[event["actor"]] = s["seq"]
     elif kind == "dm_status":
         s["dm"] = {k: v for k, v in event.items() if k in ("status", "reason", "message")}
         if event.get("dm_text"):
