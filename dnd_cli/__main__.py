@@ -242,7 +242,8 @@ def create_parser():
     actor_sub = actor_parser.add_subparsers(dest="actor_command", help="Actor subcommand")
     p = actor_sub.add_parser("set", help="Set or change an actor's look: name= body= skin= eyes= preset= and items like robe:white")
     p.add_argument("actor_id")
-    p.add_argument("tokens", nargs="+")
+    p.add_argument("tokens", nargs="*")
+    p.add_argument("--change", action="store_true", help="Change a look that already exists (the story changed it)")
     p.add_argument("--campaign", default=None)
     p = actor_sub.add_parser("show", help="Print an actor's look (its file, else the preset for its kind)")
     p.add_argument("actor_id")
@@ -263,7 +264,8 @@ def create_parser():
     scene_sub = scene_parser.add_subparsers(dest="scene_command", help="Scene subcommand")
     p = scene_sub.add_parser("set", help="template= wall= floor= mood= <slot>=<prop|none> +<prop>@<zone> clear=add")
     p.add_argument("location")
-    p.add_argument("tokens", nargs="+")
+    p.add_argument("tokens", nargs="*")
+    p.add_argument("--change", action="store_true", help="Change a place that already has a look (the story changed it)")
     p.add_argument("--campaign", default=None)
     p = scene_sub.add_parser("show", help="Print a location's scene spec and what it resolves to")
     p.add_argument("location")
@@ -280,7 +282,13 @@ def create_parser():
 def main():
     """Main entry point"""
     parser = create_parser()
-    args = parser.parse_args()
+    # `actor set` and `scene set` take free tokens; flags may sit between them.
+    args, extra = parser.parse_known_args()
+    if extra:
+        if getattr(args, "tokens", None) is not None and not any(t.startswith("--") for t in extra):
+            args.tokens += extra
+        else:
+            parser.error(f"unrecognized arguments: {' '.join(extra)}")
 
     if not args.command:
         parser.print_help()
@@ -418,7 +426,7 @@ def main():
         elif args.command == "actor":
             ac = args.actor_command
             if ac == "set":
-                return actor_cmd.execute_set(args.campaign, args.actor_id, args.tokens)
+                return actor_cmd.execute_set(args.campaign, args.actor_id, args.tokens, args.change)
             if ac == "show":
                 return actor_cmd.execute_show(args.campaign, args.actor_id)
             if ac == "preview":
@@ -431,7 +439,7 @@ def main():
         elif args.command == "scene":
             sc = args.scene_command
             if sc == "set":
-                return scene_cmd.execute_set(args.campaign, args.location, args.tokens)
+                return scene_cmd.execute_set(args.campaign, args.location, args.tokens, args.change)
             if sc == "show":
                 return scene_cmd.execute_show(args.campaign, args.location)
             if sc == "preview":

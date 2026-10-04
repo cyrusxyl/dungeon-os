@@ -19,11 +19,19 @@ def _run(campaign, fn) -> int:
         return 1
 
 
-def execute_set(campaign, location: str, tokens: list[str]) -> int:
+def execute_set(campaign, location: str, tokens: list[str], change: bool = False) -> int:
     def go(campaign_dir):
+        if not tokens:
+            raise scenes.SceneError("give at least one setting, for example template=tavern.")
         if not beat.ID_RE.match(location):
             raise scenes.SceneError(f"location id {location!r}: use lower-case letters, digits, '-' or '_'.")
-        spec = scenes.build(tokens, scenes.load(campaign_dir, location))
+        current = scenes.load(campaign_dir, location)
+        if current is not None and not change:
+            # A saved place is reused as is; a revisit must not rebuild it.
+            print(f"{location!r} already has a look; the stage uses it as saved:\n{json.dumps(current)}\n"
+                  "Nothing changed. Add --change only if the story changes the place.", file=sys.stderr)
+            return 1
+        spec = scenes.build(tokens, current)
         try:
             scenes.resolve(spec)
         except scenes.UnknownProp as e:

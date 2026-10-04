@@ -18,11 +18,19 @@ def _run(campaign, fn) -> int:
         return 1
 
 
-def execute_set(campaign, actor_id: str, tokens: list[str]) -> int:
+def execute_set(campaign, actor_id: str, tokens: list[str], change: bool = False) -> int:
     def go(campaign_dir):
+        if not tokens:
+            raise lpc.ActorError("give at least one setting, for example name=Sireth body=female.")
         if not lpc.slug(actor_id) == actor_id.split("#")[0] and "#" not in actor_id:
             raise lpc.ActorError(f"actor id {actor_id!r}: use lower-case letters, digits, '-' or '_'.")
         current = json.loads(path.read_text()) if (path := actors.actors_dir(campaign_dir) / f"{actor_id}.json").exists() else None
+        if current is not None and not change:
+            # A saved look is reused as is; a new DM session must not quietly redo it.
+            print(f"{actor_id!r} already has a look; the stage uses it as saved:\n{json.dumps(current)}\n"
+                  "Nothing changed. Add --change only if the story changes the look "
+                  "(never for a player character unless that player asks).", file=sys.stderr)
+            return 1
         spec = actors.build(actor_id, tokens, current)
         if "tile" in spec:
             warnings = []

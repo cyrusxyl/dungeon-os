@@ -51,7 +51,7 @@ A character speaking with `@say` is put on stage if it is not there yet. A warni
 
 ## Characters: how they look
 
-Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Give every named character a look **the first time it appears**, before the beat:
+Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Looks are saved in the campaign and reused in every later session. Do not check or redo them. **Set a look only when `show beat` warns** "no appearance for ..." (the stage showed a silhouette), then send the beat again or go on:
 
 ```bash
 uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin=light eyes=green hair_bob:chestnut blouse_longsleeve:white corset:maroon skirt_straight:black shoes_basic:black
@@ -74,7 +74,7 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
   | Human | nothing extra |
 
   The `child` body fits only a few items. Use `teen` for small folk.
-- A second `actor set` on the same id changes only the pieces you give; one item per type, the new one wins.
+- A saved look is final. `actor set` on an id that has a look does nothing and prints the saved look. Add `--change` only when the story changes the look (a disguise, a wound, new armor); it changes only the pieces you give. Never change a player character's look unless that player asks.
 - A warning "has no sprite for body ..." means the item will not show on that body. Pick an item the warning says fits.
 - Unnamed monsters need nothing: `goblin#1` and `goblin#2` use the `goblin` preset. A beast with no preset (`wolf#1`, `rat#2`) finds a matching monster tile by its name.
 - For a beast or monster LPC has no body for, use a monster tile: `uv run dnd-cli actor set the-beast name=The_Beast tile=bear`. The command prints the tile it picked.
@@ -84,7 +84,7 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
 
 ## Places: how they look
 
-Each location shows as a room or outdoor place built from LPC tiles. Give a location a look **the first time the party goes there**, before the beat with its `@scene` line. The location id in `scene set` and in `@scene` must be the same.
+Each location shows as a room or outdoor place built from LPC tiles. Places are saved in the campaign and reused on every visit. **Set a place only when `show beat` warns** "no look for location ..." (the stage showed a blank room). The location id in `scene set` and in `@scene` must be the same. For a new place you know you will show, you can set it before the beat.
 
 ```bash
 uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center=bust +plant@front_left
@@ -97,7 +97,7 @@ uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center
   - `<slot>=<prop>` replaces what stands in a slot, and `<slot>=none` empties it. Wall slots: `wall_left`, `wall_left2`, `wall_center`, `wall_right2`, `wall_right`. Floor slots: `back_left` … `front_right` (back, mid, front × left, center, right).
   - `+<prop>@<zone>` adds an extra prop in a floor zone; the composer finds the spot. `clear=add` removes the extras.
 - Lists of templates, walls, floors, props and moods: `uv run dnd-cli scene options` (or `scene options props`).
-- A second `scene set` changes only what you give. Change a place when the story changes it ("the chapel burns": `mood=night`, a slot to `none`), and at no other time. A revisit shows the same place.
+- A saved place is final. `scene set` on a place that has a look does nothing and prints the saved look. Add `--change` only when the story changes the place ("the chapel burns": `--change mood=night back_center=none`); it changes only what you give. A revisit shows the same place.
 - If no prop fits ("a statue of Ilmater"), the command suggests the closest props and records the gap. Use the closest prop and describe the difference in the story text.
 - To check a place: `uv run dnd-cli scene preview <location-id>` writes a PNG you can read. Use it once for an important place.
 - You never give pixel positions. Slots and zones are the only placement.
