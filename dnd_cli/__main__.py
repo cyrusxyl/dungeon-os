@@ -27,6 +27,7 @@ from dnd_cli.commands import scene_cmd
 from dnd_cli.commands import site_cmd
 from dnd_cli.commands import map_cmd
 from dnd_cli.commands import session_cmd
+from dnd_cli.commands import rules_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -223,6 +224,36 @@ def create_parser():
     p.add_argument("name")
     p.add_argument("level", type=int, choices=range(1, 10))
 
+    p = character_sub.add_parser("item", help="add|remove an inventory item: item <campaign> <name> add|remove \"<item>\" [--qty N] [--canon]")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("op", choices=["add", "remove"])
+    p.add_argument("item")
+    p.add_argument("--qty", type=int, default=1)
+    p.add_argument("--canon", action="store_true", help="Also record the item as given this session (canon Part E)")
+
+    p = character_sub.add_parser("gold", help="Change gold: gold <campaign> <name> +N|-N")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("delta")
+
+    p = character_sub.add_parser("equip", help="Equip a weapon, armor or shield by API index; recomputes attack or AC")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("index", help="Equipment index, e.g. longsword, chain-mail, shield")
+    p.add_argument("--not-proficient", action="store_true")
+
+    p = character_sub.add_parser("xp", help="Add XP: xp <campaign> <name...|all> --amount N")
+    p.add_argument("campaign")
+    p.add_argument("names", nargs="+")
+    p.add_argument("--amount", type=int, required=True)
+
+    p = character_sub.add_parser("level-up", help="Gain the next class level: HP, proficiency, slots, features, all bonuses")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("--hp", choices=["avg", "roll"], default="avg")
+    p.add_argument("--asi", default=None, help="str+2, str+1,dex+1, or none (a feat)")
+
     p = character_sub.add_parser("restore-slots", help="Long rest: restore one level's slots, or all levels if --level omitted")
     p.add_argument("campaign")
     p.add_argument("name")
@@ -284,6 +315,80 @@ def create_parser():
     session_parser = subparsers.add_parser("session", help="Session helpers for the DM")
     session_sub = session_parser.add_subparsers(dest="session_command", help="Session subcommand")
     p = session_sub.add_parser("brief", help="Print state, party, players, canon, story bible and recent log in one go")
+    p.add_argument("--campaign", default=None)
+    p = session_sub.add_parser("end", help="Close the session in one step: recap on stdin, threads, clocks, log")
+    p.add_argument("--appeared", default="", help="Thread ids that appeared in play, comma-separated")
+    p.add_argument("--clock", action="append", default=[], help='"Villain/Clock=advance|action|warning" (default advance)')
+    p.add_argument("--time", default=None, help="New game_time for state.json")
+    p.add_argument("--force", action="store_true", help="Close even with report warnings")
+    p.add_argument("--campaign", default=None)
+
+    # Rules: encounters, attacks, saves, checks, rests
+    def rolls(p):
+        p.add_argument("--adv", action="store_true", help="Advantage")
+        p.add_argument("--dis", action="store_true", help="Disadvantage")
+        p.add_argument("--secret", action="store_true", help="Do not show the roll on the stage")
+        p.add_argument("--campaign", default=None)
+
+    enc_parser = subparsers.add_parser("encounter", help="Combat tracker: initiative, HP, conditions, turns, XP")
+    enc_sub = enc_parser.add_subparsers(dest="encounter_command")
+    p = enc_sub.add_parser("start", help="Roll initiative: goblin:3 boss=bugbear <npc-id> ... [--pcs all|a,b]")
+    p.add_argument("specs", nargs="*")
+    p.add_argument("--pcs", default=None)
+    p.add_argument("--campaign", default=None)
+    p = enc_sub.add_parser("add", help="Add creatures to the running combat")
+    p.add_argument("specs", nargs="+")
+    p.add_argument("--campaign", default=None)
+    for name in ("next", "status"):
+        enc_sub.add_parser(name, help=f"{name} turn" if name == "next" else "Show the order, HP and conditions"
+                           ).add_argument("--campaign", default=None)
+    for name in ("damage", "heal"):
+        p = enc_sub.add_parser(name, help=f"{name.title()} a combatant (PC or creature)")
+        p.add_argument("target")
+        p.add_argument("amount", help="A number, or dice such as 1d8+3")
+        if name == "damage":
+            p.add_argument("--type", default=None, help="Damage type (resistances apply)")
+        p.add_argument("--campaign", default=None)
+    p = enc_sub.add_parser("condition", help="add|remove a condition: [--rounds N] [--save con:13]")
+    p.add_argument("target")
+    p.add_argument("op", choices=["add", "remove"])
+    p.add_argument("name")
+    p.add_argument("--rounds", type=int, default=None)
+    p.add_argument("--save", default=None)
+    p.add_argument("--campaign", default=None)
+    p = enc_sub.add_parser("end", help="End combat: split XP of defeated foes, clear the tracker")
+    p.add_argument("--no-xp", action="store_true")
+    p.add_argument("--campaign", default=None)
+
+    p = subparsers.add_parser("attack", help="Attack roll vs AC, damage on a hit, applied to the target")
+    p.add_argument("attacker")
+    p.add_argument("weapon", help="Weapon or action name (or 'spell' with --damage)")
+    p.add_argument("target")
+    p.add_argument("--damage", default=None, help="Damage dice, e.g. 1d10 (spells, improvised)")
+    p.add_argument("--type", default=None, help="Damage type for --damage")
+    p.add_argument("--bonus", type=int, default=0, help="Extra to-hit bonus (bless, cover as negative)")
+    rolls(p)
+
+    p = subparsers.add_parser("save", help="Saving throws: <targets...> <ability> --dc N [--damage 8d6 --half] or --from creature:action")
+    p.add_argument("targets", nargs="+")
+    p.add_argument("--ability", default=None)
+    p.add_argument("--dc", type=int, default=None)
+    p.add_argument("--damage", default=None)
+    p.add_argument("--type", default=None)
+    p.add_argument("--half", action="store_true", help="Half damage on a success")
+    p.add_argument("--from", dest="source", default=None, help="creature:action with a DC, e.g. dragon:fire-breath")
+    rolls(p)
+
+    p = subparsers.add_parser("check", help="Skill/ability check or death save: <who...|all> <skill|ability|death> [--dc N]")
+    p.add_argument("who", nargs="+")
+    p.add_argument("--dc", type=int, default=None)
+    p.add_argument("--passive", action="store_true")
+    rolls(p)
+
+    p = subparsers.add_parser("rest", help="long|short rest for the party or named characters")
+    p.add_argument("kind", choices=["long", "short"])
+    p.add_argument("who", nargs="*")
+    p.add_argument("--hit-dice", action="append", default=[], help="Short rest: name:N hit dice to spend")
     p.add_argument("--campaign", default=None)
 
     # Site command group (generated buildings and dungeons the party walks through)
@@ -493,6 +598,16 @@ def main():
                 return character_cmd.execute_cast(args.campaign, args.name, args.level)
             elif cc == "restore-slots":
                 return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
+            if cc == "item":
+                return rules_cmd.execute_item(args.campaign, args.name, args.op, args.item, args.qty, args.canon)
+            if cc == "gold":
+                return rules_cmd.execute_gold(args.campaign, args.name, args.delta)
+            if cc == "equip":
+                return rules_cmd.execute_equip(args.campaign, args.name, args.index, not args.not_proficient)
+            if cc == "xp":
+                return rules_cmd.execute_xp(args.campaign, args.names, args.amount)
+            if cc == "level-up":
+                return rules_cmd.execute_level_up(args.campaign, args.name, args.hp, args.asi)
             else:
                 print(f"Unknown character subcommand: {cc}", file=sys.stderr)
                 return 1
@@ -532,8 +647,34 @@ def main():
         elif args.command == "session":
             if args.session_command == "brief":
                 return session_cmd.execute_brief(args.campaign)
+            if args.session_command == "end":
+                return session_cmd.execute_end(args.campaign, args.appeared, args.clock, args.time, args.force)
             print("Usage: dnd-cli session brief [--campaign C]", file=sys.stderr)
             return 1
+
+        elif args.command == "encounter":
+            return rules_cmd.execute_encounter(args.campaign, args.encounter_command, args)
+
+        elif args.command == "attack":
+            return rules_cmd.execute_attack(args.campaign, args)
+
+        elif args.command == "save":
+            # The last target that is an ability name is the ability: `save goblin#1 dex --dc 13`.
+            names = {"str", "dex", "con", "int", "wis", "cha", "strength", "dexterity", "constitution",
+                     "intelligence", "wisdom", "charisma"}
+            if args.ability is None and len(args.targets) > 1 and args.targets[-1].lower() in names:
+                args.ability = args.targets.pop()
+            return rules_cmd.execute_save(args.campaign, args)
+
+        elif args.command == "check":
+            if len(args.who) < 2:
+                print("Usage: dnd-cli check <who...|all> <skill|ability|death> [--dc N]", file=sys.stderr)
+                return 1
+            args.what = args.who.pop()
+            return rules_cmd.execute_check(args.campaign, args)
+
+        elif args.command == "rest":
+            return rules_cmd.execute_rest(args.campaign, args.kind, args.who, args.hit_dice)
 
         elif args.command == "site":
             sc = args.site_command

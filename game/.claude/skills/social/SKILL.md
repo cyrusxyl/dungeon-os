@@ -5,6 +5,8 @@ description: Handle D&D 5e social encounters including persuasion, deception, in
 
 # Social Encounters & Interaction
 
+Roll every social check with one command: `uv run dnd-cli check sireth persuasion --dc 15` (`--adv`/`--dis` from the situation; a contested check: roll each side and compare; `--secret` for an NPC's hidden Insight). Do not work out modifiers yourself.
+
 Manage roleplay-heavy encounters with API-sourced skill mechanics, relationship tracking, and language systems.
 
 ## Social Skill Checks
@@ -14,11 +16,6 @@ When players engage in social interaction:
 ### Persuasion
 
 **Use for**: Convincing, negotiating, diplomacy, inspiring
-
-**Query skill**:
-```bash
-uv run dnd-cli get skills/persuasion --fields name,desc,ability_score
-```
 
 **Ability**: Charisma
 
@@ -44,11 +41,6 @@ uv run dnd-cli get skills/persuasion --fields name,desc,ability_score
 
 **Use for**: Lying, disguising, creating false impressions
 
-**Query skill**:
-```bash
-uv run dnd-cli get skills/deception --fields name,desc,ability_score
-```
-
 **Ability**: Charisma
 
 **Examples**:
@@ -73,11 +65,6 @@ uv run dnd-cli get skills/deception --fields name,desc,ability_score
 ### Intimidation
 
 **Use for**: Threatening, coercing, frightening
-
-**Query skill**:
-```bash
-uv run dnd-cli get skills/intimidation --fields name,desc,ability_score
-```
 
 **Ability**: Charisma (sometimes Strength at DM discretion)
 
@@ -107,11 +94,6 @@ uv run dnd-cli get skills/intimidation --fields name,desc,ability_score
 
 **Use for**: Detecting lies, reading intentions, sensing emotions
 
-**Query skill**:
-```bash
-uv run dnd-cli get skills/insight --fields name,desc,ability_score
-```
-
 **Ability**: Wisdom
 
 **Examples**:
@@ -122,7 +104,7 @@ uv run dnd-cli get skills/insight --fields name,desc,ability_score
 
 **Contested**: Opposed by target's Deception
 
-**Passive Insight**: 10 + Insight modifier, used to automatically detect obvious lies or suspicious behavior
+**Passive Insight**: `uv run dnd-cli check all insight --passive` — detects obvious lies or suspicious behavior without a roll
 
 **Result on success**:
 - "The merchant's eyes dart nervously when he mentions the price. He's hiding something."
@@ -132,11 +114,6 @@ uv run dnd-cli get skills/insight --fields name,desc,ability_score
 ### Performance
 
 **Use for**: Entertaining, acting, artistic displays
-
-**Query skill**:
-```bash
-uv run dnd-cli get skills/performance --fields name,desc,ability_score
-```
 
 **Ability**: Charisma
 

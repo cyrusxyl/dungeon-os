@@ -7,233 +7,29 @@ description: Handle D&D 5e character leveling, ability score improvements, feat 
 
 Guide players through leveling up with API-validated features, spell progression, and ASI/feat selection.
 
-## Level-Up Workflow
+## XP
 
-When a character gains a level:
+- After a fight, `uv run dnd-cli encounter end` splits the XP of the defeated foes.
+- Milestones, quests, clever play: `uv run dnd-cli character xp all --amount 300` (or named characters).
+- Both print **LEVEL UP READY** when a character reaches the next level. The command knows the XP table.
 
-### Step 1: Check Experience Requirements
-
-**Experience thresholds** (for reference):
-- Level 2: 300 XP
-- Level 3: 900 XP
-- Level 4: 2,700 XP
-- Level 5: 6,500 XP
-- Level 6: 14,000 XP
-- Level 7: 23,000 XP
-- Level 8: 34,000 XP
-- Level 9: 48,000 XP
-- Level 10: 64,000 XP
-- Level 11: 85,000 XP
-- Level 12: 100,000 XP
-- Level 13: 120,000 XP
-- Level 14: 140,000 XP
-- Level 15: 165,000 XP
-- Level 16: 195,000 XP
-- Level 17: 225,000 XP
-- Level 18: 265,000 XP
-- Level 19: 305,000 XP
-- Level 20: 355,000 XP
-
-1. **Read character file**: Check current `level` and `experience_points`
-2. **Confirm level-up**: "You've reached level {new_level}! Time to level up."
-
-### Step 2: Query Level Benefits
-
-Get class features for the new level:
+## Level-Up
 
 ```bash
-uv run dnd-cli get classes/{class-index}/levels/{level} --fields level,ability_score_bonuses,prof_bonus,features,spellcasting,class_specific
+uv run dnd-cli character level-up sireth                     # average HP (die / 2 + 1 + CON)
+uv run dnd-cli character level-up sireth --hp roll           # the player rolls for HP
+uv run dnd-cli character level-up sireth --asi dex+2         # a level with an Ability Score Improvement
+uv run dnd-cli character level-up sireth --asi none          # ...when the player takes a feat instead
 ```
 
-This returns:
-- **ability_score_bonuses**: Number of ASIs available (typically 1 at levels 4, 8, 12, 16, 19)
-- **prof_bonus**: Proficiency bonus for this level
-- **features**: New features gained this level
-- **spellcasting**: Spell slots and spells known/prepared
-- **class_specific**: Class-specific resources (rage uses, ki points, sorcery points, etc.)
+One command does the whole level from the 5e API: level, HP and hit dice, proficiency bonus, every skill, save and weapon bonus, spell DC and attack bonus, spell slots, and the new class features (written into `features_and_traits` with a short description). It keeps each skill's proficiency or expertise as it was. It prints the gains, the class resources (rage, ki, sneak attack…), and how many spells the character may know.
 
-### Step 3: Roll Hit Points
+You and the player still choose:
+1. **ASI or feat** (levels 4, 8, 12, 16, 19 for most classes; the command refuses until you give `--asi`). +2 to one score or +1 to two; no score above 20. A feat: `uv run dnd-cli get feats/<index> --fields name,desc,prerequisites`, check the prerequisites, then add it to `features_and_traits` with the Edit tool (text only; a +1 score from a half-feat goes in `--asi str+1`).
+2. **New spells** (known casters, wizards' two spells per level): `uv run dnd-cli search spells --class <class> --level <n>`, then add the choices to `spellcasting.spells_known` with the Edit tool.
+3. **Subclass features** are not in the API's base class data: add them by hand from the player's choice.
 
-**Hit Die**: Read character's class hit die (d6, d8, d10, or d12)
-
-**Option 1: Roll**:
-```bash
-uv run roll 1d{hit_die} -v
-```
-
-**Option 2: Take average** (rounded up):
-- d6 = 4
-- d8 = 5
-- d10 = 6
-- d12 = 7
-
-**Calculate HP increase**:
-- HP_increase = roll_result + CON_modifier
-- Minimum 1 HP per level
-
-**Update character**:
-- `hp.max` += HP_increase
-- `hp.current` += HP_increase (if at full health)
-- `hit_dice.total` += 1
-- `hit_dice.remaining` += 1
-
-### Step 4: Ability Score Improvement or Feat
-
-If `ability_score_bonuses > 0` (typically levels 4, 8, 12, 16, 19):
-
-**Option 1: Ability Score Improvement (ASI)**:
-- Player chooses which abilities to increase
-- Can add +2 to one ability, or +1 to two different abilities
-- Cannot exceed 20 (without magical effects)
-- Update `ability_scores` and recalculate `ability_modifiers`
-
-**Option 2: Choose a Feat**:
-
-1. **List available feats**:
-   ```bash
-   uv run dnd-cli get feats
-   ```
-
-2. **Player selects feat**, query details:
-   ```bash
-   uv run dnd-cli get feats/{feat-index} --fields name,desc,prerequisites
-   ```
-
-3. **Check prerequisites**: Verify character meets requirements (ability scores, proficiencies, etc.)
-
-4. **Add to character**:
-   - Append feat to `features_and_traits[]` array
-   - Apply any ability score bonuses from feat
-   - Apply any proficiency/skill bonuses
-
-### Step 5: Acquire New Features
-
-For each feature in the level's `features` array:
-
-1. **Query feature details**:
-   ```bash
-   uv run dnd-cli get features/{feature-index} --fields name,level,class,desc
-   ```
-
-2. **Add to character**:
-   ```json
-   {
-     "name": "Extra Attack",
-     "description": "You can attack twice, instead of once, whenever you take the Attack action on your turn."
-   }
-   ```
-
-3. **Narrate**: "You gain **{Feature Name}**: {description}"
-
-### Step 6: Spell Progression (if spellcaster)
-
-**Get spell slots for new level**:
-```bash
-uv run dnd-cli get classes/{class-index}/levels/{level} --fields spellcasting
-```
-
-Returns spell slots by level and spells known/prepared count.
-
-**Update character**:
-- Update `spellcasting.spell_slots` with new max and remaining slots
-- If prepared caster (Cleric, Druid, Paladin): Update number of spells that can be prepared
-- If spells-known caster (Bard, Sorcerer, Ranger): Allow learning new spells
-
-**Learning New Spells**:
-
-1. **Check spells known at this level**: From class level data
-2. **Get class spell list**:
-   ```bash
-   uv run dnd-cli get classes/{class-index}/spells
-   ```
-
-3. **Filter by level**: Only show spells of levels the character can cast
-4. **Player chooses**: Add to `spellcasting.spells_known[]`
-5. **Query spell details** for reference:
-   ```bash
-   uv run dnd-cli get spells/{spell-index} --fields name,level,school,casting_time,range,components,duration,desc
-   ```
-
-**Wizard Spell Learning**:
-- Wizards learn 2 spells per level automatically
-- Can learn additional spells from scrolls or other spellbooks
-- Add to spellbook (not just spells_known)
-
-### Step 7: Update Proficiency Bonus
-
-If proficiency bonus increases (levels 5, 9, 13, 17):
-
-**New proficiency bonuses**:
-- Levels 1-4: +2
-- Levels 5-8: +3
-- Levels 9-12: +4
-- Levels 13-16: +5
-- Levels 17-20: +6
-
-**Update character**:
-- Set `proficiency_bonus` to new value
-- Recalculate all skills: `skill_bonus = ability_modifier + proficiency_bonus` (if proficient)
-- Recalculate spell save DC: `8 + proficiency_bonus + spellcasting_modifier`
-- Recalculate spell attack bonus: `proficiency_bonus + spellcasting_modifier`
-- Recalculate weapon attack bonuses: `proficiency_bonus + ability_modifier` (if proficient)
-
-### Step 8: Update Class-Specific Resources
-
-From `class_specific` in level data:
-
-**Barbarian**:
-- Rage uses per day
-- Rage damage bonus
-
-**Monk**:
-- Ki points
-- Martial arts die
-- Unarmored movement
-
-**Fighter**:
-- Action surge uses
-- Indomitable uses
-
-**Rogue**:
-- Sneak attack dice
-
-**Sorcerer**:
-- Sorcery points
-
-**Warlock**:
-- Spell slot level
-- Invocations known
-
-**Wizard**:
-- Spells in spellbook
-
-Update character file with appropriate class resources.
-
-### Step 9: Update Character File
-
-Apply all changes to `{campaign}/characters/{name}.json`:
-
-1. Increment `level`
-2. Update `hp.max`, `hp.current`, `hit_dice`
-3. Update `ability_scores` and `ability_modifiers` (if ASI taken)
-4. Update `proficiency_bonus` (if changed)
-5. Update `spellcasting` (slots, spells known)
-6. Add new features to `features_and_traits[]`
-7. Update class-specific resources
-8. Recalculate derived stats (AC, saves, skills, spell DC, attack bonuses)
-
-### Step 10: Narrate Level-Up
-
-Congratulate the player and summarize gains:
-
-> "**Congratulations! {Character} has reached level {level}!**
->
-> - HP: {old_max} → {new_max} (+{increase})
-> - New Features: {feature_list}
-> - Spell Slots: {new_slots}
-> - {ASI or Feat if applicable}
->
-> You feel the weight of experience settle into your bones. You are stronger, wiser, more capable than before."
+Then narrate the level in one short beat: "Sireth reaches level 4 — HP 31, Ki 4."
 
 ## Multiclassing
 

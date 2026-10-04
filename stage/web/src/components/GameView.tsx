@@ -112,8 +112,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
               onClick={() => {
                 setEnding('sent')
                 sendInput(
-                  'End the session now. Follow the session-end procedure in the dm-canon-procedures skill ' +
-                    '(session log, state, canon records, close-session), then say goodbye in one short beat.',
+                  'End the session now: follow the session-end procedure in the dm-canon-procedures skill ' +
+                    '(one `uv run dnd-cli session end` with the recap), then say goodbye in one short beat.',
                 )
               }}
               className="text-[10px]"

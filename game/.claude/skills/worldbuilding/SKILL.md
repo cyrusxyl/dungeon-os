@@ -112,7 +112,7 @@ For NPCs who might fight:
 
 2. **Customize**: Add personality, motivation, secret
 
-3. **Save** to `{campaign}/world/npcs/{name}.json` using full NPC schema
+3. **Save** to `{campaign}/world/npcs/{name}.json` using full NPC schema, with `hp: {current, max}`, `armor_class`, `ability_scores` and `actions` (`attack_bonus`, `damage`): then `uv run dnd-cli encounter start <npc-id>` uses those stats and writes its HP back after the fight. A plain monster needs no file: `encounter start bandit:2`.
 
 ### NPC Interaction Memory
 
@@ -224,13 +224,14 @@ Example: "**Dawnbringer** - Longsword, +2 to hit and damage, sheds bright light 
 
 ### Adding Loot to Inventory
 
-After determining loot:
+The players say who takes what; then one command per item:
 
-1. **Player chooses** which items to take
-2. **Update character file**:
-   - Edit `inventory[]` array
-   - Add coins to character's wealth
-   - Add magic items with full description
+```bash
+uv run dnd-cli character item sireth add "Potion of Healing" --qty 2 --canon   # --canon also records it in canon (Part E)
+uv run dnd-cli character gold sireth +15
+```
+
+Describe a magic item's effect in the story; record its powers with `canon add-fact` if they are canon-level.
 
 ## Equipment & Inventory Management
 
@@ -310,42 +311,13 @@ When players visit a shop:
 
 ### Equipment Purchase
 
-When a player buys equipment:
+```bash
+uv run dnd-cli character gold sireth -25          # refuses if the character cannot pay
+uv run dnd-cli character equip sireth rapier       # weapon: attack and damage worked out; armor or shield: AC worked out
+uv run dnd-cli character item sireth add "Rope, hempen (50 feet)"     # gear that is not a weapon or armor
+```
 
-1. **Check cost**: Use API data for accurate price
-2. **Verify character has gold**: Read character file `inventory` or wealth tracking
-3. **Subtract cost**: Update character's gold
-4. **Add to inventory**:
-   - For weapons: Add to `weapons[]` array with full stats
-   - For armor: Update `armor` object
-   - For items: Add to `inventory[]` array
-
-5. **Example weapon addition**:
-   ```json
-   {
-     "name": "Rapier",
-     "attack_bonus": 5,
-     "damage": "1d8+3",
-     "damage_type": "piercing",
-     "properties": ["finesse"],
-     "equipped": false
-   }
-   ```
-
-   Calculate `attack_bonus` = proficiency_bonus + DEX_modifier (or STR if not finesse)
-   Calculate `damage` = weapon_die + ability_modifier
-
-6. **Example armor update**:
-   ```json
-   {
-     "name": "Chain Mail",
-     "ac_bonus": 16,
-     "type": "heavy",
-     "equipped": true
-   }
-   ```
-
-   Recalculate character's `armor_class` after equipping
+Price: the API `cost` with your markup (1 gp = 10 sp = 100 cp). `equip` adds the item to the inventory too. A character not proficient with a weapon: `equip ... --not-proficient`.
 
 ### Equipment Proficiency Validation
 
@@ -397,12 +369,7 @@ Before allowing equipment use:
 
 ### Loot Distribution with Equipment
 
-After combat or treasure discovery:
-
-1. **Identify items**: Use API to get exact stats
-2. **Present to players**: "You find a battleaxe, 15 gp, and a potion of healing"
-3. **Players divide loot**: Let them decide who takes what
-4. **Update inventory**: Edit each character file accordingly
+Name the items with their API stats, let the players divide them, then `character item ... add` (and `character equip` for gear they use at once).
 
 ### Equipment Maintenance
 

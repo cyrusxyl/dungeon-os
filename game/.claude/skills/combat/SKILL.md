@@ -5,440 +5,77 @@ description: Handle D&D 5e combat encounters including initiative, attacks, dama
 
 # Combat Resolution
 
-Handle all aspects of D&D 5e combat: initiative, attacks, damage, HP tracking, and turn order.
+The `dnd-cli` rules commands do all combat bookkeeping: initiative, to-hit against AC, damage dice and crits, resistances, HP for player characters and creatures, conditions and their durations, turns, death saves, XP. **You decide what happens and narrate it.** Do not roll, add, or edit HP by hand. Each command prints one short line per result, and shows the dice on the stage (add `--secret` for a roll behind the screen).
 
-## Pre-Combat Setup
+Ids are the stage's actor ids: `goblin#1` in `attack` is `goblin#1` in `@enter`.
 
-When combat begins:
-
-1. **Identify participants**:
-   - Read player characters from `{campaign}/characters/*.json`
-   - For monsters/NPCs, either load from `{campaign}/world/npcs/{name}.json` or fetch from API:
-     ```bash
-     # Quick lookup (full data, cached)
-     uv run dnd-cli get monsters/{monster-name}
-
-     # Only the fields you need
-     uv run dnd-cli get monsters/{monster-name} --fields name,hit_points,armor_class,dexterity,actions
-
-     # Search for appropriate monster
-     uv run dnd-cli search monsters --name {query}
-
-     # Random encounter monster
-     uv run dnd-cli random monsters --count {n}
-     ```
-   - The wrapper caches responses for speed and token efficiency
-   - Save fetched monsters to `{campaign}/world/npcs/{name}-{number}.json` for this encounter
-
-2. **Create combat state**:
-   - Update `state.json` with `active_encounter` object
-   - Initialize participants list
-
-## Initiative Phase
-
-Roll initiative for all combatants:
+## Start
 
 ```bash
-uv run roll 1d20+{dex_modifier} -v
+uv run dnd-cli encounter start goblin:3 boss=bugbear
+uv run dnd-cli encounter start bandit:2 cassara-whitmore --pcs sireth
 ```
 
-The `-v` flag shows breakdown: `Rolled: 1d20: [15] Adding: 15 + 3 = 18`
-
-1. Roll for each PC (use their dexterity modifier from character sheet)
-2. Roll for each NPC/monster (use their dexterity modifier)
-3. Sort results highest to lowest
-4. Update `state.json`:
-   ```json
-   "active_encounter": {
-     "type": "combat",
-     "participants": ["aragorn", "legolas", "goblin-1", "goblin-2"],
-     "initiative_order": [
-       {"name": "legolas", "initiative": 18},
-       {"name": "goblin-1", "initiative": 16},
-       {"name": "aragorn", "initiative": 14},
-       {"name": "goblin-2", "initiative": 12}
-     ],
-     "current_turn": "legolas"
-   }
-   ```
-5. Narrate combat start with dramatic description
-
-## Turn Execution
-
-For each turn in initiative order:
-
-### 1. Announce Turn
-
-Check `current_turn` in `state.json`:
-- If PC: Identify controlling player from `{campaign}/players/{id}.json`
-- Announce: "**{Character}'s turn!** ({Player}, what do you do?)"
-- If NPC: Determine action based on tactics
-
-### 2. Resolve Actions
-
-#### Attack Action
-
-Player declares: "I attack the goblin with my longsword"
-
-**Step 1: Get attacker's stats**
-- Read `{campaign}/characters/{name}.json`
-- Find weapon: `weapons[].attack_bonus` and `weapons[].damage`
-- Or calculate: attack_bonus = proficiency_bonus + STR_modifier (or DEX for finesse)
-
-**Step 2: Get target's AC**
-- Read target's file for `armor_class`
-
-**Step 3: Roll to hit**
-```bash
-uv run roll 1d20+{attack_bonus} -v
-```
-
-**Step 4: Compare to AC**
-- If roll ≥ AC: Hit! Roll damage
-- If roll < AC: Miss, narrate
-
-**Step 5: Roll damage (on hit)**
-```bash
-uv run roll {damage_dice}+{modifier} -v
-```
-Example: `roll 1d8+3 -v` for longsword with +3 STR
-
-**Step 6: Update target HP**
-- **If the target is a player character** (`{campaign}/characters/{name}.json`): use `uv run dnd-cli character apply-damage {name} {amount}`. Do not subtract the damage yourself and write the number in with the Edit tool — temp HP absorbs damage before current HP does, and getting that order wrong by hand is exactly the kind of arithmetic mistake this command exists to rule out. The command reports `absorbed_by_temp_hp`, `absorbed_by_current_hp`, and `dropped_to_zero` — use those to narrate.
-- **If the target is an NPC or monster** (`{campaign}/world/npcs/{name}.json`): this file follows `npc.schema.json`, not the character schema, and the `character` CLI does not cover it yet. Subtract the damage and write it with the Edit tool as before — this is a known gap, not an oversight.
-- If HP ≤ 0: Creature is down/dead
-
-**Step 7: Narrate**
-- Hit: "Your blade flashes (**rolled 18 vs AC 15**). Steel bites deep—**7 damage**—and the goblin staggers."
-- Miss: "Your swing goes wide (**rolled 12 vs AC 15**) as the goblin ducks."
-
-#### Spell Attack
-
-Player declares: "I cast Fire Bolt at the goblin"
-
-**Step 1: Query spell**
-```bash
-# Full spell data (cached)
-uv run dnd-cli get spells/{spell-name}
-
-# Or extract minimal fields
-uv run dnd-cli get spells/{spell-name} --fields name,level,damage,attack_type,dc
-```
-
-**Step 2: Check spell slots** (if spell level > 0)
-- Read `{campaign}/characters/{name}.json`
-- Check `spellcasting.spell_slots["{level}"].remaining`
-- If 0: "You're out of {level}-level spell slots!"
-
-**Step 3: Resolve attack**
-- If `attack_type: "RANGED"`: Roll spell attack (1d20 + spell_attack_bonus)
-- If has save DC: Target rolls save (see Saving Throws below)
-
-**Step 4: Roll damage**
-- Parse damage from API (e.g., "8d6")
-- Roll: `uv run roll 8d6 -v`
-
-**Step 5: Update**
-- Deduct spell slot: `uv run dnd-cli character cast {name} {level}`. It refuses if no slots remain at that level instead of writing a negative or stale number.
-- Apply damage to target (see Step 6 above — player character vs NPC/monster)
-
-#### Skill Check in Combat
-
-Example: "I want to shove the goblin off the ledge"
-
-**Step 1: Determine skill**
-- Shove = Athletics (STR)
-- Grapple = Athletics (STR)
-- Hide = Stealth (DEX)
-
-**Step 2: Get modifier**
-- Read character's `skills.{skill_name}` or ability modifier
-
-**Step 3: Set DC**
-- Contest: Opponent rolls opposing check
-- Standard: DM sets DC (10=easy, 15=medium, 20=hard)
-
-**Step 4: Roll**
-```bash
-uv run roll 1d20+{modifier} -v
-```
-
-**Step 5: Narrate result**
-
-### 3. Update State
-
-After each turn:
-- Update `state.json`: set `current_turn` to next in initiative order
-- Update any changed HP/status: `dnd-cli character apply-damage`/`heal`/`add-temp-hp` for player characters (see Step 6 above); Edit tool for NPC/monster files
-- Narrate the result vividly
-
-### 4. Move to Next Turn
-
-Cycle through `initiative_order`, loop back to top when reaching end.
-
-## Conditions & Status Effects
-
-Track and enforce D&D 5e conditions with mechanical effects.
-
-### Applying Conditions
-
-When a spell, ability, or effect applies a condition:
-
-1. **Query condition details**:
-   ```bash
-   # Quick reference for condition effects (formatted)
-   uv run dnd-cli info conditions {condition-index}
-
-   # Or get raw data for minimal extraction
-   uv run dnd-cli get conditions/{condition-index} --fields name,desc
-   ```
-
-   Common conditions: `blinded`, `charmed`, `deafened`, `frightened`, `grappled`, `incapacitated`, `invisible`, `paralyzed`, `petrified`, `poisoned`, `prone`, `restrained`, `stunned`, `unconscious`, `exhaustion`
-
-2. **Update combat state**:
-   ```json
-   "active_encounter": {
-     "conditions": {
-       "goblin-1": [
-         {
-           "condition": "poisoned",
-           "duration": "1 minute",
-           "source": "Ray of Sickness",
-           "save_dc": 13,
-           "save_type": "CON"
-         }
-       ],
-       "aragorn": [
-         {
-           "condition": "prone",
-           "duration": "until stands up",
-           "source": "knocked down"
-         }
-       ]
-     }
-   }
-   ```
-
-3. **Narrate application**:
-   - "The goblin reels back, green-faced and retching (**Poisoned**)."
-   - "Aragorn hits the ground hard (**Prone**)."
-
-### Condition Effects
-
-Enforce these mechanical effects automatically:
-
-**Blinded**:
-- Attack rolls have disadvantage
-- Attacks against have advantage
-- Auto-fail ability checks requiring sight
-
-**Charmed**:
-- Can't attack charmer or target with harmful effects
-- Charmer has advantage on social checks
-
-**Frightened**:
-- Disadvantage on ability checks and attack rolls while source is in sight
-- Can't willingly move closer to source
-
-**Grappled**:
-- Speed becomes 0
-- Can't benefit from bonuses to speed
-
-**Incapacitated**:
-- Can't take actions or reactions
-
-**Invisible**:
-- Can't be seen without special sense
-- Attack rolls have advantage
-- Attacks against have disadvantage
-
-**Paralyzed**:
-- Incapacitated (can't take actions/reactions)
-- Auto-fail STR and DEX saves
-- Attacks against have advantage
-- Melee attacks within 5 ft are critical hits
-
-**Poisoned**:
-- Disadvantage on attack rolls
-- Disadvantage on ability checks
-
-**Prone**:
-- Disadvantage on attack rolls
-- Melee attacks against have advantage
-- Ranged attacks against have disadvantage
-- Costs half movement to stand up
-
-**Restrained**:
-- Speed becomes 0
-- Attack rolls have disadvantage
-- Attacks against have advantage
-- Disadvantage on DEX saves
-
-**Stunned**:
-- Incapacitated (can't take actions/reactions)
-- Auto-fail STR and DEX saves
-- Attacks against have advantage
-
-**Unconscious**:
-- Incapacitated, can't move or speak
-- Drops what it's holding, falls prone
-- Auto-fail STR and DEX saves
-- Attacks against have advantage
-- Melee attacks within 5 ft are critical hits
-
-**Exhaustion** (levels 1-6):
-1. Disadvantage on ability checks
-2. Speed halved
-3. Disadvantage on attack rolls and saves
-4. HP maximum halved
-5. Speed reduced to 0
-6. Death
-
-### Enforcing Conditions During Combat
-
-**Before attack roll**:
-- Check if attacker has conditions: Apply disadvantage for `blinded`, `frightened`, `poisoned`, `prone`, `restrained`
-- Check if target has conditions: Apply advantage for attacks against `blinded`, `paralyzed`, `prone` (melee only), `restrained`, `stunned`, `unconscious`
-
-**Before saving throw**:
-- Check conditions: `Paralyzed` or `stunned` = auto-fail STR/DEX saves
-- Apply disadvantage/advantage as appropriate
-
-**During movement**:
-- Check conditions: `Grappled`, `restrained`, `prone` (costs half movement), `exhaustion` level 2+ (halved speed), level 5 (speed 0)
-
-**Start of turn**:
-- Check condition duration: "Until end of turn", "1 minute", "concentration", etc.
-- Prompt saves if allowed: "The goblin can make a CON save (DC 13) to end Poisoned."
-
-### Condition Duration Tracking
-
-**Instantaneous**: Apply once, no tracking
-**Until end of turn**: Remove at end of creature's turn
-**1 minute (10 rounds)**: Decrement round counter, remove at 0
-**Concentration**: Tied to caster's concentration, remove if caster loses concentration
-**Until condition met**: Remove when specified action occurs (e.g., "until stands up")
-
-Example tracking:
-```json
-{
-  "condition": "hold-person",
-  "duration": "concentration, 1 minute",
-  "rounds_remaining": 10,
-  "source": "Wizard's spell",
-  "save_dc": 14,
-  "save_type": "WIS",
-  "save_on_turn_end": true
-}
-```
-
-### Removing Conditions
-
-**Automatically**:
-- Duration expires
-- Condition's trigger met (stands up from prone)
-- Source removed (charmer dies)
-
-**By action**:
-- Lesser Restoration spell removes many conditions
-- Medicine check to stabilize unconscious
-
-**By save**:
-- Some conditions allow saves at end of turn
-- Roll save, compare to DC, remove on success
-
-**Update state**:
-```bash
-# Remove condition from active_encounter.conditions
-```
-
-### Concentration Checks
-
-When a concentrating caster takes damage:
-
-1. **Determine DC**: DC = 10 or half damage taken, whichever is higher
-2. **Roll CON save**:
-   ```bash
-   uv run roll 1d20+{con_modifier} -v
-   ```
-3. **On failure**: Concentration breaks, remove all concentration-based conditions/spells
-
-### Damage Types
-
-Query damage type information:
+- `goblin:3` makes `goblin#1`..`goblin#3` from the 5e API (HP, AC, actions, saves, XP). `boss=bugbear` gives one creature its own id. An id with a `world/npcs/<id>.json` file that has `hp` and `armor_class` joins as that NPC; its HP is written back at the end.
+- The party joins by default (`--pcs a,b` to choose). The command rolls initiative for everyone and prints the order and each creature's AC, HP and resistances.
+- No API monster fits? `uv run dnd-cli search monsters --name <word>` for the index.
+- Reinforcements: `uv run dnd-cli encounter add wolf:2`.
+
+## Each turn
 
 ```bash
-uv run dnd-cli get damage-types/{damage-type} --fields name,desc
+uv run dnd-cli attack aragorn longsword goblin#2            # to hit vs AC, damage on a hit, applied
+uv run dnd-cli attack goblin#1 scimitar sireth --adv         # --adv / --dis from conditions and position
+uv run dnd-cli attack legolas spell goblin#3 --damage 1d10 --type fire    # spell attack (Fire Bolt)
+uv run dnd-cli save goblin#1 goblin#2 dex --dc 15 --damage 8d6 --type fire --half    # Fireball
+uv run dnd-cli save sireth --from dragon:fire-breath         # a creature's DC action: DC, damage, half from the API
+uv run dnd-cli encounter next                                # next living combatant; conditions count down
 ```
 
-Common types: `acid`, `bludgeoning`, `cold`, `fire`, `force`, `lightning`, `necrotic`, `piercing`, `poison`, `psychic`, `radiant`, `slashing`, `thunder`
+- `attack <attacker> <weapon or action> <target>`. The weapon name can be part of the name (`long` for Longsword). A natural 20 is a critical hit (dice doubled), a natural 1 misses. `--bonus 2` for Bless or `--bonus -2` for half cover.
+- A PC's spells: cast first with `uv run dnd-cli character cast <name> <level>` (it refuses when no slot is left), then `attack ... spell ...` or `save ...`.
+- Multiattack is narration: make each attack with its own `attack` command.
+- Damage or healing outside an attack: `uv run dnd-cli encounter damage goblin#2 7 --type fire`, `uv run dnd-cli encounter heal sireth 8`. A hit on a creature that is `concentrating` prints the concentration DC.
+- Conditions: `uv run dnd-cli encounter condition goblin#1 add poisoned --rounds 3 --save con:11`, `... remove poisoned`. `encounter next` counts rounds down on the creature's turn, ends expired conditions, and says which saves are due. Mark concentration with the condition `concentrating`.
+- `uv run dnd-cli encounter status` prints the order, HP, AC and conditions — use it instead of reading files.
+- A PC at 0 HP: on its turn, `uv run dnd-cli check <name> death`. Damage to a PC at 0 adds death-save failures by itself; any healing resets them.
 
-**Resistances**: Take half damage
-**Vulnerabilities**: Take double damage
-**Immunities**: Take no damage
+## End
 
-Check creature stat blocks for resistances/immunities and apply when calculating damage.
-
-## Saving Throws
-
-When a spell or effect requires a save:
-
-**Step 1: Determine save type**
-- From spell API: `dc.dc_type.name` (e.g., "DEX", "WIS")
-
-**Step 2: Get target's modifier**
-- Read target file for ability modifier
-
-**Step 3: Get save DC**
-- For spells: caster's `spell_save_dc` from their character sheet
-- For monster abilities: from monster stat block
-
-**Step 4: Roll save**
 ```bash
-uv run roll 1d20+{modifier} -v
+uv run dnd-cli encounter end            # XP of defeated foes, split among the party; clears the tracker
+uv run dnd-cli encounter end --no-xp    # the party fled, or the foes surrendered without a fight
 ```
 
-**Step 5: Compare**
-- Success: Usually half damage or no effect
-- Failure: Full damage or full effect
+It prints "LEVEL UP READY" for a character who reached the next level (see the `character-advancement` skill). Then offer a search, loot, or a rest (`uv run dnd-cli rest short` / `rest long`).
 
-## Combat End
+## Conditions: what to apply
 
-When all enemies are defeated or players flee:
+Give `--adv` or `--dis` from these when you call `attack`, `save` or `check`:
 
-1. **Update state**:
-   ```json
-   "active_encounter": null,
-   "party_status": "Exploring"
-   ```
+| Condition | Its own rolls | Rolls against it |
+|---|---|---|
+| Blinded | attacks: disadvantage; sight checks fail | attacks: advantage |
+| Frightened | checks and attacks: disadvantage while the source is in sight; cannot move closer | — |
+| Invisible | attacks: advantage | attacks: disadvantage |
+| Poisoned | attacks and checks: disadvantage | — |
+| Prone | attacks: disadvantage | melee within 5 ft: advantage; ranged: disadvantage |
+| Restrained | attacks and DEX saves: disadvantage; speed 0 | attacks: advantage |
+| Grappled | speed 0 | — |
+| Paralyzed, Stunned, Unconscious | no actions; STR and DEX saves fail | attacks: advantage; melee within 5 ft crits (paralyzed, unconscious) |
+| Charmed | cannot harm the charmer | charmer: advantage on social checks |
+| Exhaustion 1-6 | 1 checks dis; 2 speed half; 3 attacks and saves dis; 4 HP max half; 5 speed 0; 6 death | — |
 
-2. **Award XP** (if using XP system):
-   - Read monster CR, calculate XP
-   - Add to each PC's `experience_points`
+Full text: `uv run dnd-cli info conditions <name>`.
 
-3. **Loot & Rest**:
-   - Prompt players: "The battle is won. Search the bodies? Take a short rest?"
-   - Generate loot if appropriate (use worldbuilding skill)
+## Multi-player
 
-## Multi-Player Coordination
-
-- **Verify player control**: Before allowing actions, check `{campaign}/players/{id}.json` to confirm player controls the character
-- **No editing other characters**: Players can only modify their own characters' HP, inventory, etc.
-- **Turn announcements**: Clearly state whose turn it is and which player controls them
-- **Simultaneous actions**: If multiple players want to act out-of-turn (readied actions, reactions), handle in initiative order with DM judgment
+- Before a player acts, the character must be theirs (`players/{id}.json`, also in the session brief).
+- Name whose turn it is and which player controls the character.
+- Reactions and readied actions: resolve in initiative order, with your judgment.
 
 ## Tips
 
-- **Narrate first, mechanics second**: "Your arrow flies true" before "rolled 18 vs AC 15"
-- **Keep combat moving**: Don't wait too long for player input, prompt them
-- **Track status effects**: Note conditions (prone, grappled, etc.) in encounter state
-- **Critical hits (natural 20)**: Double damage dice (not modifiers)
-- **Critical fails (natural 1)**: Automatic miss, narrate dramatically
-- **Death saves**: When PC reaches 0 HP, track death saves in character file
-
-## Common Mistakes to Avoid
-
-- **Don't hallucinate AC or HP**: Always read from files
-- **Don't compute new HP or spell-slot numbers yourself**: for player characters, use `dnd-cli character apply-damage/heal/add-temp-hp/cast` (see "Update target HP" above) — save changes immediately by running the command, not by hand-editing the number in
-- **Don't skip spell slot checks**: Wizards can't cast infinite Fireballs — `dnd-cli character cast` refuses when none remain
-- **Don't mix up attack bonus and damage**: Attack determines if hit, damage determines how much hurt
+- Narrate first, mechanics second: "Your arrow flies true (18 vs AC 15) — 7 damage."
+- Keep combat moving: prompt the player whose turn it is.
+- Never invent AC or HP: `encounter status` has them.

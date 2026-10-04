@@ -73,72 +73,28 @@ The command validates the character file against the schema before saving, so a 
 
 ### Step 4: Resolve Spell Effect
 
-**Spell Attack Roll** (if `attack_type: "SPELL"`):
-1. Roll attack: 1d20 + spell_attack_bonus
-   ```bash
-   uv run roll 1d20+{spell_attack_bonus} -v
-   ```
-2. Compare to target AC
-3. On hit: Roll damage
+One command each; they roll, compare, apply the damage, and show the dice:
 
-**Saving Throw** (if has `dc`):
-1. Target rolls: 1d20 + ability_modifier
-   ```bash
-   uv run roll 1d20+{modifier} -v
-   ```
-   Use ability from `dc.dc_type.name` (e.g., DEX, WIS)
-2. Compare to caster's `spell_save_dc`
-3. On failure: Apply full effect/damage
-4. On success: Usually half damage or no effect
+```bash
+uv run dnd-cli attack legolas spell goblin#1 --damage 1d10 --type fire                 # spell attack (Fire Bolt)
+uv run dnd-cli save goblin#1 goblin#2 dex --dc 13 --damage 8d6 --type fire --half      # Fireball: damage rolled once
+uv run dnd-cli save goblin#1 wis --dc 13                                                # a save with no damage (Hold Person)
+uv run dnd-cli encounter heal sireth 1d8+3                                              # Cure Wounds
+```
 
-**Damage** (if applicable):
-1. Parse damage from `damage` field (e.g., "8d6")
-2. Roll damage:
-   ```bash
-   uv run roll 8d6 -v
-   ```
-3. Apply to target(s)
-4. If upcasted, add extra damage from `higher_level`
+- The caster's DC and spell attack bonus are on the sheet (`spellcasting.spell_save_dc`, also in `character show`).
+- Upcasting: add the extra dice from `higher_level` to `--damage`.
+- A failed save that sets a condition: `uv run dnd-cli encounter condition goblin#1 add paralyzed --rounds 10 --save wis:13`.
+- No attack or save (a buff, utility): apply the effect as described; track its rounds with `encounter condition` if it matters.
 
-**No Attack/Save** (buff, utility, etc.):
-- Apply effect as described
-- Track duration if applicable
+### Step 5: Concentration
 
-### Step 5: Handle Concentration
+- A caster holds one concentration spell at a time; a new one ends the old one.
+- Mark it: `uv run dnd-cli encounter condition legolas add concentrating --rounds 10`. Damage to a concentrating creature prints the save DC (10 or half the damage); roll it with `uv run dnd-cli save legolas con --dc <DC>`. On a failure, remove `concentrating` and the spell's conditions.
 
-If `concentration: true`:
+### Step 6: Duration
 
-1. **Check existing concentration**: Can only concentrate on one spell at a time
-   - If already concentrating: Choosing to concentrate on new spell ends previous one
-   - Update state: Remove old concentration spell/effect
-
-2. **Track concentration**:
-   - Add to character state or `active_encounter.conditions`
-   - Note spell name, duration, and effect
-
-3. **Concentration checks** (when caster takes damage):
-   - DC = 10 or half damage taken, whichever is higher
-   - Roll CON save
-   - On failure: Concentration breaks, spell ends
-
-4. **End concentration**:
-   - Remove spell effect
-   - Update state
-
-### Step 6: Track Duration
-
-**Instantaneous**: Effect happens immediately, no tracking
-
-**Concentration, up to X**: Lasts up to maximum duration or until concentration breaks
-- Example: "Concentration, up to 1 minute" = max 10 rounds
-
-**X minutes/hours/days**: Lasts specified time
-- 1 minute = 10 rounds
-- Track rounds/time in state
-
-**Until dispelled**: Lasts until *Dispel Magic* or similar effect removes it
-
-**Permanent**: Lasts forever (rare)
+1 minute = 10 rounds (`--rounds 10`); `encounter next` counts them down. Longer durations: note them in the story; instantaneous spells need nothing.
 
 ### Step 7: Narrate Casting
 
@@ -304,35 +260,14 @@ Some class features interact with schools (e.g., Abjuration Wizard, Evocation Wi
 
 ## Spell Slot Recovery
 
-**Short Rest**:
-- Warlock: Recover all spell slots
-- Wizard: Arcane Recovery (once per day, recover slots = half wizard level rounded up)
-
-**Long Rest**:
-- All classes: Recover all spell slots
-- Run `uv run dnd-cli character restore-slots {name}` (all levels at once — do not loop by hand)
-
-**Short Rest** (Warlock, or Wizard Arcane Recovery):
-- Run `uv run dnd-cli character restore-slots {name} --level {level}` once per level being recovered. For Arcane Recovery, this restores that level's slots to full rather than a partial amount — if the recovered slots total is less than the level's max, restore a lower level's slots instead so the total recovered matches half the wizard's level rounded up.
+- **Long rest**: `uv run dnd-cli rest long` (the party: HP, half the hit dice, every slot).
+- **Short rest**: `uv run dnd-cli rest short --hit-dice sireth:2`. A Warlock regains its slots: `uv run dnd-cli character restore-slots <name>`. Wizard Arcane Recovery (once a day, slot levels totalling half the wizard level, rounded up): `uv run dnd-cli character restore-slots <name> --level <n>` for the levels the player picks.
 
 ## Common Spell Scenarios
 
-### Area of Effect Spells
+### Area of Effect and Healing Spells
 
-**Fireball** (20-foot radius):
-1. Player chooses center point within range
-2. All creatures in area make DEX save vs caster's DC
-3. Roll damage once: 8d6 fire
-4. Failed save: Full damage
-5. Successful save: Half damage (rounded down)
-
-### Healing Spells
-
-**Cure Wounds** (1st-level):
-1. Touch target
-2. Roll 1d8 + spellcasting modifier
-3. Add HP to target (can't exceed max)
-4. Update target's character file
+Fireball and other areas: the player picks the point; every creature in the area makes the save in one `save` command (damage is rolled once; half on a success with `--half`). Cure Wounds and other healing: `encounter heal <target> 1d8+<mod>` (never above max HP).
 
 ### Buff Spells
 

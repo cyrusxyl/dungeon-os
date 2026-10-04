@@ -211,7 +211,7 @@ This guide has priority over the Checklist. Its rules had **no prior implementat
 | OG-1.3 | If a fact is not in the canon file, it is not true | DONE | `AGENTS.md`, Canon rule 1 |
 | OG-1.4 | Do not use conversation history as a fact record | DONE | Same rule |
 | OG-1.5 | Read the canon file at session start | DONE | `AGENTS.md`, Session Start steps 1 and 3 (`dnd-cli session brief` prints `canon.json`) |
-| OG-1.6 | Write to it at session end | DONE | `AGENTS.md`, Session End; procedure in `dm-canon-procedures` |
+| OG-1.6 | Write to it at session end | DONE, code-enforced | `dnd-cli session end` (`dnd_cli/commands/session_cmd.py:end`): one command sweeps threads, advances every clock, writes the log, and closes; `AGENTS.md` Session End, `dm-canon-procedures` |
 | OG-1.7 | Seven parts, A through G | DONE | `canon.schema.json`: `villains`, `threads`, `facts`, `characters`, `items`, `promises`, `rulings` |
 
 ### Section 2 — Villain Clocks
@@ -323,7 +323,7 @@ This guide has priority over the Checklist. Its rules had **no prior implementat
 |---|---|---|---|
 | OG-11.1 | Seven records at session end | DONE, code-enforced (visibility) | `dnd-cli canon session-report` counts facts/items/promises/rulings already on file for the session number and reports the clock touched and open-thread count in one place, so the DM does not have to trust memory of what got written. It cannot force the DM to have written them in the first place — see OG-4.1 note above about judgment calls. |
 | OG-11.2 | Record the clock touched | DONE, code-enforced | Same as OG-4.3 |
-| OG-11.3 | Do not end the session before records are complete | DONE, code-enforced | `dnd-cli canon close-session` refuses (exit 1) when `session-report` has warnings, unless `--force` is passed. Tested. |
+| OG-11.3 | Do not end the session before records are complete | DONE, code-enforced | `dnd-cli session end` (and `canon close-session`) refuse when `session-report` has warnings, unless `--force` is passed; `session end` writes nothing on a refusal and resets the arc-touch record for the next session. Tested in `tests/test_rules.py`. |
 | OG-11.4 | An unwritten event did not happen | DONE, code-enforced | `close-session --force` still requires the DM to explicitly type `--force` to close over a warning — there is no silent path through. Tested: default call refused, `--force` call succeeded and printed the outcome. |
 
 ### Section 12 — Hidden Information

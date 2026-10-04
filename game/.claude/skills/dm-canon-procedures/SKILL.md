@@ -21,7 +21,7 @@ The only things you write by hand are pieces of text with no arithmetic behind t
 
 A clock is one quest, from Part A, moving toward a villain's goal. A clock has 4, 6, or 8 segments. New villains and clocks are created by the `worldbuilding` skill (`canon add-villain`, `canon add-clock`) when the campaign or a new antagonist is set up — this section is about advancing clocks that already exist.
 
-**At session end, for each clock, run exactly one of:**
+**At session end, `uv run dnd-cli session end` does this for every clock** (see Session End below). By hand, one of:
 ```bash
 uv run dnd-cli canon advance-clock "{villain}" "{clock}"                    # default: +1 segment
 uv run dnd-cli canon advance-clock "{villain}" "{clock}" --warning-ignored  # +2 segments
@@ -37,7 +37,7 @@ The command decides the segment count — do not compute `segments_filled + 1` (
 
 Part B holds open story threads.
 
-**At session end, run once:**
+**At session end, `uv run dnd-cli session end --appeared ...` does this.** By hand:
 ```bash
 uv run dnd-cli canon sweep-threads --appeared "thread-id-1,thread-id-2"
 ```
@@ -90,21 +90,22 @@ See AGENTS.md rules 2 and 3. When you make a ruling (a rules call, a DC, a judgm
 
 ## Session End: The Seven Records
 
-Do not end a session before all seven are on record. Run the report first, and let it tell you what is missing — do not trust your own memory of what you wrote this session:
+Facts, items, promises and rulings are recorded the moment they happen (sections above), and the arc-touch clock when its scene happens. At the end, one command does the rest:
 
 ```bash
-uv run dnd-cli canon session-report
+uv run dnd-cli session end --appeared "redbrands,missing-dwarf" --clock "Glasstaff/Seize the town=action" --time "Day 3, dusk" <<'EOF'
+The party freed the Redbrand prisoners and learned Glasstaff's name.
+Toblen asked them to find Gundren. They promised Sildar to scout Cragmaw Castle.
+EOF
 ```
 
-This counts facts, items, promises, and rulings already on file for this session number, shows whether a clock was touched, and lists warnings — most commonly a missing `touch-clock` call (Arc-Touch Gate) or too many open threads. If anything is missing, go run the matching command from the sections above, then re-run the report.
-
-When the report comes back clean (`"warnings": []`), close the session:
-
-```bash
-uv run dnd-cli canon close-session
-```
-
-This sets `last_session_written` and validates the file one final time before saving. If you try to close with open warnings, it refuses and exits non-zero — the only way past that is to fix the warnings, or pass `--force` and accept, in writing, that you are closing an incomplete session. An unwritten event did not happen; a forced close is a recorded exception, not a silent one.
+- The heredoc is the recap: it becomes `## Session N` in `session_log.md`.
+- `--appeared`: the thread ids that came up in play. The others age by 1.
+- Every active clock advances by 1, unless you name it: `--clock "Villain/Clock=action"` (players acted against it: +0) or `=warning` (they ignored a clear warning: +2).
+- `--time` sets `game_time` in `state.json`.
+- It checks the session report first. With a warning (most often: no `canon touch-clock` this session), it writes **nothing** and says what is missing; fix it and run it again. It also refuses a second close.
+- It prints thread alerts ("put back into play", "world acts now") and clocks that completed. Act on them next session; for a completed clock, record what the villain achieved with `canon add-fact`.
+- `uv run dnd-cli canon session-report` shows what is on record so far, at any time.
 
 ## Adversarial Self-Test
 

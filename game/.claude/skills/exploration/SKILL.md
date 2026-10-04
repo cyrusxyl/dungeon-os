@@ -43,156 +43,50 @@ Match action to skill:
 - Performance: Sing, dance, act, entertain
 - Persuasion: Convince, negotiate, inspire, make requests
 
-### Step 2: Query Skill Details (if needed)
+### Step 2: Set the DC
+
+| DC | Difficulty | Example |
+|---|---|---|
+| 5 | Very easy | climb a knotted rope |
+| 10 | Easy | climb a rough wall, hide in thick forest |
+| 15 | Medium | climb a sheer wall, pick a simple lock |
+| 20 | Hard | climb a slippery surface, pick a complex lock |
+| 25 | Very hard | climb an overhang, forge a royal seal |
+| 30 | Nearly impossible | climb a perfectly smooth wall |
+
+Contested check: roll both sides (Stealth vs Perception) and compare.
+
+### Step 3: Roll with one command
 
 ```bash
-uv run dnd-cli get skills/{skill-index} --fields name,desc,ability_score
+uv run dnd-cli check sireth stealth --dc 15
+uv run dnd-cli check sireth perception --dc 14 --adv          # Help, or a good position: --adv; poor light: --dis
+uv run dnd-cli check sireth con --dc 12                       # a raw ability check
+uv run dnd-cli check all stealth --dc 13                      # group check: half or more must succeed
+uv run dnd-cli check all perception --passive                 # passive scores, no roll
+uv run dnd-cli check goblin#1 stealth --secret                # a creature in the encounter; hidden from the stage
 ```
 
-Use this to clarify what a skill covers or which ability score it uses.
+The command reads each character's bonus from the sheet (proficiency and expertise are already in it), rolls, compares with the DC, and shows the dice on the stage. Do not work out modifiers yourself. A natural 20 or 1 on a check is not an automatic success or failure, but make the outcome memorable.
 
-### Step 3: Determine DC (Difficulty Class)
+### Step 4: Narrate
 
-**Standard DCs**:
-- **Very Easy (DC 5)**: Climbing a knotted rope, noticing something obvious
-- **Easy (DC 10)**: Climbing a rough surface, hiding in thick forest
-- **Medium (DC 15)**: Climbing a sheer wall, picking a simple lock
-- **Hard (DC 20)**: Climbing a slippery surface, picking a complex lock
-- **Very Hard (DC 25)**: Climbing an overhanging cliff, forging a royal seal
-- **Nearly Impossible (DC 30)**: Climbing a perfectly smooth wall, convincing an enemy you're their ally
-
-**Contested checks**: Opponent rolls opposing skill (e.g., Stealth vs Perception)
-
-### Step 4: Get Character's Modifier
-
-Read character file:
-
-1. **Check if proficient**: Look for skill in `skills` object
-2. **Get modifier**:
-   - If proficient: `ability_modifier + proficiency_bonus`
-   - If not proficient: `ability_modifier` only
-   - If expertise: `ability_modifier + (proficiency_bonus × 2)`
-
-### Step 5: Roll the Check
-
-```bash
-uv run roll 1d20+{modifier} -v
-```
-
-**Advantage/Disadvantage**:
-- Advantage: Roll twice, take higher
-  ```bash
-  uv run roll 2d20kh1+{modifier} -v
-  ```
-- Disadvantage: Roll twice, take lower
-  ```bash
-  uv run roll 2d20kl1+{modifier} -v
-  ```
-
-### Step 6: Compare to DC
-
-- **Success**: Result ≥ DC
-- **Failure**: Result < DC
-- **Critical success (natural 20)**: Automatic success, exceptional result
-- **Critical failure (natural 1)**: Automatic failure, complications
-
-### Step 7: Narrate Outcome
-
-**Success**:
-- "Your fingers find the pins in the lock (**rolled 18 vs DC 15**). With a satisfying *click*, it opens."
-
-**Failure**:
-- "You fumble with the lock picks (**rolled 12 vs DC 15**). The mechanism remains stubbornly locked."
-
-**Critical success**:
-- "Your pick slides home perfectly (**natural 20!**). The lock springs open instantly, and you notice a hidden compartment inside the chest."
-
-**Critical failure**:
-- "Your pick snaps off in the lock (**natural 1**). The lock is now jammed and requires a DC 20 STR check to force open."
+- "Your fingers find the pins (**18 vs DC 15**). The lock clicks open."
+- "You fumble the picks (**12 vs DC 15**). The lock holds."
 
 ## Passive Checks
 
-For continuous awareness without active rolling:
-
-### Passive Perception
-
-**Calculate**: 10 + Perception modifier
-
-**Use for**:
-- Noticing hidden enemies
-- Spotting traps without searching
-- Hearing distant sounds
-- Seeing ambushes
-
-**Example**: Character with +5 Perception has Passive Perception 15.
-
-If trap has DC 15 to notice, they automatically spot it. If DC 16, they don't unless actively searching.
-
-### Passive Investigation
-
-**Calculate**: 10 + Investigation modifier
-
-**Use for**:
-- Noticing small details
-- Spotting inconsistencies
-- Recalling information
-
-### Passive Insight
-
-**Calculate**: 10 + Insight modifier
-
-**Use for**:
-- Detecting lies automatically
-- Sensing hidden motives
-- Reading tension in a room
-
-**Track passive scores**: Add to character file for quick reference.
+Passive score = 10 + the skill bonus (+5 with advantage, -5 with disadvantage): `uv run dnd-cli check all perception --passive`. Use it to notice hidden enemies, traps and ambushes without a roll (Perception), small details (Investigation), and lies or tension (Insight). A trap with DC 15 is noticed by a passive Perception of 15 or more.
 
 ## Ability Checks (Raw Ability)
 
-When no specific skill applies:
-
-**Strength checks**: Brute force without Athletics
-**Dexterity checks**: Quick reflexes without Acrobatics/Sleight/Stealth
-**Constitution checks**: Endurance, resist poison, hold breath
-**Intelligence checks**: Logic, memory without specific skill
-**Wisdom checks**: Intuition, awareness without specific skill
-**Charisma checks**: Force of personality without specific skill
-
-**Roll**: 1d20 + ability modifier (no proficiency bonus)
-
-### Example Ability Checks
-
-- **CON check**: Hold breath underwater (DC 10 + 1 per previous round)
-- **STR check**: Break down a door (DC based on door strength)
-- **WIS check**: Sense something is wrong (gut feeling)
-- **CHA check**: Make a good impression (raw charisma)
+When no skill applies, check the ability itself (`check <who> str`): STR for brute force, DEX for quick reflexes, CON to hold your breath or resist poison, INT for logic and memory, WIS for a gut feeling, CHA for force of personality.
 
 ## Group Checks
 
-When entire party attempts same task:
+When the whole party tries the same task (sneaking past guards, swimming a river), `uv run dnd-cli check all <skill> --dc N`: the group succeeds when half or more succeed.
 
-### Standard Group Check
-
-**Method**: Everyone rolls, majority succeeds = group succeeds
-
-**Example**: Sneaking past guards
-1. All characters roll Stealth
-2. Count successes vs failures
-3. If more succeed than fail: Group sneaks past
-4. If more fail than succeed: Guards notice the group
-
-**Use for**: Moving stealthily, swimming across river, climbing cliff
-
-### Helping
-
-**Rule**: One character can Help another, granting advantage
-
-**Requirements**:
-- Helper must be proficient in the skill OR
-- DM judges helper can meaningfully assist
-
-**Example**: "I help Rogue pick the lock" → Rogue rolls with advantage
+Helping: one character helps another, who then rolls with `--adv`.
 
 ## Exploration Activities
 
