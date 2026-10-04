@@ -39,7 +39,8 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
   ```
   You can still use direct API calls with curl when needed, but the wrapper provides caching and token efficiency.
 
-- **Dice Rolls**: Use `uv run roll 1d20+5 -v` from your working directory (`game/`). Do not prefix any `uv run` command with `cd ... &&`: a compound command needs a permission prompt, a plain `uv run` does not.
+- **Dice Rolls**: Use `uv run roll 1d20+5 -v` from your working directory (`game/`).
+- **Command form (all tools)**: Run one `uv run ...` command per Bash call, on one line. Do not prefix it with `cd ... &&`, do not chain commands with `&&`, and never break a line with `\`. A compound command or a backslash line break stops the game for a permission prompt; a plain `uv run` command does not. Several commands in a row are several Bash calls.
 - **Canon Bookkeeping**: Use `uv run dnd-cli canon <subcommand> ...` for every clock advance, thread-staleness update, and session-end record. See "Canon File & Anti-Drift Rules" below and the `dm-canon-procedures` skill. **Never** compute a clock's new segment count or a thread's new staleness count yourself and write the number into `canon.json` by hand — that arithmetic is exactly the kind of thing this section exists to keep out of the model's hands.
 - **Character HP & Spell Slots**: Use `uv run dnd-cli character apply-damage/heal/add-temp-hp/cast/restore-slots ...` for player character HP and spell-slot changes — see the `combat` and `magic` skills. It applies the 5e temp-HP-first damage order and the max-HP heal cap correctly every time, and validates the file against `character.schema.json` before saving. **Never** subtract damage or decrement a spell slot by hand and write the number in with the Edit tool. This does not yet cover NPC/monster files (`world/npcs/*.json`, a different schema) — those still use the Edit tool.
 - **Never** guess AC, spell descriptions, or damage formulas

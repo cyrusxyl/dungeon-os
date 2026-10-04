@@ -24,6 +24,11 @@ from stage.assets import ensure_dcss
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
 SPEC_KEYS = ("body", "skin", "eyes")
+# Everyday words for skin, mapped to LPC palette names.
+SKIN_ALIASES = {
+    "fair": "light", "pale": "light", "white": "light", "tan": "amber", "golden": "amber",
+    "dark": "brown", "ebony": "black", "grey": "fur_grey", "gray": "fur_grey", "purple": "lavender",
+}
 
 
 @cache
@@ -106,6 +111,8 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict
             spec = {"name": spec.get("name"), "tile": tile} if spec.get("name") else {"tile": tile}
         elif key == "name":
             spec["name"] = value.replace("_", " ").strip()
+        elif key == "skin":
+            spec[key] = SKIN_ALIASES.get(value.lower(), value)
         elif key in SPEC_KEYS:
             spec[key] = value
         else:

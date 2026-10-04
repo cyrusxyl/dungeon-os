@@ -57,7 +57,9 @@ Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. L
 uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin=light eyes=green hair_bob:chestnut blouse_longsleeve:white corset:maroon skirt_straight:black shoes_basic:black
 ```
 
-- `name=` is the name on the dialogue box (use `_` for spaces). `body=` is `male`, `female`, `muscular`, `teen`, `pregnant`, or `child`. `skin=` and `eyes=` are palettes.
+- `name=` is the name on the dialogue box (use `_` for spaces). `body=` is `male`, `female`, `muscular`, `teen`, `pregnant`, or `child`.
+- `skin=`: `light`, `amber`, `olive`, `taupe`, `bronze`, `brown`, `black` for human tones; `blue`, `lavender`, `green`, `pale_green`, `dark_green`, `bright_green`, `zombie`, `fur_*` for others. `eyes=`: `blue`, `green`, `brown`, `gray`, `red`, `orange`, `yellow`, `purple`.
+- **One `set` per Bash call, on one line.** Do not chain with `&&` and never break a line with `\`: a backslash line break always stops for a permission prompt, and the first error in a chain stops the rest.
 - Every other word is an item, optionally with a color: `robe:white`. Names of the head, ears, hair, clothes, legs, shoes, hats, weapons and more: `uv run dnd-cli actor options` (types) and `uv run dnd-cli actor options <type> --body female` (items and colors that fit).
 - Start from a kind with `preset=guard` and change pieces: `uv run dnd-cli actor set captain-voss preset=guard name=Captain_Voss hair_buzzcut:black`. Presets: goblin, hobgoblin, orc, troll, skeleton, zombie, vampire, kobold, lizardfolk, gnoll, werewolf, minotaur, bandit, thug, guard, knight, cultist, commoner, merchant, noble, priest, wizard, sailor.
 - **Race features.** Add these to clothes and hair, or the race does not show:
