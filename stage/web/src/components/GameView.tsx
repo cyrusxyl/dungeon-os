@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
 import { ConsoleDrawer } from '@/components/Console'
+import { CrawlView } from '@/components/CrawlView'
 import { DialogueBox } from '@/components/DialogueBox'
 import { LogDrawer } from '@/components/LogDrawer'
+import { MapOverlay } from '@/components/MapOverlay'
 import { PartyPanel } from '@/components/PartyPanel'
 import { StageView } from '@/components/StageView'
 import { Button } from '@/components/ui/8bit/button'
@@ -26,6 +28,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const [readSeq, setReadSeq] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
   const [consoleOpen, setConsoleOpen] = useState(false)
+  const [mapOpen, setMapOpen] = useState(false)
   const [showParty, setShowParty] = useState(true)
 
   // On first load (or reload) everything already on record counts as read.
@@ -57,6 +60,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const speaker = current?.type === 'say' ? current.actor : undefined
   const canType = state.dm.status === 'idle'
   const choices = caughtUp ? state.choices?.options : undefined
+  // Walking and travel wait until the player has read the story so far.
+  const canAct = canType && caughtUp
 
   const advance = () => setReadSeq(unread[0]?.seq ?? readSeq)
   const submit = async (text: string) => {
@@ -81,6 +86,9 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         </span>
         <Button size="sm" variant="outline" onClick={() => setShowParty((v) => !v)} className="hidden text-[10px] lg:inline-flex">
           Party
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setMapOpen(true)} className="text-[10px]">
+          Map
         </Button>
         <Button size="sm" variant="outline" onClick={() => setLogOpen((v) => !v)} className="text-[10px]">
           Log
@@ -129,7 +137,11 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       <main className={`grid min-h-0 flex-1 gap-4 ${showParty ? 'lg:grid-cols-[1fr_20rem]' : ''}`}>
         <section className="flex min-h-0 flex-col gap-3">
           <div className="min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
-            <StageView state={state} speaker={speaker} />
+            {state.explore ? (
+              <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
+            ) : (
+              <StageView state={state} speaker={speaker} />
+            )}
           </div>
           <DialogueBox line={current} pending={pending} onAdvance={advance} versions={state.versions ?? {}} />
 
@@ -183,6 +195,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         )}
       </main>
 
+      <MapOverlay open={mapOpen} onClose={() => setMapOpen(false)} state={state} canAct={canAct} />
       <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} log={state.log} />
       <ConsoleDrawer open={consoleOpen} onClose={() => setConsoleOpen(false)} dmLog={state.dm_log} />
     </div>

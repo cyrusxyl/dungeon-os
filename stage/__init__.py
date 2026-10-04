@@ -7,8 +7,13 @@ never gives pixel positions:
   `{campaign}/stage/events.ndjson`.
 - `dnd-cli actor set` and `dnd-cli scene set` write structured specs to
   `{campaign}/stage/actors/` and `{campaign}/stage/scenes/`.
+- `dnd-cli site set` and `dnd-cli map place` write sites (generated
+  dungeons the party walks through) to `{campaign}/stage/sites/` and region
+  and city maps to `{campaign}/stage/maps/`.
 
-Everything under `{campaign}/stage/` is player-visible by design. The stage
-server reads only that directory plus state.json and characters/*.json. It
-never opens dm_story.md, canon.json, session_log.md, or world/*.
+The stage server reads only `{campaign}/stage/` plus state.json and
+characters/*.json. It never opens dm_story.md, canon.json, session_log.md, or
+world/*. Events, actors and scenes are player-visible by design. Sites and
+maps hold secrets (the whole layout, hidden places), so the server sends the
+browser only what the party has seen or been told.
 """

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { DiceOverlay } from '@/components/DiceOverlay'
-import { type Position, type StageState, titleCase } from '@/lib/stage'
+import { type Position, type StageState, titleCase, useIntegerScale } from '@/lib/stage'
 
 // Logical stage size in source pixels: a 10 x 6 room of 32 px LPC tiles.
 export const STAGE_W = 320
@@ -14,21 +14,6 @@ const SLOT_X: Record<Position, number> = {
   center: 128,
   right: 200,
   'far-right': 248,
-}
-
-function useIntegerScale(ref: React.RefObject<HTMLDivElement | null>): number {
-  const [scale, setScale] = useState(2)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect
-      setScale(Math.max(1, Math.floor(Math.min(width / STAGE_W, height / STAGE_H))))
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [ref])
-  return scale
 }
 
 function Img({ src, fallback, className }: { src: string; fallback: React.ReactNode; className?: string }) {
@@ -78,7 +63,7 @@ function useMood(scene: string | null, version: number): string {
 
 export function StageView({ state, speaker }: { state: StageState; speaker?: string }) {
   const box = useRef<HTMLDivElement>(null)
-  const scale = useIntegerScale(box)
+  const scale = useIntegerScale(box, STAGE_W, STAGE_H)
   const scene = state.scene
   const mood = useMood(scene, state.versions?.[`scene:${scene}`] ?? 0)
 

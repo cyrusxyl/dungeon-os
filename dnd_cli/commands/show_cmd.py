@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
-from stage import actors, beat, scenes
+from stage import actors, beat, crawl, maps, scenes
 
 
 def _stage_campaign_dir(campaign: str | None) -> Path:
@@ -35,7 +35,28 @@ def execute_beat(campaign: str | None, file: str | None) -> int:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
-    beat.append(campaign_dir, events)
+    # Put the party in a site before the stage reads the event.
+    for e in events:
+        if e["type"] == "explore":
+            site = crawl.load(campaign_dir, e["site"])
+            if site is None:
+                continue
+            try:
+                crawl.arrive(site, e.get("at"))
+            except crawl.SiteError as err:
+                print(f"Error: @explore {e['site']} {e.get('at')}: {err}", file=sys.stderr)
+                return 1
+            crawl.save(campaign_dir, e["site"], site)
+
+    # A scene or site that is a place on a map moves the party marker there.
+    out = []
+    for e in events:
+        out.append(e)
+        place = e.get("location") if e["type"] == "scene" else e.get("site") if e["type"] == "explore" else None
+        map_id = maps.visit(campaign_dir, place) if place else None
+        if map_id:
+            out.append({"type": "at", "map": map_id, "place": place})
+    beat.append(campaign_dir, out)
 
     # An unknown actor is not an error: the stage shows a silhouette.
     for actor in sorted({e["actor"] for e in events if "actor" in e}):
@@ -50,6 +71,12 @@ def execute_beat(campaign: str | None, file: str | None) -> int:
             print(f"Warning: no look for location {location!r} yet; the stage shows a blank room. "
                   f"Set one with: uv run dnd-cli scene set {location} template=... "
                   "(see: uv run dnd-cli scene options). The stage updates the picture by itself: do not send this beat again.", file=sys.stderr)
+
+    for site_id in sorted({e["site"] for e in events if e["type"] == "explore"}):
+        if crawl.load(campaign_dir, site_id) is None:
+            print(f"Warning: no site {site_id!r} yet; the stage shows an empty map. "
+                  f"Set one with: uv run dnd-cli site set {site_id} theme=... poi=<id>@<where> "
+                  "(see: uv run dnd-cli site options). The stage updates by itself: do not send this beat again.", file=sys.stderr)
 
     print(f"Shown: {len(events)} event(s): " + ", ".join(e["type"] for e in events))
     return 0

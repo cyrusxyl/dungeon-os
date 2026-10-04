@@ -24,6 +24,8 @@ from dnd_cli.commands import character_cmd
 from dnd_cli.commands import show_cmd
 from dnd_cli.commands import actor_cmd
 from dnd_cli.commands import scene_cmd
+from dnd_cli.commands import site_cmd
+from dnd_cli.commands import map_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -276,6 +278,44 @@ def create_parser():
     p = scene_sub.add_parser("options", help="List templates, walls, floors, props, moods, slots")
     p.add_argument("what", nargs="?", default=None)
 
+    # Site command group (generated buildings and dungeons the party walks through)
+    site_parser = subparsers.add_parser("site", help="Set a building or dungeon the party explores on the visual stage")
+    site_sub = site_parser.add_subparsers(dest="site_command", help="Site subcommand")
+    p = site_sub.add_parser("set", help="theme= size= danger= name= poi=<id>@<where>[:<icon>] ...")
+    p.add_argument("site_id")
+    p.add_argument("tokens", nargs="*")
+    p.add_argument("--change", action="store_true", help="Add points of interest, or change name= or danger=")
+    p.add_argument("--campaign", default=None)
+    for name, text in (("show", "Print a site's settings and points of interest"),
+                       ("preview", "Render the whole layout (DM only) to a PNG you can look at")):
+        p = site_sub.add_parser(name, help=text)
+        p.add_argument("site_id")
+        p.add_argument("--campaign", default=None)
+    site_sub.add_parser("options", help="List themes, depths and icons")
+
+    # Map command group (region and city maps)
+    map_parser = subparsers.add_parser("map", help="Region and city maps on the visual stage: places, routes, reveals")
+    map_sub = map_parser.add_subparsers(dest="map_command", help="Map subcommand")
+    p = map_sub.add_parser("place", help="Add a place: name= icon= from= dir= travel= in= hidden=yes")
+    p.add_argument("map_id")
+    p.add_argument("place_id")
+    p.add_argument("tokens", nargs="*")
+    p.add_argument("--campaign", default=None)
+    p = map_sub.add_parser("route", help="Make a route between two places known: travel=")
+    p.add_argument("map_id")
+    p.add_argument("a")
+    p.add_argument("b")
+    p.add_argument("tokens", nargs="*")
+    p.add_argument("--campaign", default=None)
+    p = map_sub.add_parser("reveal", help="Show a hidden place to the players")
+    p.add_argument("map_id")
+    p.add_argument("place_id")
+    p.add_argument("--campaign", default=None)
+    p = map_sub.add_parser("show", help="Print a map (or all maps), hidden places too")
+    p.add_argument("map_id", nargs="?", default=None)
+    p.add_argument("--campaign", default=None)
+    map_sub.add_parser("options", help="Show the map command forms and icons")
+
     return parser
 
 
@@ -447,6 +487,34 @@ def main():
             if sc == "options":
                 return scene_cmd.execute_options(args.what)
             print("Usage: dnd-cli scene set|show|preview|options ... (see --help)", file=sys.stderr)
+            return 1
+
+        elif args.command == "site":
+            sc = args.site_command
+            if sc == "set":
+                return site_cmd.execute_set(args.campaign, args.site_id, args.tokens, args.change)
+            if sc == "show":
+                return site_cmd.execute_show(args.campaign, args.site_id)
+            if sc == "preview":
+                return site_cmd.execute_preview(args.campaign, args.site_id)
+            if sc == "options":
+                return site_cmd.execute_options()
+            print("Usage: dnd-cli site set|show|preview|options ... (see --help)", file=sys.stderr)
+            return 1
+
+        elif args.command == "map":
+            mc = args.map_command
+            if mc == "place":
+                return map_cmd.execute_place(args.campaign, args.map_id, args.place_id, args.tokens)
+            if mc == "route":
+                return map_cmd.execute_route(args.campaign, args.map_id, args.a, args.b, args.tokens)
+            if mc == "reveal":
+                return map_cmd.execute_reveal(args.campaign, args.map_id, args.place_id)
+            if mc == "show":
+                return map_cmd.execute_show(args.campaign, args.map_id)
+            if mc == "options":
+                return map_cmd.execute_options()
+            print("Usage: dnd-cli map place|route|reveal|show|options ... (see --help)", file=sys.stderr)
             return 1
 
         elif args.command == "warmup":

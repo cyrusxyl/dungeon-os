@@ -22,6 +22,13 @@ saved per campaign and reused. A browser reload reconnects to the same DM
 session; the Menu button ends it. The DM's raw terminal is in the Console
 drawer.
 
+The **Map** button shows the current level of the world (a dungeon, a city,
+a region) and the levels above it; pick a known place to travel there. In a
+dungeon or building (`dnd-cli site set`, `@explore`), the party walks a
+generated floor plan with the arrow keys, WASD, or a click. Sight, fog, and
+wandering-monster checks run in the stage; the DM is called only when the
+party finds something. Design: `dungeon-crawl.md`.
+
 The first launch builds the web UI with npm (Node 22+) and downloads the
 pixel art (~130 MB, Universal LPC and CC0 Dungeon Crawl tiles) into the
 git-ignored `assets/` folder. The art is not redistributed; credits files are

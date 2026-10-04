@@ -26,6 +26,8 @@ def empty() -> dict:
         "dm_log": [],
         "versions": {},
         "last_roll": None,
+        "explore": None,
+        "place": None,
     }
 
 
@@ -46,6 +48,17 @@ def apply(state: dict, event: dict) -> dict:
         s["scene"] = event["location"]
         s["actors"] = {}
         s["choices"] = None
+        s["explore"] = None
+    elif kind == "explore":
+        s["explore"] = event["site"]
+        s["actors"] = {}
+        s["choices"] = None
+        s.setdefault("versions", {})["site:" + event["site"]] = s["seq"]
+    elif kind == "at":
+        s["place"] = {"map": event["map"], "place": event["place"]}
+    elif kind in ("site_updated", "map_updated"):
+        key = "site:" + event["site"] if kind == "site_updated" else "map:" + event["map"]
+        s.setdefault("versions", {})[key] = s["seq"]
     elif kind == "enter":
         position = event.get("position") or _free_position(s["actors"])
         s["actors"][event["actor"]] = {"position": position, "emotion": "neutral"}

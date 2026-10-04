@@ -7,7 +7,7 @@ from datetime import date
 
 from dnd_cli.campaign import CampaignError
 from dnd_cli.commands.show_cmd import _stage_campaign_dir
-from stage import beat, scenes
+from stage import beat, maps, scenes
 from stage.assets import AssetError
 
 
@@ -46,6 +46,8 @@ def execute_set(campaign, location: str, tokens: list[str], change: bool = False
             beat.append(campaign_dir, [{"type": "scene_updated", "location": location}])
         print(f"Saved {saved.relative_to(campaign_dir)}: template {spec['template']}.")
         print(f"Check it with: uv run dnd-cli scene preview {location}")
+        if current is None and (tip := maps.hint(campaign_dir, location)):
+            print(tip)
         return 0
     return _run(campaign, go)
 

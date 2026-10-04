@@ -27,7 +27,7 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*(#\d+)?$")
 USAGE = (
     "Beat lines: @scene <location-id> | @enter <actor-id> [position] | "
     "@exit <actor-id> | @narrate <text> | @say <actor-id> [emotion] <text> | "
-    "@choices <a> | <b> | ... | @clear"
+    "@choices <a> | <b> | ... | @clear | @explore <site-id> [<poi-id>|entrance]"
 )
 
 
@@ -103,6 +103,14 @@ def parse(text: str) -> list[dict]:
             if len(options) < 2:
                 raise BeatError(f"line {line_no}: @choices needs two or more options separated by '|'.")
             events.append({"type": "choices", "options": options})
+        elif command == "explore":
+            parts = rest.split()
+            if not parts:
+                raise BeatError(f"line {line_no}: @explore needs a site id. {USAGE}")
+            event = {"type": "explore", "site": _check_id(parts[0], line_no, "site")}
+            if len(parts) > 1:
+                event["at"] = _check_id(parts[1], line_no, "point of interest")
+            events.append(event)
         elif command == "clear":
             events.append({"type": "clear"})
         else:

@@ -2,6 +2,32 @@
 // the client folds them with the same rules so both sides agree.
 import { useEffect, useRef, useState } from 'react'
 
+/** True when a key press belongs to whatever has focus: inputs, the console, and every button. */
+export function focusOwnsKeys(e: KeyboardEvent): boolean {
+  return Boolean((e.target as HTMLElement).closest?.('input, textarea, select, button, a, [role=button], .xterm'))
+}
+
+/** True when the focus is a place to type text: arrows and letters belong to it. */
+export function focusTakesText(e: KeyboardEvent): boolean {
+  return Boolean((e.target as HTMLElement).closest?.('input, textarea, select, [contenteditable], .xterm'))
+}
+
+/** The largest whole-number scale at which a w x h picture fits the element. */
+export function useIntegerScale(ref: React.RefObject<HTMLDivElement | null>, w: number, h: number): number {
+  const [scale, setScale] = useState(2)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      setScale(Math.max(1, Math.floor(Math.min(width / w, height / h))))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref, w, h])
+  return scale
+}
+
 const names = new Map<string, Promise<string>>()
 
 /** Display name from the actor file, e.g. "Sister Gareth"; the id until it loads. */
@@ -53,6 +79,8 @@ export interface StageState {
   dm_log: string[]
   versions: Record<string, number>
   last_roll: Roll | null
+  explore: string | null
+  place: { map: string; place: string } | null
 }
 
 export interface Roll {
@@ -75,7 +103,15 @@ export function apply(state: StageState, e: StageEvent): StageState {
   const s: StageState = { ...state, seq: e.seq, actors: { ...state.actors } }
   switch (e.type) {
     case 'scene':
-      return { ...s, scene: e.location as string, actors: {}, choices: null }
+      return { ...s, scene: e.location as string, actors: {}, choices: null, explore: null }
+    case 'explore':
+      return { ...s, explore: e.site as string, actors: {}, choices: null, versions: { ...(s.versions ?? {}), [`site:${e.site as string}`]: e.seq } }
+    case 'at':
+      return { ...s, place: { map: e.map as string, place: e.place as string } }
+    case 'site_updated':
+      return { ...s, versions: { ...(s.versions ?? {}), [`site:${e.site as string}`]: e.seq } }
+    case 'map_updated':
+      return { ...s, versions: { ...(s.versions ?? {}), [`map:${e.map as string}`]: e.seq } }
     case 'enter':
       s.actors[e.actor as string] = {
         position: (e.position as Position) ?? freePosition(s.actors),

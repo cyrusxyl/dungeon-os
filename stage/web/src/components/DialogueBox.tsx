@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { type StoryLine, titleCase, useActorName } from '@/lib/stage'
+import { focusOwnsKeys, type StoryLine, titleCase, useActorName } from '@/lib/stage'
 
 const CHARS_PER_SECOND = 60
 
@@ -67,9 +67,7 @@ export function DialogueBox({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      // Leave Space and Enter to whatever has focus: inputs, the console, and every button.
-      if (target.closest('input, textarea, select, button, a, [role=button], .xterm')) return
+      if (focusOwnsKeys(e)) return
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault()
         click()

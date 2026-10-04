@@ -213,6 +213,165 @@ def test_local_only() -> None:
     check("a GET with no Origin (page load, image) is allowed", request_allowed("http", "GET", {"host": "localhost:8000"}))
 
 
+def _site(theme="dungeon", pois=(("altar", "far", "altar"),), seed=7, danger="none"):
+    from stage import crawl
+
+    spec = {"theme": theme, "size": "small", "seed": seed, "danger": danger,
+            "pois": [{"id": i, "where": w, "icon": c} for i, w, c in pois]}
+    return crawl.generate(spec)
+
+
+def test_crawl() -> None:
+    print("sites: generator, sight, walking")
+    from stage import crawl
+
+    ok = True
+    for theme in ("dungeon", "house", "cave"):
+        for seed in range(25):
+            site = _site(theme, (("a", "near", "chest"), ("b", "mid", "chest"), ("c", "far", "chest"), ("d", "entrance", "chest")), seed)
+            grid = site["grid"]
+            dist = crawl._flood(grid, tuple(site["entrance"]))
+            floors = [(x, y) for y, r in enumerate(grid) for x, c in enumerate(r) if c in crawl.WALKABLE]
+            ok &= all(c in dist for c in floors)
+            ok &= all(grid[p["y"]][p["x"]] == crawl.FLOOR and (p["x"], p["y"]) in dist for p in site["pois"].values())
+    check("every floor cell and POI can be reached, POIs never on a wall or door", ok)
+    check("the same seed gives the same layout", _site(seed=3)["grid"] == _site(seed=3)["grid"])
+    site = _site(pois=(("near-thing", "near", "chest"), ("far-thing", "far", "chest")))
+    depth = lambda pid: site["areas"][site["pois"][pid]["area"]]["depth"]  # noqa: E731
+    check("a far POI is deeper than a near one", depth("far-thing") > depth("near-thing"))
+
+    site = _site()
+    crawl.arrive(site)
+    check("arrival puts the party at the entrance", site["party"] == site["entrance"])
+    view = crawl.view(site)
+    hidden = all(c == " " for row, srow in zip(view["cells"], site["seen"]) for c, s in zip(row, srow) if s == "0")
+    check("the view has no unseen cell", hidden and any(c == " " for row in view["cells"] for c in row))
+    check("the view has no unfound POI", view["pois"] == [] and "altar" not in json.dumps(view))
+    check("the view has no layout secrets", not {"grid", "areas", "area_of", "spec"} & set(view))
+
+    # Walk toward the altar along the true path: it is found and the walk stops there.
+    altar = site["pois"]["altar"]
+    dist = crawl._flood(site["grid"], (altar["x"], altar["y"]))
+    path, cur = [], tuple(site["party"])
+    while dist[cur]:
+        cur = min((n for n in crawl._around4(*cur, len(site["grid"][0]), len(site["grid"])) if n in dist), key=dist.get)
+        path.append(cur)
+    result = crawl.walk(site, path)
+    check("a newly seen POI stops the walk", result["stopped"] == "poi" and result["pois"] == ["altar"]
+          and len(result["path"]) < len(path))
+    check("a found POI is in the view", [p["id"] for p in crawl.view(site)["pois"]] == ["altar"])
+    check("the prompt names the found POI and how to resume",
+          "altar" in crawl.prompt_found("crypt", site, ["altar"]) and "@explore crypt" in crawl.prompt_found("crypt", site, ["altar"]))
+    check("walking into a wall is blocked", crawl.walk(site, [(0, 0)])["stopped"] == "blocked")
+    check("a click path uses seen cells only", crawl.path_to(site, (altar["x"], altar["y"])) is not None
+          or site["seen"][altar["y"]][altar["x"]] == "0")
+
+    site = _site(pois=(), danger="high")
+    crawl.arrive(site)
+    grid = site["grid"]
+    door = next((x, y) for y, r in enumerate(grid) for x, c in enumerate(r) if c == crawl.DOOR)
+    d = crawl._flood(grid, door)
+    path, cur = [], tuple(site["party"])
+    while d[cur]:
+        cur = min((n for n in crawl._around4(*cur, len(grid[0]), len(grid)) if n in d), key=d.get)
+        path.append(cur)
+    result = crawl.walk(site, path, roll=lambda n: 1)
+    check("walking into a closed door opens it", result["stopped"] is None and site["grid"][door[1]][door[0]] == crawl.OPEN)
+    site2 = _site(pois=(), danger="high")
+    crawl.arrive(site2)
+    hits = []
+    far = max(range(len(site2["areas"])), key=lambda i: site2["areas"][i]["depth"])
+    target = (site2["areas"][far]["cx"], site2["areas"][far]["cy"])
+    d = crawl._flood(site2["grid"], target)
+    path, cur = [], tuple(site2["party"])
+    while d[cur]:
+        cur = min((n for n in crawl._around4(*cur, len(site2["grid"][0]), len(site2["grid"])) if n in d), key=d.get)
+        path.append(cur)
+    result = crawl.walk(site2, path, roll=lambda n: hits.append(n) or 0)
+    check("only first entry into a new area rolls (not the entrance area); a hit stops the walk",
+          result["stopped"] == "wander" and hits == [3])
+
+    is_actor = lambda k: k == "goblin"  # noqa: E731
+    spec, new = crawl.build(["theme=crypt", "poi=goblin-camp@mid", "poi=old-well@near", "poi=thing@far:goblin"], None, is_actor)
+    check("icons are guessed from the id", [p["icon"] for p in new] == ["goblin", "well", "goblin"])
+    check("buildings default to no danger", crawl.build(["theme=house"], None, is_actor)[0]["danger"] == "none")
+    for bad, label in [(["theme=moon"], "unknown theme"), (["theme=crypt", "poi=x@deep"], "bad depth"),
+                       (["theme=crypt", "poi=x@far:dragonz"], "unknown icon"), (["size=small"], "no theme")]:
+        try:
+            crawl.build(bad, None, is_actor)
+            check(f"{label} is refused", False)
+        except crawl.SiteError:
+            check(f"{label} is refused", True)
+    try:
+        crawl.build(["theme=cave"], spec, is_actor)
+        check("a saved layout never changes", False)
+    except crawl.SiteError:
+        check("a saved layout never changes", True)
+
+
+def test_maps() -> None:
+    print("maps: places, reveals, travel")
+    from stage import maps
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp)
+        maps.place(c, "coast", "city", ["icon=city", "name=Big_City"])
+        maps.place(c, "coast", "tower", ["from=city", "dir=n", "travel=2_days"])
+        maps.place(c, "coast", "ruin", ["from=tower", "dir=e", "travel=1_day"])
+        maps.place(c, "coast", "lair", ["from=city", "dir=e", "travel=3_days", "hidden=yes"])
+        maps.place(c, "city", "inn", ["in=coast", "icon=tavern"])
+        m = maps.load(c, "coast")
+        check("dir= lays places out on a grid", m["places"]["tower"]["at"] == [0, -2])
+        view = maps.view(m, "coast", "city")
+        check("a hidden place is not in the view", "lair" not in json.dumps(view))
+        check("the city map is inside its place", maps.load(c, "city")["in"] == "coast" and maps.load(c, "city")["name"] == "Big City")
+        for args, label in [(("coast", "inn", []), "a place id on two maps"), (("coast", "x", ["from=city"]), "no dir"),
+                            (("nope", "y", ["in=coast"]), "in= without a parent place")]:
+            try:
+                maps.place(c, *args)
+                check(f"{label} is refused", False)
+            except maps.MapError:
+                check(f"{label} is refused", True)
+        maps.reveal(c, "coast", "lair")
+        check("reveal shows the place and its route", "lair" in json.dumps(maps.view(maps.load(c, "coast"), "coast", None)))
+        check("visit returns the map", maps.visit(c, "inn") == "city")
+        place = {"map": "city", "place": "inn"}
+        check("the level chain goes up", [l["id"] for l in maps.chain(c, None, place)] == ["city", "coast"])
+        check("here on a parent map is the place that holds the party", maps.here(c, "coast", None, place) == "city")
+        prompt = maps.travel_prompt(maps.load(c, "coast"), "city", "ruin")
+        check("travel takes the known route and names the arrival scene",
+              "Big City → Tower → Ruin" in prompt and "2 days, 1 day" in prompt and "@scene ruin" in prompt)
+
+
+def test_explore_beat() -> None:
+    print("@explore and map position")
+    from dnd_cli.commands import show_cmd
+    from stage import crawl, maps
+
+    events = beat.parse("@explore crypt\n@explore crypt stairs-down")
+    check("@explore parses", events == [{"type": "explore", "site": "crypt"}, {"type": "explore", "site": "crypt", "at": "stairs-down"}])
+    s = state.empty()
+    for e in [{"type": "scene", "location": "inn"}, {"type": "at", "map": "city", "place": "inn"}, {"type": "explore", "site": "crypt"}]:
+        s = state.apply(s, e)
+    check("the state knows the site and the place", s["explore"] == "crypt" and s["place"] == {"map": "city", "place": "inn"})
+    check("@scene leaves the site", state.apply(s, {"type": "scene", "location": "x"})["explore"] is None)
+
+    import io, sys as _sys
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp)
+        maps.place(c, "city", "crypt", [])
+        site = _site(pois=(("stairs-down", "far", "stairs-down"),))
+        crawl.save(c, "crypt", site)
+        _sys.stdin = io.StringIO("@explore crypt stairs-down\n")
+        rc = show_cmd.execute_beat(str(c), None)
+        _sys.stdin = _sys.__stdin__
+        lines = [json.loads(l) for l in beat.log_path(c).read_text().splitlines()]
+        site = crawl.load(c, "crypt")
+        p = site["pois"]["stairs-down"]
+        check("@explore <site> <poi> puts the party at the POI", rc == 0 and site["party"] == [p["x"], p["y"]])
+        check("a site that is a place moves the map marker", lines[1]["type"] == "at" and lines[1]["place"] == "crypt")
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -223,5 +382,8 @@ if __name__ == "__main__":
     test_scenes()
     test_rolls()
     test_local_only()
+    test_crawl()
+    test_maps()
+    test_explore_beat()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

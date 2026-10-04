@@ -1,6 +1,6 @@
 ---
 name: stage
-description: Show the game to the players on the pixel-art visual stage — scenes, characters entering and leaving, narration, NPC dialogue with portraits and emotions, and choice buttons — with one `uv run dnd-cli show beat` call per reply; set how characters look with `dnd-cli actor set` and how places look with `dnd-cli scene set`. Use for every reply when the session prompt says the players watch the visual stage.
+description: Show the game to the players on the pixel-art visual stage — scenes, characters entering and leaving, narration, NPC dialogue with portraits and emotions, and choice buttons — with one `uv run dnd-cli show beat` call per reply; set how characters look with `dnd-cli actor set` and how places look with `dnd-cli scene set`; put places on the region and city map with `dnd-cli map place`; make dungeons and buildings the players walk through with `dnd-cli site set` and `@explore`. Use for every reply when the session prompt says the players watch the visual stage.
 ---
 
 # Visual Stage
@@ -37,6 +37,7 @@ EOF
 | `@say <actor-id> [emotion] <text>` | A character speaks, with portrait. Emotions: `neutral` `happy` `angry` `sad` `shock` `blush` `shame` `eyeroll` `closed`. |
 | `@choices <a> \| <b> \| <c>` | Choice buttons. Put it last. The player can still type a free action. |
 | `@clear` | Remove all characters, keep the room. |
+| `@explore <site-id> [<poi-id>\|entrance]` | Show a site the players walk through (see Sites). |
 
 A line with no `@` continues the line before it.
 
@@ -103,6 +104,48 @@ uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center
 - If no prop fits ("a statue of Ilmater"), the command suggests the closest props and records the gap. Use the closest prop and describe the difference in the story text.
 - To check a place: `uv run dnd-cli scene preview <location-id>` writes a PNG you can read. Use it once for an important place.
 - You never give pixel positions. Slots and zones are the only placement.
+
+## Maps: region and city
+
+The players open a map of the places they know. Looking costs you nothing. When they pick a place, you get a `[map]` message.
+
+```bash
+uv run dnd-cli map place sword-coast baldurs-gate "name=Baldur's Gate" icon=city
+uv run dnd-cli map place sword-coast candlekeep from=baldurs-gate dir=n travel=2_days
+uv run dnd-cli map place baldurs-gate chapel-of-ilmater in=sword-coast
+uv run dnd-cli map place sword-coast cloakwood from=baldurs-gate dir=se travel=1_day hidden=yes
+uv run dnd-cli map reveal sword-coast cloakwood
+```
+
+- Add a place when the players learn of it (a rumor, a map, a guide) or arrive. Not before: a place you add is on their map at once. To plan ahead, add it with `hidden=yes` and `map reveal` it later.
+- The first place of a map needs nothing else. Every later place needs `from=` (a place on that map) and `dir=` (`n` `ne` `e` `se` `s` `sw` `w` `nw`); `travel=` is the time on that route. The stage does the layout.
+- A city map is the inside of the region place with the same id: give `in=<region-map>` with the first place of the city map.
+- **The place id is the location id.** `@scene chapel-of-ilmater` moves the party marker there. A site's id is its place id too.
+- Icons: `uv run dnd-cli map options`. Check the whole map, hidden places too: `uv run dnd-cli map show`.
+
+## Sites: dungeons and buildings
+
+A site is a generated floor plan that the players walk through by themselves. You set it once, with its points of interest (POI). The stage does the walking, the fog, and the wandering-monster checks, and calls you only when something happens.
+
+```bash
+uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=medium danger=low poi=dragon-altar@far poi=goblin-camp@mid:goblin poi=old-well@near:fountain
+```
+
+- `theme=`: `dungeon` `crypt` `castle` `sewer` `temple` `cave` (dungeons), `house` `tavern` `manor` (buildings). `size=`: `small` `medium` `large`. `danger=`: `none` `low` `mid` `high` (the chance of a wandering encounter in each new area).
+- `poi=<id>@<where>[:<icon>]`. `where` is the walking distance from the entrance: `entrance` `near` `mid` `far` `any`. `icon` is an object (`altar` `chest` `stairs-down` `statue` `coffin` `trap` `treasure` ...) or an actor kind (`goblin`, `skeleton`, an actor id): the players see that sprite. List: `uv run dnd-cli site options`.
+- A POI shows only when the players see it. Never put a secret in its id: they read the id as its name.
+- A saved site is final. `site set <id> --change poi=...` adds POIs where the players have not looked yet; it can also change `name=` and `danger=`.
+- `@explore <site-id>` shows the site; the party stands where it stood last (the entrance on the first visit). `@explore <site-id> <poi-id>` puts the party at a POI, for example the stairs of a floor below: a deeper floor is another site.
+- In the site view, the players see the walls, doors and passages, and walk by themselves. **Do not describe the layout** (exits, passages, which way to go) and **do not give movement choices**. Narrate what they sense and what they find.
+- For a fight or a talk, use `@scene` as usual (it leaves the site view), then send `@explore <site-id>` to let them walk on.
+
+**Messages from the stage.** A message that starts with `[explore]` or `[map]` comes from the stage, not from a player's words. Do what it says in one beat:
+
+- `the party sees <poi>`: show what they find (an `@narrate`, or a scene with actors).
+- `wandering encounter check hit`: run an encounter that fits the place, or show that nothing comes.
+- `examines <poi>`: show what a closer look gives.
+- `leaves by the entrance`: show where they go next with `@scene`.
+- `[map] The party travels ...`: run the journey (roll for encounters on the way), then show the arrival with the `@scene` it names.
 
 ## Rules
 

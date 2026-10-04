@@ -162,9 +162,11 @@ def _png(spec_json: str, kind: str, facing: str, emotion: str | None) -> bytes:
     return buf.getvalue()
 
 
-def png(spec: dict, kind: str, position: str | None = None, emotion: str | None = None) -> bytes:
-    """Rendered PNG bytes, cached by spec. Stage actors turn toward the center."""
-    facing = FACING.get(position or "", "down")
+def png(spec: dict, kind: str, position: str | None = None, emotion: str | None = None,
+        facing: str | None = None) -> bytes:
+    """Rendered PNG bytes, cached by spec. Stage actors turn toward the center, unless `facing` is given."""
+    if facing not in lpc.ROWS:
+        facing = FACING.get(position or "", "down")
     return _png(json.dumps(spec, sort_keys=True), kind, facing, emotion)
 
 
