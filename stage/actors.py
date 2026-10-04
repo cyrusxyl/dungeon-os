@@ -20,6 +20,7 @@ from pathlib import Path
 from PIL import Image
 
 from stage import lpc
+from stage.assets import ensure_dcss
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
 SPEC_KEYS = ("body", "skin", "eyes")
@@ -29,6 +30,28 @@ SPEC_KEYS = ("body", "skin", "eyes")
 def presets() -> dict[str, dict]:
     data = json.loads(PRESETS_PATH.read_text())
     return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+@cache
+def dcss_monsters() -> dict[str, str]:
+    """DCSS monster tiles by name: 'wolf' -> 'monster/animals/wolf.png'."""
+    root = ensure_dcss()
+    out: dict[str, str] = {}
+    for path in sorted((root / "monster").rglob("*.png")):
+        out.setdefault(path.stem, str(path.relative_to(root)))
+    return out
+
+
+def find_tile(name: str, cutoff: float = 90) -> str | None:
+    """The DCSS tile for a monster name, if one matches closely."""
+    from rapidfuzz import fuzz, process
+
+    tiles = dcss_monsters()
+    key = name.replace("-", "_")
+    if key in tiles:
+        return tiles[key]
+    best = process.extractOne(key, list(tiles), scorer=fuzz.ratio, score_cutoff=cutoff)
+    return tiles[best[0]] if best else None
 
 
 def actors_dir(campaign_dir: Path) -> Path:
@@ -44,7 +67,14 @@ def load(campaign_dir: Path, actor_id: str) -> dict | None:
                 return json.loads(path.read_text())
             except ValueError:
                 return None
-    return presets().get(base)
+    if base in presets():
+        return presets()[base]
+    # A beast or monster LPC has no body for: a CC0 DCSS tile, if the name matches.
+    try:
+        tile = find_tile(base)
+    except OSError:
+        tile = None
+    return {"name": base.replace("-", " ").replace("_", " ").title(), "tile": tile} if tile else None
 
 
 def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict:
@@ -69,6 +99,11 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict
             spec = {**presets()[value], "items": list(presets()[value]["items"])}
         elif key == "reset":
             spec = {"items": []}
+        elif key == "tile":
+            tile = find_tile(value, cutoff=70)
+            if not tile:
+                raise lpc.ActorError(f"no DCSS monster tile like {value!r}. Try a plainer name (wolf, giant_spider, ogre).")
+            spec = {"name": spec.get("name"), "tile": tile} if spec.get("name") else {"tile": tile}
         elif key == "name":
             spec["name"] = value.replace("_", " ").strip()
         elif key in SPEC_KEYS:
@@ -79,8 +114,21 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict
                 "or an item such as robe:white."
             )
     spec.setdefault("name", actor_id.split("#")[0].replace("-", " ").title())
+    if "tile" in spec:
+        spec.pop("items", None)
+        return spec
     spec.setdefault("body", "male")
     return spec
+
+
+def _tile_frame(spec: dict, flip: bool) -> Image.Image:
+    """A 32 px DCSS tile standing at the bottom of a 64 px frame, like an LPC sprite."""
+    tile = Image.open(ensure_dcss() / spec["tile"]).convert("RGBA")
+    if flip:
+        tile = tile.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    frame = Image.new("RGBA", (lpc.FRAME, lpc.FRAME))
+    frame.alpha_composite(tile, ((lpc.FRAME - tile.width) // 2, lpc.FRAME - tile.height - 2))
+    return frame
 
 
 def save(campaign_dir: Path, actor_id: str, spec: dict) -> Path:
@@ -96,7 +144,12 @@ FACING = {"left": "right", "far-left": "right", "right": "left", "far-right": "l
 @cache
 def _png(spec_json: str, kind: str, facing: str, emotion: str | None) -> bytes:
     spec = json.loads(spec_json)
-    img = lpc.portrait(spec, emotion) if kind == "portrait" else lpc.render(spec, facing, emotion)
+    if "tile" in spec:
+        frame = _tile_frame(spec, flip=facing == "left")
+        box = frame.getbbox() or (0, 0, lpc.FRAME, lpc.FRAME)
+        img = frame.crop(box) if kind == "portrait" else frame
+    else:
+        img = lpc.portrait(spec, emotion) if kind == "portrait" else lpc.render(spec, facing, emotion)
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()
@@ -110,6 +163,11 @@ def png(spec: dict, kind: str, position: str | None = None, emotion: str | None 
 
 def preview(spec: dict, out: Path, emotion: str | None = None) -> Path:
     """Full body, side view, and portrait in one image, for the DM to check."""
+    if "tile" in spec:
+        frame = _tile_frame(spec, False)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        frame.resize((256, 256), Image.NEAREST).save(out)
+        return out
     parts = [lpc.render(spec, "down", emotion), lpc.render(spec, "right", emotion),
              lpc.portrait(spec, emotion).resize((64, 64), Image.NEAREST)]
     sheet = Image.new("RGBA", (64 * len(parts), 64), (40, 38, 52, 255))

@@ -1,6 +1,6 @@
 ---
 name: stage
-description: Show the game to the players on the pixel-art visual stage — scenes, characters entering and leaving, narration, NPC dialogue with portraits and emotions, and choice buttons — with one `uv run dnd-cli show beat` call per reply. Use for every reply when the session prompt says the players watch the visual stage.
+description: Show the game to the players on the pixel-art visual stage — scenes, characters entering and leaving, narration, NPC dialogue with portraits and emotions, and choice buttons — with one `uv run dnd-cli show beat` call per reply; set how characters look with `dnd-cli actor set` and how places look with `dnd-cli scene set`. Use for every reply when the session prompt says the players watch the visual stage.
 ---
 
 # Visual Stage
@@ -62,10 +62,31 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
 - Start from a kind with `preset=guard` and change pieces: `uv run dnd-cli actor set captain-voss preset=guard name=Captain_Voss hair_buzzcut:black`. Presets: goblin, hobgoblin, orc, troll, skeleton, zombie, vampire, kobold, lizardfolk, gnoll, werewolf, minotaur, bandit, thug, guard, knight, cultist, commoner, merchant, noble, priest, wizard, sailor.
 - A second `actor set` on the same id changes only the pieces you give; one item per type, the new one wins.
 - A warning "has no sprite for body ..." means the item will not show on that body. Pick an item the warning says fits.
-- Unnamed monsters need nothing: `goblin#1` and `goblin#2` use the `goblin` preset.
+- Unnamed monsters need nothing: `goblin#1` and `goblin#2` use the `goblin` preset. A beast with no preset (`wolf#1`, `rat#2`) finds a matching monster tile by its name.
+- For a beast or monster LPC has no body for, use a monster tile: `uv run dnd-cli actor set the-beast name=The_Beast tile=bear`. The command prints the tile it picked.
 - Look from the players' side: a disguised NPC wears the disguise. Use what the players can see, never the secret.
 - To check a look: `uv run dnd-cli actor preview <id>` writes a PNG you can read. Use it once for an important character, not every turn.
 - Player characters need a look too. If a character file has none, make one from the sheet (race, class, gear), and ask the player in a beat if a detail matters to them.
+
+## Places: how they look
+
+Each location shows as a room or outdoor place built from LPC tiles. Give a location a look **the first time the party goes there**, before the beat with its `@scene` line. The location id in `scene set` and in `@scene` must be the same.
+
+```bash
+uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center=bust +plant@front_left
+```
+
+- `template=` sets the whole place: `chapel`, `temple`, `tavern`, `shop`, `house`, `hall`, `cellar`, `dungeon`, `cave`, `street`, `dock`, `forest`, `road`, `swamp`, `beach`. Pick the closest one.
+- Change it only where the story needs it:
+  - `wall=` and `floor=` change the materials (`wall=brick_red`, `floor=planks_dark`).
+  - `mood=` sets the light: `day`, `dusk`, `night`, `torchlit`, `fog`, `rain`.
+  - `<slot>=<prop>` replaces what stands in a slot, and `<slot>=none` empties it. Wall slots: `wall_left`, `wall_left2`, `wall_center`, `wall_right2`, `wall_right`. Floor slots: `back_left` … `front_right` (back, mid, front × left, center, right).
+  - `+<prop>@<zone>` adds an extra prop in a floor zone; the composer finds the spot. `clear=add` removes the extras.
+- Lists of templates, walls, floors, props and moods: `uv run dnd-cli scene options` (or `scene options props`).
+- A second `scene set` changes only what you give. Change a place when the story changes it ("the chapel burns": `mood=night`, a slot to `none`), and at no other time. A revisit shows the same place.
+- If no prop fits ("a statue of Ilmater"), the command suggests the closest props and records the gap. Use the closest prop and describe the difference in the story text.
+- To check a place: `uv run dnd-cli scene preview <location-id>` writes a PNG you can read. Use it once for an important place.
+- You never give pixel positions. Slots and zones are the only placement.
 
 ## Rules
 
@@ -73,6 +94,7 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
 2. **Split long speech.** One `@say` is one dialogue-box page. Two short `@say` lines read better than one long one.
 3. **Show the result of a roll in the story text**, for example `@narrate Your blade bites deep (18 vs AC 15) — 7 damage.`
 4. **Use `@choices` to ask the players.** The AskUserQuestion tool is blocked on the stage. Give 2 to 4 short options. The player can still type anything.
-5. **Hidden information stays hidden.** A beat is shown to the players. Never put DM-only facts, villain plans, or clock counts in a beat. A disguised NPC uses an actor id and name the players know.
-6. **Referee mode is a beat too.** A ruling is an `@narrate` line, short and plain (AGENTS.md rule 5).
-7. **If the command fails**, read the error, fix the line it names, and send the beat again. Do not tell the story in chat instead.
+5. **Never speak or act for a player character.** Do not write `@say` lines for PCs, and do not decide what they do or feel. Put PCs on stage with `@enter`, describe the world and the NPCs, then let the players answer with `@choices` or free text.
+6. **Hidden information stays hidden.** A beat is shown to the players. Never put DM-only facts, villain plans, or clock counts in a beat. A disguised NPC uses an actor id and name the players know.
+7. **Referee mode is a beat too.** A ruling is an `@narrate` line, short and plain (AGENTS.md rule 5).
+8. **If the command fails**, read the error, fix the line it names, and send the beat again. Do not tell the story in chat instead.

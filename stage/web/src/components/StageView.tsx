@@ -49,10 +49,37 @@ function Silhouette({ id }: { id: string }) {
   )
 }
 
+// Actors are drawn over the scene image, so they get the scene's mood as a filter.
+const MOOD_FILTER: Record<string, string> = {
+  day: 'none',
+  dusk: 'sepia(0.2) brightness(0.92)',
+  night: 'brightness(0.6) saturate(0.7) hue-rotate(10deg)',
+  torchlit: 'brightness(0.8) sepia(0.25)',
+  fog: 'contrast(0.85) brightness(1.05) saturate(0.8)',
+  rain: 'brightness(0.75) saturate(0.8)',
+}
+
+function useMood(scene: string | null, version: number): string {
+  const [mood, setMood] = useState('day')
+  useEffect(() => {
+    if (!scene) return setMood('day')
+    let live = true
+    fetch(`/api/scene/${encodeURIComponent(scene)}`)
+      .then((r) => r.json())
+      .then((d) => live && setMood(d.mood))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [scene, version])
+  return mood
+}
+
 export function StageView({ state, speaker }: { state: StageState; speaker?: string }) {
   const box = useRef<HTMLDivElement>(null)
   const scale = useIntegerScale(box)
   const scene = state.scene
+  const mood = useMood(scene, state.versions?.[`scene:${scene}`] ?? 0)
 
   return (
     <div ref={box} className="flex h-full w-full items-center justify-center overflow-hidden">
@@ -64,7 +91,7 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
         {scene && (
           <Img
             key={scene}
-            src={`/asset/scene/${scene}.png`}
+            src={`/asset/scene/${scene}.png?v=${state.versions?.[`scene:${scene}`] ?? 0}`}
             className="absolute inset-0 h-full w-full"
             fallback={
               <div className="absolute inset-x-0 top-6 text-center text-[8px] tracking-wider text-[var(--dim)] pixel-font">
@@ -80,7 +107,7 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
             <div
               key={id}
               className="absolute transition-[left] duration-300"
-              style={{ left: x, top: FLOOR_Y - (talking ? 2 : 0), width: FRAME, height: FRAME }}
+              style={{ left: x, top: FLOOR_Y - (talking ? 2 : 0), width: FRAME, height: FRAME, filter: MOOD_FILTER[mood] ?? 'none' }}
             >
               <Img src={`/asset/actor/${encodeURIComponent(id)}/full.png?f=${actor.position}&v=${state.versions?.[id] ?? 0}`} fallback={<Silhouette id={id} />} className="h-full w-full" />
             </div>

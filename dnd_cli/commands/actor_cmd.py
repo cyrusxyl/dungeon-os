@@ -24,15 +24,19 @@ def execute_set(campaign, actor_id: str, tokens: list[str]) -> int:
             raise lpc.ActorError(f"actor id {actor_id!r}: use lower-case letters, digits, '-' or '_'.")
         current = json.loads(path.read_text()) if (path := actors.actors_dir(campaign_dir) / f"{actor_id}.json").exists() else None
         spec = actors.build(actor_id, tokens, current)
-        spec["items"] = lpc.normalize_items(spec["items"])
-        warnings = lpc.validate(spec)
+        if "tile" in spec:
+            warnings = []
+        else:
+            spec["items"] = lpc.normalize_items(spec["items"])
+            warnings = lpc.validate(spec)
         saved = actors.save(campaign_dir, actor_id, spec)
         if os.environ.get("DUNGEON_STAGE_LOG"):
             # Tell a running stage to reload this actor's pictures.
             beat.append(campaign_dir, [{"type": "actor_updated", "actor": actor_id}])
         for w in warnings:
             print(f"Warning: {w}", file=sys.stderr)
-        print(f"Saved {saved.relative_to(campaign_dir)}: {spec['name']} ({spec['body']}, {len(spec['items'])} items).")
+        kind = f"tile {spec['tile']}" if "tile" in spec else f"{spec['body']}, {len(spec['items'])} items"
+        print(f"Saved {saved.relative_to(campaign_dir)}: {spec['name']} ({kind}).")
         print(f"Check it with: uv run dnd-cli actor preview {actor_id}")
         return 0
     return _run(campaign, go)

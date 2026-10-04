@@ -32,7 +32,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from stage import actors, beat, state as stage_state
+from stage import actors, beat, scenes, state as stage_state
 from stage.assets import AssetError
 
 STAGE_DIR = Path(__file__).resolve().parent
@@ -280,6 +280,24 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
             return Response(status_code=404)
         return Response(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
 
+    async def asset_scene(request: Request):
+        spec = scenes.load(campaign_dir, request.path_params["location"])
+        if spec is None:
+            return Response(status_code=404)
+        try:
+            png = await run_in_threadpool(scenes.png, spec)
+        except (AssetError, ValueError, OSError):
+            return Response(status_code=404)
+        return Response(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+    async def api_scene(request: Request):
+        spec = scenes.load(campaign_dir, request.path_params["location"])
+        try:
+            mood = scenes.resolve(spec)["mood"] if spec else "day"
+        except ValueError:
+            mood = "day"
+        return JSONResponse({"mood": mood, "has_look": spec is not None})
+
     async def api_actor(request: Request):
         actor_id = request.path_params["actor_id"]
         spec = actors.load(campaign_dir, actor_id) or {}
@@ -306,6 +324,8 @@ def create_app(campaign_dir: Path, dm_command: list[str]) -> Starlette:
         Route("/api/restart", api_restart, methods=["POST"]),
         Route("/api/party", api_party),
         Route("/api/actor/{actor_id}", api_actor),
+        Route("/asset/scene/{location}.png", asset_scene),
+        Route("/api/scene/{location}", api_scene),
         Route("/asset/actor/{actor_id}/full.png", asset_actor),
         Route("/asset/actor/{actor_id}/portrait/{emotion}.png", asset_actor),
         WebSocketRoute("/ws", ws_events),

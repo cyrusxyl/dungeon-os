@@ -71,10 +71,12 @@ def run_stage(campaign: str | None, open_browser: bool) -> None:
 
     ensure_web_build()
     try:
-        from stage.assets import ensure_lpc
+        from stage.assets import ensure_dcss, ensure_lpc, ensure_tiles
 
         ensure_lpc()
-    except Exception as exc:  # The stage still runs; actors show as silhouettes.
+        ensure_tiles()
+        ensure_dcss()
+    except Exception as exc:  # The stage still runs, with silhouettes and blank rooms.
         print(f"dungeon-os: {exc}", file=sys.stderr)
     set_active_campaign(campaign_dir.name)
     session_id = str(uuid.uuid4())

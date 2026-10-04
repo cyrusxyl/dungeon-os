@@ -62,6 +62,8 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = None
     elif kind == "choices":
         s["choices"] = {"options": event["options"], "seq": s["seq"]}
+    elif kind == "scene_updated":
+        s.setdefault("versions", {})["scene:" + event["location"]] = s["seq"]
     elif kind == "actor_updated":
         s.setdefault("versions", {})[event["actor"]] = s["seq"]
     elif kind == "dm_status":

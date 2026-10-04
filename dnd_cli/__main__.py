@@ -23,6 +23,7 @@ from dnd_cli.commands import canon_cmd
 from dnd_cli.commands import character_cmd
 from dnd_cli.commands import show_cmd
 from dnd_cli.commands import actor_cmd
+from dnd_cli.commands import scene_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -254,6 +255,25 @@ def create_parser():
     p.add_argument("item_type", nargs="?", default=None)
     p.add_argument("--body", default=None, help="Only items that fit this body type")
 
+    # Scene command group (how a location looks on the visual stage)
+    scene_parser = subparsers.add_parser(
+        "scene",
+        help="Set how a location looks on the visual stage: template, wall, floor, mood, props"
+    )
+    scene_sub = scene_parser.add_subparsers(dest="scene_command", help="Scene subcommand")
+    p = scene_sub.add_parser("set", help="template= wall= floor= mood= <slot>=<prop|none> +<prop>@<zone> clear=add")
+    p.add_argument("location")
+    p.add_argument("tokens", nargs="+")
+    p.add_argument("--campaign", default=None)
+    p = scene_sub.add_parser("show", help="Print a location's scene spec and what it resolves to")
+    p.add_argument("location")
+    p.add_argument("--campaign", default=None)
+    p = scene_sub.add_parser("preview", help="Render a location's scene to a PNG you can look at")
+    p.add_argument("location")
+    p.add_argument("--campaign", default=None)
+    p = scene_sub.add_parser("options", help="List templates, walls, floors, props, moods, slots")
+    p.add_argument("what", nargs="?", default=None)
+
     return parser
 
 
@@ -406,6 +426,19 @@ def main():
             if ac == "options":
                 return actor_cmd.execute_options(args.item_type, args.body)
             print("Usage: dnd-cli actor set|show|preview|options ... (see --help)", file=sys.stderr)
+            return 1
+
+        elif args.command == "scene":
+            sc = args.scene_command
+            if sc == "set":
+                return scene_cmd.execute_set(args.campaign, args.location, args.tokens)
+            if sc == "show":
+                return scene_cmd.execute_show(args.campaign, args.location)
+            if sc == "preview":
+                return scene_cmd.execute_preview(args.campaign, args.location)
+            if sc == "options":
+                return scene_cmd.execute_options(args.what)
+            print("Usage: dnd-cli scene set|show|preview|options ... (see --help)", file=sys.stderr)
             return 1
 
         elif args.command == "warmup":

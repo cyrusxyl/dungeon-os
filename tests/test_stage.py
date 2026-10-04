@@ -145,6 +145,40 @@ def test_actors() -> None:
     check(f"every preset validates without warnings {bad}", not bad)
 
 
+def test_scenes() -> None:
+    print("scenes")
+    from stage import scenes
+    from stage.assets import TILES_DIR
+
+    if not (TILES_DIR / "walls").is_dir():
+        print("  skip (tiles not fetched; run uv run dungeon-os once)")
+        return
+    for name in scenes.catalog()["templates"]:
+        img = scenes.render({"template": name})
+        assert img.size == (scenes.W, scenes.H), name
+    check("every template renders at 320x192", True)
+    spec = scenes.build(["template=chapel", "mood=dusk", "wall_center=bust", "+barrel@back-right"], None)
+    check("build keeps template, mood, slot and extra",
+          spec["template"] == "chapel" and spec["mood"] == "dusk"
+          and spec["slots"] == {"wall_center": "bust"} and spec["add"] == [["barrel", "back_right"]])
+    spec = scenes.build(["back_left=none", "clear=add"], spec)
+    check("a second build changes only what it names",
+          spec["mood"] == "dusk" and spec["slots"]["back_left"] is None and spec["add"] == [])
+    check("an emptied slot is gone from the resolved scene", scenes.resolve(spec)["slots"]["back_left"] is None)
+    for bad, label in [(["template=palace"], "unknown template"), (["template=chapel", "wall=gold"], "unknown wall"),
+                       (["template=chapel", "mood=spooky"], "unknown mood"), (["template=chapel", "+cow@back_left"], "unknown prop"),
+                       (["template=chapel", "+barrel@upstairs"], "unknown zone"), (["mood=night"], "no template on a new scene")]:
+        try:
+            scenes.resolve(scenes.build(bad, None))
+            check(f"{label} raises", False)
+        except scenes.SceneError:
+            check(f"{label} raises", True)
+    try:
+        scenes.resolve(scenes.build(["template=chapel", "+statue_of_ilmater@back_left"], None))
+    except scenes.UnknownProp as e:
+        check("an unknown prop names itself for the gap log", e.prop == "statue_of_ilmater")
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -152,5 +186,6 @@ if __name__ == "__main__":
     test_state()
     test_initial_prompt()
     test_actors()
+    test_scenes()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)
