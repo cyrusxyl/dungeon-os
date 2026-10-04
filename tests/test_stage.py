@@ -373,6 +373,10 @@ def test_explore_beat() -> None:
         p = site["pois"]["stairs-down"]
         check("@explore <site> <poi> puts the party at the POI", rc == 0 and site["party"] == [p["x"], p["y"]])
         check("a site that is a place moves the map marker", lines[1]["type"] == "at" and lines[1]["place"] == "crypt")
+        _sys.stdin = io.StringIO("@explore crypt stairs-down\n")
+        show_cmd.execute_beat(str(c), None)
+        _sys.stdin = _sys.__stdin__
+        check("a resent beat is not shown twice", len(beat.log_path(c).read_text().splitlines()) == len(lines))
         check("state.json follows the map", json.loads((c / "state.json").read_text())["location"] == "Crypt, City")
 
 
@@ -392,6 +396,32 @@ def test_session_brief() -> None:
               "canon init" in text and "Campaign Story Bible" in text)
 
 
+def test_cli_defaults_and_races() -> None:
+    print("cli defaults, races")
+    import os
+    from dnd_cli.__main__ import fill_defaults
+    from stage import actors
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp) / "camp"
+        (c / "stage").mkdir(parents=True)
+        (c / "canon.json").write_text('{"last_session_written": 4}')
+        os.environ["DUNGEON_STAGE_LOG"] = str(c / "stage" / "events.ndjson")
+        try:
+            check("canon gets the stage campaign and the current session",
+                  fill_defaults(["canon", "add-fact", "DM", "x"]) == ["canon", "add-fact", str(c), "5", "DM", "x"])
+            check("character gets the stage campaign",
+                  fill_defaults(["character", "heal", "sireth", "3"]) == ["character", "heal", str(c), "sireth", "3"])
+            check("explicit arguments stay", fill_defaults(["canon", "show", str(c)]) == ["canon", "show", str(c)])
+        finally:
+            del os.environ["DUNGEON_STAGE_LOG"]
+    drow = actors.build("x", ["race=drow", "eyes=green"], None)
+    check("race= adds features; the DM's own settings win",
+          drow["skin"] == "blue" and drow["eyes"] == "green" and "elven" in drow["items"])
+    check("race heads follow the body", "heads_lizard_female" in actors.build("x", ["body=female"], None, "dragonborn")["items"])
+    check("a sheet's race text maps to a race", actors.race_of("Drow (High Elf)") == "drow" and actors.race_of("Half-Elf") == "half-elf")
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -406,5 +436,6 @@ if __name__ == "__main__":
     test_maps()
     test_explore_beat()
     test_session_brief()
+    test_cli_defaults_and_races()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

@@ -3,8 +3,9 @@
 - The DM agent runs in a PTY that this server owns. A browser reload, or a
   second tab, reconnects to the same DM; it never starts a second one.
 - `/ws/pty` carries raw terminal bytes for the console drawer (xterm.js).
-- `/ws` sends one snapshot of the current stage, then each new event as the
-  server reads it from `{campaign}/stage/events.ndjson`.
+- `/ws` sends a snapshot of the current stage, and a new one after each batch
+  of events the server reads from `{campaign}/stage/events.ndjson`. The
+  server is the only place that folds events (stage/state.py).
 - `/api/input` submits a line the player typed in the input box.
 
 Allowlist: besides `{campaign}/stage/`, this server reads only state.json and
@@ -22,7 +23,6 @@ import asyncio
 import json
 import os
 import threading
-import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,6 +40,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from stage import actors, beat, crawl, maps, scenes, state as stage_state
 from stage.assets import AssetError
+from stage.files import read_json
 
 STAGE_DIR = Path(__file__).resolve().parent
 WEB_DIST = STAGE_DIR / "web" / "dist"
@@ -119,6 +120,8 @@ class Stage:
     # -- event log -------------------------------------------------------
 
     def read_new_events(self) -> list[dict]:
+        if self.log_path.stat().st_size <= self.offset:
+            return []
         with open(self.log_path, "rb") as f:
             f.seek(self.offset)
             chunk = f.read()
@@ -133,18 +136,18 @@ class Stage:
                 continue
         return events
 
-    def fold(self, events: list[dict]) -> list[dict]:
-        out = []
+    def fold(self, events: list[dict]) -> bool:
         for event in events:
             self.state = stage_state.apply(self.state, event)
-            out.append({**event, "seq": self.state["seq"]})
-        return out
+        return bool(events)
+
+    def snapshot(self) -> dict:
+        return {"kind": "snapshot", "state": self.state, "campaign": self.campaign_dir.name}
 
     async def tail(self) -> None:
         while True:
-            events = self.fold(self.read_new_events())
-            for event in events:
-                await self.broadcast({"kind": "event", "event": event})
+            if self.fold(self.read_new_events()):
+                await self.broadcast(self.snapshot())
             await asyncio.sleep(0.15)
 
     async def broadcast(self, message: dict) -> None:
@@ -157,7 +160,8 @@ class Stage:
     # -- DM process ------------------------------------------------------
 
     def _pty_output(self, data: bytes) -> None:
-        if self.loop:
+        # The scrollback keeps the output; send it only when a console is open.
+        if self.loop and self.pty_clients:
             self.loop.call_soon_threadsafe(asyncio.ensure_future, self._send_pty(data))
 
     async def _send_pty(self, data: bytes) -> None:
@@ -175,8 +179,8 @@ class Stage:
     async def _local_event(self, event: dict) -> None:
         # Server-side status, not written to the log: a restart must not
         # replay "exited".
-        self.state = stage_state.apply(self.state, event)
-        await self.broadcast({"kind": "event", "event": {**event, "seq": self.state["seq"]}})
+        self.fold([event])
+        await self.broadcast(self.snapshot())
 
     async def submit(self, text: str) -> None:
         """Type a player's line into the DM's prompt and press Enter."""
@@ -241,20 +245,15 @@ class LocalOnly:
 
 def _party(campaign_dir: Path) -> dict:
     """Player-visible party panel: allowlisted files only."""
-    out: dict = {"characters": [], "location": None, "game_time": None, "quests": []}
-    try:
-        st = json.loads((campaign_dir / "state.json").read_text())
-        out["location"] = st.get("location")
-        out["game_time"] = st.get("game_time")
-        out["quests"] = [
-            {"title": q.get("title"), "status": q.get("status")} for q in st.get("quest_log", [])
-        ]
-    except (OSError, ValueError):
-        pass
+    st = read_json(campaign_dir / "state.json") or {}
+    out: dict = {
+        "characters": [],
+        "location": st.get("location"),
+        "game_time": st.get("game_time"),
+        "quests": [{"title": q.get("title"), "status": q.get("status")} for q in st.get("quest_log", [])],
+    }
     for path in sorted((campaign_dir / "characters").glob("*.json")):
-        try:
-            c = json.loads(path.read_text())
-        except (OSError, ValueError):
+        if (c := read_json(path)) is None:
             continue
         out["characters"].append({
             "id": path.stem,
@@ -273,10 +272,7 @@ def _party(campaign_dir: Path) -> dict:
 
 def _lead(campaign_dir: Path) -> str | None:
     """The actor id of the party marker: the first party member, else the first character."""
-    try:
-        members = json.loads((campaign_dir / "state.json").read_text()).get("party_members") or []
-    except (OSError, ValueError):
-        members = []
+    members = (read_json(campaign_dir / "state.json") or {}).get("party_members") or []
     if members:
         return str(members[0])
     first = next(iter(sorted((campaign_dir / "characters").glob("*.json"))), None)
@@ -285,6 +281,22 @@ def _lead(campaign_dir: Path) -> str | None:
 
 def site_view(campaign_dir: Path, site_id: str, site: dict) -> dict:
     return {**crawl.view(site_id, site), "lead": _lead(campaign_dir)}
+
+
+async def png_response(render, *args, static: bool = False) -> Response:
+    """Render a PNG off the event loop; 404 when the art cannot be made.
+
+    `static` art (templates, tiles, icons) never changes. Campaign art changes
+    under the same URL when the DM edits a look, so the browser must ask again.
+    """
+    try:
+        png = await run_in_threadpool(render, *args)
+    except (AssetError, ValueError, OSError):
+        png = None
+    if not png:
+        return Response(status_code=404)
+    return Response(png, media_type="image/png",
+                    headers={"Cache-Control": "max-age=86400" if static else "no-cache"})
 
 
 def error(text: str, status: int = 409) -> JSONResponse:
@@ -304,15 +316,9 @@ def stage_first_prompt(campaign_slug: str) -> str:
 
 def default_command(campaign_dir: Path) -> list[str]:
     """Make the campaign active and build a fresh DM session for it."""
-    from dnd_cli.campaign import GAME_DIR, set_active_campaign
-    from view.settings import build_dm_command, load_settings, set_last_session_id
+    from view.settings import new_dm_session
 
-    set_active_campaign(campaign_dir.name)
-    session_id = str(uuid.uuid4())
-    set_last_session_id(campaign_dir.name, session_id)
-    return build_dm_command(
-        load_settings(), GAME_DIR, session_id, initial_prompt=stage_first_prompt(campaign_dir.name)
-    )
+    return new_dm_session(campaign_dir, stage_first_prompt(campaign_dir.name), stage=True)[1]
 
 
 class Table:
@@ -405,7 +411,7 @@ def create_app(
         if stage is None:
             await ws.close(code=4000)
             return
-        await ws.send_json({"kind": "snapshot", "state": stage.state, "campaign": stage.campaign_dir.name})
+        await ws.send_json(stage.snapshot())
         stage.event_clients.add(ws)
         try:
             while True:
@@ -478,39 +484,28 @@ def create_app(
     async def asset_actor(request: Request):
         campaign = need().campaign_dir
         actor_id = request.path_params["actor_id"]
-        spec = actors.load(campaign, actor_id)
-        if spec is None:
-            return Response(status_code=404)
         emotion = request.path_params.get("emotion")
-        kind = "portrait" if emotion else "full"
-        try:
-            png = await run_in_threadpool(
-                actors.png, spec, kind, request.query_params.get("f"), emotion if emotion != "neutral" else None,
-                request.query_params.get("d"),
-            )
-        except (AssetError, ValueError, OSError):
-            return Response(status_code=404)
-        return Response(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
+        q = request.query_params
+
+        def render():
+            spec = actors.load(campaign, actor_id)
+            return spec and actors.png(spec, "portrait" if emotion else "full", q.get("f"),
+                                       emotion if emotion != "neutral" else None, q.get("d"))
+        return await png_response(render)
 
     async def asset_scene(request: Request):
-        spec = scenes.load(need().campaign_dir, request.path_params["location"])
-        if spec is None:
-            return Response(status_code=404)
-        try:
-            png = await run_in_threadpool(scenes.png, spec)
-        except (AssetError, ValueError, OSError):
-            return Response(status_code=404)
-        return Response(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
+        campaign = need().campaign_dir
+        location = request.path_params["location"]
+
+        def render():
+            spec = scenes.load(campaign, location)
+            return spec and scenes.png(spec)
+        return await png_response(render)
 
     async def asset_template(request: Request):
         """A template with no campaign, for the start menu's backdrop."""
-        name = request.path_params["name"]
-        spec = {"template": name, "mood": request.query_params.get("mood", "day")}
-        try:
-            png = await run_in_threadpool(scenes.png, spec)
-        except (AssetError, ValueError, OSError):
-            return Response(status_code=404)
-        return Response(png, media_type="image/png")
+        spec = {"template": request.path_params["name"], "mood": request.query_params.get("mood", "day")}
+        return await png_response(scenes.png, spec, static=True)
 
     async def api_scene(request: Request):
         spec = scenes.load(need().campaign_dir, request.path_params["location"])
@@ -522,14 +517,15 @@ def create_app(
 
     async def api_actor(request: Request):
         actor_id = request.path_params["actor_id"]
-        spec = actors.load(need().campaign_dir, actor_id) or {}
+        # The kind fallback can search the monster tiles: not on the event loop.
+        spec = await run_in_threadpool(actors.load, need().campaign_dir, actor_id) or {}
         name = spec.get("name") or beat.title(actor_id)
         if "#" in actor_id and actor_id.split("#")[1]:
             name = f"{name} {actor_id.split('#')[1]}"
         return JSONResponse({"id": actor_id, "name": name, "has_look": bool(spec)})
 
     async def api_party(request: Request):
-        return JSONResponse(_party(need().campaign_dir))
+        return JSONResponse(await run_in_threadpool(_party, need().campaign_dir))
 
     def site_or_none(stage: Stage, request: Request) -> tuple[str, dict | None]:
         site_id = request.path_params["site_id"]
@@ -650,18 +646,10 @@ def create_app(
         theme = request.path_params["theme"]
         if theme not in crawl.themes():
             return Response(status_code=404)
-        try:
-            png = await run_in_threadpool(crawl.atlas_png, theme)
-        except (AssetError, ValueError, OSError):
-            return Response(status_code=404)
-        return Response(png, media_type="image/png")
+        return await png_response(crawl.atlas_png, theme, static=True)
 
     async def asset_icon(request: Request):
-        try:
-            png = await run_in_threadpool(crawl.icon_png, request.path_params["name"])
-        except (AssetError, OSError):
-            png = None
-        return Response(png, media_type="image/png") if png else Response(status_code=404)
+        return await png_response(crawl.icon_png, request.path_params["name"], static=True)
 
     @asynccontextmanager
     async def lifespan(app):

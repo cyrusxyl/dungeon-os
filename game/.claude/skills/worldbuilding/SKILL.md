@@ -13,8 +13,8 @@ When starting a **new campaign** (no `dm_story.md` exists in the campaign folder
 
 Once `dm_story.md` names the campaign's villains and their quests (item 6, below), enter them into `canon.json` the same way — do not write the villain/clock JSON by hand:
 ```bash
-uv run dnd-cli canon add-villain {campaign} "{name}" "{goal}" "{trait}" --escape-plan "{how they escape capture}"
-uv run dnd-cli canon add-clock {campaign} "{villain name}" "{clock name}" {4|6|8} --description "{what it tracks}"
+uv run dnd-cli canon add-villain "{name}" "{goal}" "{trait}" --escape-plan "{how they escape capture}"
+uv run dnd-cli canon add-clock "{villain name}" "{clock name}" {4|6|8} --description "{what it tracks}"
 ```
 `add-clock` refuses any segment count other than 4, 6, or 8 (Operating Guide 2.2) — the command enforces this, so there is no need to double check it yourself.
 

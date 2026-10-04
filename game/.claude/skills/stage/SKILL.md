@@ -52,7 +52,7 @@ A character speaking with `@say` is put on stage if it is not there yet. A warni
 
 ## Characters: how they look
 
-Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Looks are saved in the campaign and reused in every later session. Do not check or redo them. **Set a look only when `show beat` warns** "no appearance for ..." (the stage showed a silhouette), and **do not send the beat again**: the stage swaps the silhouette for the new picture by itself, and a resent beat makes the players read every line twice.
+Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Looks are saved in the campaign and reused in every later session. Do not check or redo them. **Set a look only when `show beat` warns** "no appearance for ..." (the stage showed a silhouette). The stage swaps the silhouette for the new picture by itself; there is no need to send the beat again.
 
 ```bash
 uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin=light eyes=green hair_bob:chestnut blouse_longsleeve:white corset:maroon skirt_straight:black shoes_basic:black
@@ -63,19 +63,7 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
 - **One `set` per Bash call, on one line.** Do not chain with `&&` and never break a line with `\`: a backslash line break always stops for a permission prompt, and the first error in a chain stops the rest.
 - Every other word is an item, optionally with a color: `robe:white`. Names of the head, ears, hair, clothes, legs, shoes, hats, weapons and more: `uv run dnd-cli actor options` (types) and `uv run dnd-cli actor options <type> --body female` (items and colors that fit).
 - Start from a kind with `preset=guard` and change pieces: `uv run dnd-cli actor set captain-voss preset=guard name=Captain_Voss hair_buzzcut:black`. Presets: goblin, hobgoblin, orc, troll, skeleton, zombie, vampire, kobold, lizardfolk, gnoll, werewolf, minotaur, bandit, thug, guard, knight, cultist, commoner, merchant, noble, priest, wizard, sailor.
-- **Race features.** Add these to clothes and hair, or the race does not show:
-
-  | Race | Add |
-  |---|---|
-  | Elf, half-elf | `elven` |
-  | Drow | `elven skin=blue` (or `skin=black`), often `eyes=red`, white or platinum hair |
-  | Dwarf | `body=muscular` (or `male`), a beard such as `beard:chestnut` |
-  | Halfling, gnome | `body=teen`; gnome also `elven` |
-  | Half-orc | `heads_orc_male` or `heads_orc_female`, `skin=pale_green` (or `green`, `dark_green`) |
-  | Dragonborn | `body=muscular heads_lizard_male tail_lizard` (or `heads_lizard_female`), a scale color as `skin=` |
-  | Tiefling | `horns_curled` (or `horns_backwards`) and `tail_lizard`, an unusual `skin=` such as `lavender` or `fur_copper` |
-  | Human | nothing extra |
-
+- **Race:** `race=drow` (or `elf`, `half-elf`, `dwarf`, `halfling`, `gnome`, `half-orc`, `orc`, `dragonborn`, `tiefling`, `human`) adds the ears, horns, tail, head, body and skin of that race; your own `body=`, `skin=`, `eyes=` and items win. A player character with a sheet gets its race from the sheet by itself.
   The `child` body fits only a few items. Use `teen` for small folk.
 - A saved look is final. `actor set` on an id that has a look does nothing and prints the saved look. Add `--change` only when the story changes the look (a disguise, a wound, new armor); it changes only the pieces you give. Never change a player character's look unless that player asks.
 - A warning "has no sprite for body ..." means the item will not show on that body. Pick an item the warning says fits.
@@ -87,7 +75,7 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
 
 ## Places: how they look
 
-Each location shows as a room or outdoor place built from LPC tiles. Places are saved in the campaign and reused on every visit. **Set a place only when `show beat` warns** "no look for location ..." (the stage showed a blank room). Do not send the beat again; the room appears by itself. The location id in `scene set` and in `@scene` must be the same. For a new place you know you will show, you can set it before the beat.
+Each location shows as a room or outdoor place built from LPC tiles. Places are saved in the campaign and reused on every visit. **Set a place only when `show beat` warns** "no look for location ..." (the stage showed a blank room). The room appears by itself. The location id in `scene set` and in `@scene` must be the same. For a new place you know you will show, you can set it before the beat.
 
 ```bash
 uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center=bust +plant@front_left

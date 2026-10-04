@@ -8,7 +8,6 @@ replay of the whole log.
 
 from __future__ import annotations
 
-import copy
 
 LOG_LIMIT = 60
 DM_LOG_LIMIT = 30
@@ -40,7 +39,6 @@ def _free_position(actors: dict) -> str:
 
 
 # An "*_updated" event makes the browser fetch that thing again: versions[key] = seq.
-# Same table as UPDATED in stage/web/src/lib/stage.ts.
 UPDATED = {
     "scene_updated": ("scene:", "location"),
     "actor_updated": ("", "actor"),
@@ -50,7 +48,8 @@ UPDATED = {
 
 
 def apply(state: dict, event: dict) -> dict:
-    s = copy.deepcopy(state)
+    # Copy only what a branch changes in place; lists and the rest are replaced, not mutated.
+    s = {**state, "actors": dict(state["actors"]), "versions": dict(state["versions"])}
     s["seq"] += 1
     kind = event.get("type")
 
@@ -79,10 +78,9 @@ def apply(state: dict, event: dict) -> dict:
         s["actors"] = {}
     elif kind in ("narrate", "say"):
         if kind == "say":
-            actor = s["actors"].setdefault(
-                event["actor"], {"position": _free_position(s["actors"])}
-            )
+            actor = dict(s["actors"].get(event["actor"]) or {"position": _free_position(s["actors"])})
             actor["emotion"] = event.get("emotion", "neutral")
+            s["actors"][event["actor"]] = actor
         s["log"] = (s["log"] + [{**event, "seq": s["seq"]}])[-LOG_LIMIT:]
         s["choices"] = None
     elif kind == "choices":

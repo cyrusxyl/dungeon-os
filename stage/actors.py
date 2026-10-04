@@ -21,8 +21,10 @@ from PIL import Image
 
 from stage import beat, lpc
 from stage.assets import ensure_dcss
+from stage.files import read_json, write_json
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
+RACES_PATH = Path(__file__).resolve().parent / "data" / "races.json"
 SPEC_KEYS = ("body", "skin", "eyes")
 # Everyday words for skin, mapped to LPC palette names.
 SKIN_ALIASES = {
@@ -47,6 +49,7 @@ def dcss_monsters() -> dict[str, str]:
     return out
 
 
+@lru_cache(maxsize=512)
 def find_tile(name: str, cutoff: float = 90) -> str | None:
     """The DCSS tile for a monster name, if one matches closely."""
     from rapidfuzz import fuzz, process
@@ -63,15 +66,20 @@ def actors_dir(campaign_dir: Path) -> Path:
     return campaign_dir / "stage" / "actors"
 
 
-def load(campaign_dir: Path, actor_id: str) -> dict | None:
+def load_own(campaign_dir: Path, actor_id: str) -> dict | None:
+    """The actor's own saved look (the id's file, else its kind's file), no fallback."""
     base = actor_id.split("#")[0]
     for name in dict.fromkeys((actor_id, base)):
-        path = actors_dir(campaign_dir) / f"{name}.json"
-        if path.exists():
-            try:
-                return json.loads(path.read_text())
-            except ValueError:
-                return None
+        if (spec := read_json(actors_dir(campaign_dir) / f"{name}.json")) is not None:
+            return spec
+    return None
+
+
+def load(campaign_dir: Path, actor_id: str) -> dict | None:
+    """The saved look, else the preset of its kind, else a DCSS tile that matches its name."""
+    if (spec := load_own(campaign_dir, actor_id)) is not None:
+        return spec
+    base = actor_id.split("#")[0]
     if base in presets():
         return presets()[base]
     # A beast or monster LPC has no body for: a CC0 DCSS tile, if the name matches.
@@ -82,16 +90,38 @@ def load(campaign_dir: Path, actor_id: str) -> dict | None:
     return {"name": beat.title(base), "tile": tile} if tile else None
 
 
-def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict:
+@cache
+def races() -> dict[str, dict]:
+    return {k: v for k, v in json.loads(RACES_PATH.read_text()).items() if not k.startswith("_")}
+
+
+def race_of(text: str) -> str | None:
+    """The race key named in free text, e.g. 'Drow (High Elf)' -> 'drow', 'Half-Elf' -> 'half-elf'."""
+    t = text.lower().replace(" ", "-")
+    return next((r for r in sorted(races(), key=len, reverse=True) if r in t), None)
+
+
+def _apply_race(spec: dict, race: str, given: set[str]) -> None:
+    kit = races()[race]
+    for key in ("body", "skin", "eyes"):
+        if key in kit and key not in given:
+            spec[key] = kit[key]
+    sex = "female" if spec.get("body", "male") in ("female", "pregnant") else "male"
+    spec["items"] = [i.replace("{sex}", sex) for i in kit.get("items", [])] + spec["items"]
+
+
+def build(actor_id: str, tokens: list[str], current: dict | None = None, race: str | None = None) -> dict:
     """Make a spec from `key=value` and item tokens.
 
     `preset=<kind>` starts from a preset; `name=...`, `body=`, `skin=`,
-    `eyes=` set those fields; every other token is an item (`robe:white`).
+    `eyes=` set those fields; `race=<race>` adds the race's features (ears,
+    horns, skin; `race` is the default); every other token is an item (`robe:white`).
     Items are added to the current spec, so a second `actor set` can change
     one piece; `reset=yes` starts empty instead.
     """
     spec: dict = dict(current or {})
     spec["items"] = list(spec.get("items", []))
+    given: set[str] = set()
     for token in tokens:
         key, eq, value = token.partition("=")
         if not eq:
@@ -109,21 +139,29 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None) -> dict
             if not tile:
                 raise lpc.ActorError(f"no DCSS monster tile like {value!r}. Try a plainer name (wolf, giant_spider, ogre).")
             spec = {"name": spec.get("name"), "tile": tile} if spec.get("name") else {"tile": tile}
+        elif key == "race":
+            if value.lower() not in races():
+                raise lpc.ActorError(f"no race {value!r}. Races: {', '.join(races())}.")
+            race = value.lower()
         elif key == "name":
             spec["name"] = value.replace("_", " ").strip()
         elif key == "skin":
             spec[key] = SKIN_ALIASES.get(value.lower(), value)
+            given.add(key)
         elif key in SPEC_KEYS:
             spec[key] = value
+            given.add(key)
         else:
             raise lpc.ActorError(
-                f"unknown setting {key!r}. Use name=, body=, skin=, eyes=, preset=, reset=yes, "
+                f"unknown setting {key!r}. Use name=, body=, skin=, eyes=, race=, preset=, reset=yes, "
                 "or an item such as robe:white."
             )
     spec.setdefault("name", beat.title(actor_id))
     if "tile" in spec:
         spec.pop("items", None)
         return spec
+    if race:
+        _apply_race(spec, race, given)
     spec.setdefault("body", "male")
     return spec
 
@@ -139,10 +177,7 @@ def _tile_frame(spec: dict, flip: bool) -> Image.Image:
 
 
 def save(campaign_dir: Path, actor_id: str, spec: dict) -> Path:
-    path = actors_dir(campaign_dir) / f"{actor_id}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(spec, indent=2) + "\n")
-    return path
+    return write_json(actors_dir(campaign_dir) / f"{actor_id}.json", spec, indent=2)
 
 
 FACING = {"left": "right", "far-left": "right", "right": "left", "far-right": "left"}

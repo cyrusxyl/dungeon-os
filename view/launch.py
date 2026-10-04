@@ -22,20 +22,16 @@ import argparse
 import shutil
 import subprocess
 import sys
-import uuid
+import threading
 import webbrowser
 from threading import Timer
 
-from dnd_cli.campaign import (
-    GAME_DIR,
-    REPO_ROOT,
-    CampaignError,
-    resolve_campaign_dir,
-    set_active_campaign,
-)
-from view.settings import build_dm_command, load_settings, set_last_session_id
+from dnd_cli.campaign import REPO_ROOT, CampaignError, resolve_campaign_dir
+from view.settings import new_dm_session
 
 WEB_VIEW_URL = "http://127.0.0.1:8000"
+
+
 def _newest(paths) -> float:
     return max((p.stat().st_mtime for p in paths if p.is_file()), default=0.0)
 
@@ -76,6 +72,10 @@ def run_stage(campaign: str | None, open_browser: bool) -> None:
         ensure_lpc()
         ensure_tiles()
         ensure_dcss()
+        from stage import actors, lpc
+
+        # Index the art in the background: the first portrait then shows at once.
+        threading.Thread(target=lambda: (lpc.catalog(), actors.dcss_monsters()), daemon=True).start()
     except Exception as exc:  # The stage still runs, with silhouettes and blank rooms.
         print(f"dungeon-os: {exc}", file=sys.stderr)
     if open_browser:
@@ -134,10 +134,7 @@ def main() -> None:
 
         # The DM reads campaigns/active.json at session start, and the side
         # panel follows it too — keep both pointed at what we are launching.
-        set_active_campaign(campaign_dir.name)
-        session_id = str(uuid.uuid4())
-        set_last_session_id(campaign_dir.name, session_id)
-        dm_command = build_dm_command(load_settings(), GAME_DIR, session_id)
+        session_id, dm_command = new_dm_session(campaign_dir)
         ViewApp(
             campaign_dir, session_id=session_id, dm_command=dm_command
         ).run()

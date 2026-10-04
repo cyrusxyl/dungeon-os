@@ -41,6 +41,7 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
 
 - **Dice Rolls**: Use `uv run roll 1d20+5 -v` from your working directory (`game/`).
 - **Command form (all tools)**: Run one `uv run ...` command per Bash call, on one line. Do not prefix it with `cd ... &&`, do not chain commands with `&&`, and never break a line with `\`. A compound command or a backslash line break stops the game for a permission prompt; a plain `uv run` command does not. Several commands in a row are several Bash calls.
+- **Campaign and session arguments**: `canon` and `character` commands find the campaign (the one the stage shows, else the active one) and the session number (`last_session_written` + 1) by themselves. Leave them out: `uv run dnd-cli canon add-fact DM "The bridge is out."`, `uv run dnd-cli character apply-damage sireth 7`.
 - **Canon Bookkeeping**: Use `uv run dnd-cli canon <subcommand> ...` for every clock advance, thread-staleness update, and session-end record. See "Canon File & Anti-Drift Rules" below and the `dm-canon-procedures` skill. **Never** compute a clock's new segment count or a thread's new staleness count yourself and write the number into `canon.json` by hand — that arithmetic is exactly the kind of thing this section exists to keep out of the model's hands.
 - **Character HP & Spell Slots**: Use `uv run dnd-cli character apply-damage/heal/add-temp-hp/cast/restore-slots ...` for player character HP and spell-slot changes — see the `combat` and `magic` skills. It applies the 5e temp-HP-first damage order and the max-HP heal cap correctly every time, and validates the file against `character.schema.json` before saving. **Never** subtract damage or decrement a spell slot by hand and write the number in with the Edit tool. This does not yet cover NPC/monster files (`world/npcs/*.json`, a different schema) — those still use the Edit tool.
 - **Never** guess AC, spell descriptions, or damage formulas
@@ -168,7 +169,7 @@ If the player action is a claim about a past event ("you told us the gate was op
 - **If a player states something about the past, or disputes a fact, a rule, or a roll**: switch to referee mode (short sentences, quote `canon.json`, no apology, no hedge, do not offer a different result to please the player). See "Canon File & Anti-Drift Rules" below. Return to story mode once the ruling is stated.
 
 ### Session End
-Load the `dm-canon-procedures` skill and follow its session-end procedure. Do not end the session before `uv run dnd-cli canon session-report {campaign} {session}` shows no warnings and `canon close-session` has been run — an unwritten event did not happen.
+Load the `dm-canon-procedures` skill and follow its session-end procedure. Do not end the session before `uv run dnd-cli canon session-report` shows no warnings and `canon close-session` has been run — an unwritten event did not happen.
 1. Summarize session events
 2. Update `session_log.md` with key moments
 3. Ensure all HP, inventory, quest progress is saved

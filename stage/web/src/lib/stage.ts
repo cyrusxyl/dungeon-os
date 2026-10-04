@@ -1,5 +1,5 @@
-// Mirror of stage/state.py: the server sends one snapshot, then events, and
-// the client folds them with the same rules so both sides agree.
+// The server folds the stage events (stage/state.py) and sends the whole
+// state after each change; the client only renders it.
 import { useEffect, useRef, useState } from 'react'
 
 /** True when a key press belongs to whatever has focus: inputs, the console, and every button. */
@@ -49,35 +49,11 @@ export function useIntegerScale(ref: React.RefObject<HTMLDivElement | null>, w: 
   return scale
 }
 
-const names = new Map<string, Promise<string>>()
-
 /** Display name from the actor file, e.g. "Sister Gareth"; the id until it loads. */
-export function useActorName(id: string | undefined): string {
-  const [name, setName] = useState(id ? titleCase(id) : '')
-  useEffect(() => {
-    if (!id) return
-    setName(titleCase(id))
-    if (!names.has(id)) {
-      names.set(
-        id,
-        fetch(`/api/actor/${encodeURIComponent(id)}`)
-          .then((r) => r.json())
-          .then((d) => d.name as string)
-          .catch(() => titleCase(id)),
-      )
-    }
-    let live = true
-    names.get(id)!.then((n) => live && setName(n))
-    return () => {
-      live = false
-    }
-  }, [id])
-  return name
-}
-
-/** Forget cached names, e.g. after the DM changes an actor. */
-export function forgetActorName(id: string): void {
-  names.delete(id)
+/** Display name from the actor file, e.g. "Sister Gareth"; the id until it loads. */
+export function useActorName(id: string | undefined, version = 0): string {
+  const data = useJson<{ name: string }>(id ? `/api/actor/${encodeURIComponent(id)}` : null, version)
+  return data?.name ?? (id ? titleCase(id) : '')
 }
 
 export type Position = 'left' | 'center' | 'right' | 'far-left' | 'far-right'
@@ -111,74 +87,6 @@ export interface Roll {
   seq: number
 }
 
-export type StageEvent = Record<string, unknown> & { type: string; seq: number }
-
-const AUTO: Position[] = ['left', 'right', 'center', 'far-left', 'far-right']
-
-function freePosition(actors: StageState['actors']): Position {
-  const taken = new Set(Object.values(actors).map((a) => a.position))
-  return AUTO.find((p) => !taken.has(p)) ?? 'center'
-}
-
-// An "*_updated" event makes the browser fetch that thing again. Same table as UPDATED in stage/state.py.
-const UPDATED: Record<string, [string, string]> = {
-  scene_updated: ['scene:', 'location'],
-  actor_updated: ['', 'actor'],
-  site_updated: ['site:', 'site'],
-  map_updated: ['map:', 'map'],
-}
-
-function bump(s: StageState, key: string, seq: number): StageState {
-  return { ...s, versions: { ...(s.versions ?? {}), [key]: seq } }
-}
-
-export function apply(state: StageState, e: StageEvent): StageState {
-  if (e.type in UPDATED) {
-    const [prefix, field] = UPDATED[e.type]
-    return bump({ ...state, seq: e.seq }, prefix + (e[field] as string), e.seq)
-  }
-  const s: StageState = { ...state, seq: e.seq, actors: { ...state.actors } }
-  switch (e.type) {
-    case 'scene':
-      return { ...s, scene: e.location as string, actors: {}, choices: null, explore: null }
-    case 'explore':
-      return bump({ ...s, explore: e.site as string, actors: {}, choices: null }, `site:${e.site as string}`, e.seq)
-    case 'at':
-      return { ...s, place: { map: e.map as string, place: e.place as string } }
-    case 'enter':
-      s.actors[e.actor as string] = {
-        position: (e.position as Position) ?? freePosition(s.actors),
-        emotion: 'neutral',
-      }
-      return s
-    case 'exit':
-      delete s.actors[e.actor as string]
-      return s
-    case 'clear':
-      return { ...s, actors: {} }
-    case 'narrate':
-    case 'say': {
-      if (e.type === 'say') {
-        const id = e.actor as string
-        s.actors[id] = { position: s.actors[id]?.position ?? freePosition(s.actors), emotion: (e.emotion as string) ?? 'neutral' }
-      }
-      const line = { ...(e as unknown as StoryLine), seq: e.seq }
-      return { ...s, log: [...s.log, line].slice(-60), choices: null }
-    }
-    case 'choices':
-      return { ...s, choices: { options: e.options as string[], seq: e.seq } }
-    case 'roll':
-      return { ...s, last_roll: { expr: e.expr as string, total: e.total as number, dice: (e.dice as Roll['dice']) ?? [], seq: e.seq } }
-    case 'dm_status': {
-      const dm = { status: e.status, reason: e.reason, message: e.message } as StageState['dm']
-      const dm_log = e.dm_text ? [...s.dm_log, e.dm_text as string].slice(-30) : s.dm_log
-      return { ...s, dm, dm_log }
-    }
-    default:
-      return s
-  }
-}
-
 function wsUrl(path: string): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${location.host}${path}`
@@ -207,9 +115,6 @@ export function useStage(onNoGame: () => void): { state: StageState | null; camp
         if (data.kind === 'snapshot') {
           setState(data.state)
           setCampaign(data.campaign)
-        } else if (data.kind === 'event') {
-          if (data.event.type === 'actor_updated') forgetActorName(data.event.actor)
-          setState((s) => (s ? apply(s, data.event) : s))
         }
       }
       ws.onclose = async () => {

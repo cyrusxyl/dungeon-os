@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from dnd_cli.commands.show_cmd import run_stage
+from stage.files import read_json
 
 LOG_TAIL_WORDS = 1200
 
@@ -15,21 +16,15 @@ def _read(path: Path) -> str | None:
         return None
 
 
-def _json(path: Path) -> dict:
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return {}
-
-
 def _character(path: Path) -> str:
-    c = _json(path)
+    c = read_json(path) or {}
     hp = c.get("hp") or {}
     line = (f"- {path.stem}: {c.get('name')}, {c.get('race')} {c.get('class')} {c.get('level')}, "
             f"HP {hp.get('current')}/{hp.get('max')}" + (f" +{hp['temp']} temp" if hp.get("temp") else "")
             + f", AC {c.get('armor_class')}, player {c.get('controlled_by')}")
-    if c.get("spell_slots"):
-        line += f", slots {json.dumps(c['spell_slots'], separators=(',', ':'))}"
+    slots = (c.get("spellcasting") or {}).get("spell_slots")
+    if slots:
+        line += ", slots " + " ".join(f"L{lvl} {s.get('remaining')}/{s.get('max')}" for lvl, s in sorted(slots.items()))
     if c.get("conditions"):
         line += f", conditions {', '.join(map(str, c['conditions']))}"
     return line
@@ -37,7 +32,7 @@ def _character(path: Path) -> str:
 
 def brief(campaign_dir: Path) -> str:
     """Campaign state, party, players, canon, story bible and the recent session log."""
-    state = _json(campaign_dir / "state.json")
+    state = read_json(campaign_dir / "state.json") or {}
     out = [f"# Session brief: {campaign_dir.name}", "", "## State (state.json)",
            json.dumps(state, separators=(",", ":"))]
 
@@ -46,7 +41,7 @@ def brief(campaign_dir: Path) -> str:
 
     out += ["", "## Players (players/*.json)"]
     for p in sorted((campaign_dir / "players").glob("*.json")):
-        pl = _json(p)
+        pl = read_json(p) or {}
         out.append(f"- {pl.get('player_id', p.stem)}: controls {', '.join(pl.get('characters_controlled', []))}; "
                    f"permissions {json.dumps(pl.get('permissions', {}), separators=(',', ':'))}")
 

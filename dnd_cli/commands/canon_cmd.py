@@ -7,7 +7,7 @@ from dnd_cli import canon
 
 
 def _print(obj) -> int:
-    print(json.dumps(obj, indent=2))
+    print(json.dumps(obj, separators=(",", ":")))
     return 0
 
 

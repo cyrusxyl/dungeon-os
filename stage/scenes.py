@@ -23,6 +23,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 from stage.assets import ASSETS_DIR, ensure_dcss, ensure_tiles
+from stage.files import read_json, write_json
 
 T = 32
 COLS, ROWS = 10, 6
@@ -116,8 +117,9 @@ def resolve(spec: dict) -> dict:
     if template_name not in cat["templates"]:
         raise SceneError(f"template {template_name!r} is not one of {', '.join(cat['templates'])}.")
     t = cat["templates"][template_name]
+    wall = spec.get("wall", t.get("wall"))
     out = {
-        "wall": spec.get("wall", t.get("wall")),
+        "walls": wall if isinstance(wall, list) else [wall] if wall else [],
         "floor": spec.get("floor", t["floor"]),
         "rows": dict(t.get("rows", {})),
         "slots": {**t.get("slots", {}), **spec.get("slots", {})},
@@ -125,8 +127,7 @@ def resolve(spec: dict) -> dict:
         "mood": spec.get("mood") or t.get("mood") or "day",
     }
     surfaces = {**cat["floors"], **cat["grounds"]}
-    walls = out["wall"] if isinstance(out["wall"], list) else [out["wall"]] if out["wall"] else []
-    for w in walls:
+    for w in out["walls"]:
         if w not in cat["walls"]:
             raise SceneError(f"wall {w!r} is not known. Close: {_suggest(w, cat['walls'])}.")
     for s in [out["floor"], *out["rows"].values()]:
@@ -137,11 +138,10 @@ def resolve(spec: dict) -> dict:
     for slot, prop in out["slots"].items():
         if slot not in SLOTS:
             raise SceneError(f"slot {slot!r} is not one of {', '.join(SLOTS)}.")
-        if prop and prop not in cat["props"]:
-            raise UnknownProp(prop, f"prop {prop!r} is not in the catalog. Close: {_suggest(prop, cat['props'])}.")
     for prop, zone in out["add"]:
         if zone not in ZONES:
             raise SceneError(f"zone {zone!r} is not one of {', '.join(ZONES)}.")
+    for prop in [*filter(None, out["slots"].values()), *(p for p, _ in out["add"])]:
         if prop not in cat["props"]:
             raise UnknownProp(prop, f"prop {prop!r} is not in the catalog. Close: {_suggest(prop, cat['props'])}.")
     return out
@@ -153,13 +153,14 @@ class UnknownProp(SceneError):
         self.prop = prop
 
 
-def _place(img: Image.Image, prop: dict, slot: str, nudge: int = 0) -> tuple[int, int]:
+def _place(img: Image.Image, name: str, slot: str, nudge: int = 0) -> tuple[int, int]:
     """Top-left corner for a prop image at a slot."""
+    prop = catalog()["props"][name]
     w, h = img.size
     if slot in WALL_SLOTS:
         x = WALL_SLOTS[slot] - w // 2
         # Doors stand on the floor line; other wall pieces hang near the top.
-        y = WALL_ROWS * T - h if h >= 2 * T and prop.get("on") == "wall" and "door" in prop.get("_name", "") else 12
+        y = WALL_ROWS * T - h if h >= 2 * T and prop.get("on") == "wall" and "door" in name else 12
         return x, y
     row, col = slot.split("_")
     baseline = ZONE_BASELINE[row]
@@ -206,7 +207,7 @@ def render(spec: dict) -> Image.Image:
     r = resolve(spec)
     cat = catalog()
     img = Image.new("RGBA", (W, H), (20, 18, 24, 255))
-    walls = r["wall"] if isinstance(r["wall"], list) else [r["wall"]] if r["wall"] else []
+    walls = r["walls"]
     first_floor_row = WALL_ROWS if walls else 0
     for row in range(first_floor_row, ROWS):
         surface = r["rows"].get(str(row), r["floor"])
@@ -241,9 +242,8 @@ def render(spec: dict) -> Image.Image:
         return (2, ZONE_BASELINE[slot.split("_")[0]])
 
     for name, slot, nudge in sorted(placed, key=order):
-        prop = {**cat["props"][name], "_name": name}
         pimg = prop_image(name)
-        x, y = _place(pimg, prop, slot, nudge)
+        x, y = _place(pimg, name, slot, nudge)
         img.alpha_composite(pimg, (max(-pimg.width // 2, min(W - pimg.width // 2, x)), y))
     return _mood(img, r["mood"])
 
@@ -253,20 +253,11 @@ def scenes_dir(campaign_dir: Path) -> Path:
 
 
 def load(campaign_dir: Path, location: str) -> dict | None:
-    path = scenes_dir(campaign_dir) / f"{location}.json"
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text())
-    except ValueError:
-        return None
+    return read_json(scenes_dir(campaign_dir) / f"{location}.json")
 
 
 def save(campaign_dir: Path, location: str, spec: dict) -> Path:
-    path = scenes_dir(campaign_dir) / f"{location}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(spec, indent=2) + "\n")
-    return path
+    return write_json(scenes_dir(campaign_dir) / f"{location}.json", spec, indent=2)
 
 
 def build(tokens: list[str], current: dict | None) -> dict:

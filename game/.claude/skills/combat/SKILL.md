@@ -104,7 +104,7 @@ uv run roll {damage_dice}+{modifier} -v
 Example: `roll 1d8+3 -v` for longsword with +3 STR
 
 **Step 6: Update target HP**
-- **If the target is a player character** (`{campaign}/characters/{name}.json`): use `uv run dnd-cli character apply-damage {campaign} {name} {amount}`. Do not subtract the damage yourself and write the number in with the Edit tool — temp HP absorbs damage before current HP does, and getting that order wrong by hand is exactly the kind of arithmetic mistake this command exists to rule out. The command reports `absorbed_by_temp_hp`, `absorbed_by_current_hp`, and `dropped_to_zero` — use those to narrate.
+- **If the target is a player character** (`{campaign}/characters/{name}.json`): use `uv run dnd-cli character apply-damage {name} {amount}`. Do not subtract the damage yourself and write the number in with the Edit tool — temp HP absorbs damage before current HP does, and getting that order wrong by hand is exactly the kind of arithmetic mistake this command exists to rule out. The command reports `absorbed_by_temp_hp`, `absorbed_by_current_hp`, and `dropped_to_zero` — use those to narrate.
 - **If the target is an NPC or monster** (`{campaign}/world/npcs/{name}.json`): this file follows `npc.schema.json`, not the character schema, and the `character` CLI does not cover it yet. Subtract the damage and write it with the Edit tool as before — this is a known gap, not an oversight.
 - If HP ≤ 0: Creature is down/dead
 
@@ -139,7 +139,7 @@ uv run dnd-cli get spells/{spell-name} --fields name,level,damage,attack_type,dc
 - Roll: `uv run roll 8d6 -v`
 
 **Step 5: Update**
-- Deduct spell slot: `uv run dnd-cli character cast {campaign} {name} {level}`. It refuses if no slots remain at that level instead of writing a negative or stale number.
+- Deduct spell slot: `uv run dnd-cli character cast {name} {level}`. It refuses if no slots remain at that level instead of writing a negative or stale number.
 - Apply damage to target (see Step 6 above — player character vs NPC/monster)
 
 #### Skill Check in Combat

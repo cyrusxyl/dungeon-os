@@ -13,15 +13,14 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import random
 import re
-import tempfile
 from collections import deque
 from functools import cache, lru_cache
 from pathlib import Path
 
 from stage.beat import SLUG_RE, title
+from stage.files import read_json, write_json
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "crawl.json"
 _DUNGEON_SIZES = {"small": (32, 22), "medium": (44, 30), "large": (60, 40)}
@@ -681,27 +680,12 @@ def sites_dir(campaign_dir: Path) -> Path:
 
 
 def load(campaign_dir: Path, site_id: str) -> dict | None:
-    if not SLUG_RE.match(site_id):
-        return None
-    path = sites_dir(campaign_dir) / f"{site_id}.json"
-    try:
-        return json.loads(path.read_text())
-    except (OSError, ValueError):
-        return None
+    return read_json(sites_dir(campaign_dir) / f"{site_id}.json") if SLUG_RE.match(site_id) else None
 
 
 def save(campaign_dir: Path, site_id: str, site: dict) -> Path:
     """Write by rename: the stage server and the CLI both write site files."""
     return write_json(sites_dir(campaign_dir) / f"{site_id}.json", site)
-
-
-def write_json(path: Path, obj: dict) -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    with os.fdopen(fd, "w") as f:
-        json.dump(obj, f, separators=(",", ":"))
-    os.replace(tmp, path)
-    return path
 
 
 # -- tiles -----------------------------------------------------------------

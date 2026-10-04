@@ -42,22 +42,24 @@ def _git(*args: str, cwd: Path | None = None) -> None:
         raise AssetError(f"git {' '.join(args[:2])} failed: {result.stderr.strip()[:300]}")
 
 
-def ensure_lpc() -> Path:
-    """Return the LPC checkout, cloning it on first use."""
-    if (LPC_DIR / "sheet_definitions").is_dir() and (LPC_DIR / "spritesheets").is_dir():
-        return LPC_DIR
-    print("dungeon-os: fetching LPC character art (first run only, ~45 MB)…", file=sys.stderr)
+def _clone_pinned(dest: Path, repo: str, commit: str, what: str, sparse: list[str] | None = None) -> None:
+    """Clone a repository at one pinned commit (optionally sparse) into dest."""
+    print(f"dungeon-os: fetching {what} (first run only)…", file=sys.stderr)
     ASSETS_DIR.mkdir(exist_ok=True)
     try:
-        if not (LPC_DIR / ".git").is_dir():
-            _git("clone", "--quiet", "--filter=blob:none", "--no-checkout", LPC_REPO, str(LPC_DIR))
-        _git("sparse-checkout", "set", "--no-cone", *LPC_SPARSE, cwd=LPC_DIR)
-        _git("checkout", "--quiet", LPC_COMMIT, cwd=LPC_DIR)
+        if not (dest / ".git").is_dir():
+            _git("clone", "--quiet", *(["--filter=blob:none"] if sparse else []), "--no-checkout", repo, str(dest))
+        if sparse:
+            _git("sparse-checkout", "set", "--no-cone", *sparse, cwd=dest)
+        _git("checkout", "--quiet", commit, cwd=dest)
     except (AssetError, OSError) as e:
-        raise AssetError(
-            f"Could not fetch the LPC art into {LPC_DIR}: {e}. Check the network, "
-            f"delete {LPC_DIR}, and start again."
-        ) from e
+        raise AssetError(f"Could not fetch {what} into {dest}: {e}. Check the network, delete {dest}, and start again.") from e
+
+
+def ensure_lpc() -> Path:
+    """Return the LPC checkout, cloning it on first use (~45 MB)."""
+    if not ((LPC_DIR / "sheet_definitions").is_dir() and (LPC_DIR / "spritesheets").is_dir()):
+        _clone_pinned(LPC_DIR, LPC_REPO, LPC_COMMIT, "LPC character art (~45 MB)", LPC_SPARSE)
     return LPC_DIR
 
 
@@ -96,8 +98,9 @@ def ensure_tiles() -> Path:
 
 def ensure_dcss() -> Path:
     """Return the CC0 DCSS tiles, cloning them on first use (~35 MB)."""
-    if (DCSS_DIR / "monster").is_dir():
-        return DCSS_DIR
+    if not (DCSS_DIR / "monster").is_dir():
+        _clone_pinned(DCSS_DIR, DCSS_REPO, DCSS_COMMIT, "CC0 Dungeon Crawl tiles (~35 MB)")
+    return DCSS_DIR
     print("dungeon-os: fetching CC0 monster tiles (first run only, ~35 MB)…", file=sys.stderr)
     try:
         if not (DCSS_DIR / ".git").is_dir():

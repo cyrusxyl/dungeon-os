@@ -190,7 +190,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         </section>
         {showParty && (
           <div className="hidden min-h-0 lg:flex">
-            <PartyPanel />
+            <PartyPanel dmStatus={state.dm.status} />
           </div>
         )}
       </main>

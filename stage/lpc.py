@@ -19,7 +19,7 @@ variant.
 from __future__ import annotations
 
 import json
-import re
+from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -85,15 +85,11 @@ class Item:
         return []
 
 
-def _root() -> Path:
-    return ensure_lpc()
-
-
 @cache
 def catalog() -> dict[str, Item]:
     """All LPC items by short id."""
     items: list[Item] = []
-    for path in sorted((_root() / "sheet_definitions").rglob("*.json")):
+    for path in sorted((ensure_lpc() / "sheet_definitions").rglob("*.json")):
         if path.name.startswith("meta"):
             continue
         d = json.loads(path.read_text())
@@ -117,13 +113,13 @@ def catalog() -> dict[str, Item]:
             if stem.startswith(p) and len(stem) > len(p):
                 return stem[len(p):]
         return stem
-    counts: dict[str, int] = {}
-    for it in items:
-        counts[short(it.def_name)] = counts.get(short(it.def_name), 0) + 1
+    shorts = {it.def_name: short(it.def_name) for it in items}
+    counts = Counter(shorts.values())
     out: dict[str, Item] = {}
     for it in items:
-        s = short(it.def_name)
-        it.id = s if counts[s] == 1 and s not in {i.def_name for i in items if i is not it} else it.def_name
+        s = shorts[it.def_name]
+        # A short id must be unique, and must not be another item's full name.
+        it.id = s if counts[s] == 1 and (s == it.def_name or s not in shorts) else it.def_name
         out[it.id] = it
     # The full definition name always works too.
     for it in items:
@@ -133,7 +129,7 @@ def catalog() -> dict[str, Item]:
 
 @cache
 def _palette_file(material: str) -> tuple[str, dict[str, list[str]]]:
-    folder = _root() / "palette_definitions" / material
+    folder = ensure_lpc() / "palette_definitions" / material
     base = json.loads((folder / f"meta_{material}.json").read_text())["base"]
     return base, json.loads((folder / f"{material}_ulpc.json").read_text())
 
@@ -190,17 +186,17 @@ def _match_color(item: Item, color: str | None) -> str | None:
     return color
 
 
+def _item(entry: str) -> tuple[Item, str | None]:
+    name, color = _split(entry)
+    item = catalog().get(name)
+    if not item:
+        raise ActorError(f"no LPC item {name!r}. List them with: uv run dnd-cli actor options")
+    return item, color
+
+
 def normalize_items(items: list[str]) -> list[str]:
     """One entry per LPC type, the later one winning, in first-seen order."""
-    cat = catalog()
-    by_type: dict[str, str] = {}
-    for entry in items:
-        name, _ = _split(entry)
-        item = cat.get(name)
-        if not item:
-            raise ActorError(f"no LPC item {name!r}. List them with: uv run dnd-cli actor options")
-        by_type[item.type] = entry
-    return list(by_type.values())
+    return list({_item(entry)[0].type: entry for entry in items}.values())
 
 
 def resolve(spec: dict) -> tuple[str, list[tuple[Item, str | None]]]:
@@ -211,10 +207,7 @@ def resolve(spec: dict) -> tuple[str, list[tuple[Item, str | None]]]:
     cat = catalog()
     chosen: dict[str, tuple[Item, str | None]] = {}
     for entry in spec.get("items", []):
-        name, color = _split(entry)
-        item = cat.get(name)
-        if not item:
-            raise ActorError(f"no LPC item {name!r}. List them with: uv run dnd-cli actor options")
+        item, color = _item(entry)
         chosen[item.type] = (item, _match_color(item, color))
     chosen.setdefault("body", (cat["body"], None))
     chosen.setdefault("head", (cat[DEFAULT_HEAD[body]], None))
@@ -239,7 +232,7 @@ def validate(spec: dict) -> list[str]:
 
 
 def _sheet_path(item: Item, rel: str, color: str | None) -> Path:
-    base = _root() / "spritesheets" / rel
+    base = ensure_lpc() / "spritesheets" / rel
     if item.variants:
         variant = color if color in item.variants else item.variants[0]
         return base / "walk" / f"{variant.replace(' ', '_')}.png"
@@ -312,14 +305,8 @@ def portrait(spec: dict, emotion: str | None = None) -> Image.Image:
 def options() -> dict[str, list[str]]:
     """Item ids grouped by LPC type, for `dnd-cli actor options`."""
     groups: dict[str, list[str]] = {}
-    seen = set()
-    for item in catalog().values():
-        if id(item) in seen:
-            continue
-        seen.add(id(item))
-        groups.setdefault(item.type, []).append(item.id)
+    for key, item in catalog().items():
+        if key == item.id:  # skip the full-name aliases
+            groups.setdefault(item.type, []).append(item.id)
     return {k: sorted(v) for k, v in sorted(groups.items())}
 
-
-def slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9_-]+", "-", value.lower()).strip("-")

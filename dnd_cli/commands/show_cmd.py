@@ -1,12 +1,12 @@
 """show command - put a beat (scene, actors, narration, dialogue, choices) on the stage"""
 
-import json
 import os
 import sys
 from pathlib import Path
 
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
 from stage import actors, beat, crawl, maps, scenes
+from stage.files import read_json, write_json
 
 
 def _stage_campaign_dir(campaign: str | None) -> Path:
@@ -46,12 +46,9 @@ def preview_path(campaign_dir: Path, name: str) -> Path:
 def _set_location(campaign_dir: Path, m: dict, place: str) -> None:
     """Keep state.json's location in step with the map, so the DM need not edit it."""
     path = campaign_dir / "state.json"
-    try:
-        state = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return
-    state["location"] = f"{m['places'][place]['name']}, {m['name']}"
-    path.write_text(json.dumps(state, indent=2) + "\n")
+    if (state := read_json(path)) is not None:
+        state["location"] = f"{m['places'][place]['name']}, {m['name']}"
+        write_json(path, state, indent=2)
 
 
 def execute_beat(campaign: str | None, file: str | None) -> int:
@@ -90,28 +87,39 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
         map_id = maps.visit(campaign_dir, found, place) if place else None
         if map_id:
             out.append({"type": "at", "map": map_id, "place": place})
+    if out == beat.last_beat(beat.log_path(campaign_dir)):
+        # A resent beat (often after setting a look): the players must not read it twice.
+        print("This beat is already on the stage (same as the last one); not shown again. "
+              "The stage updates pictures by itself.")
+        return 0
     beat.append(campaign_dir, out)
     if at := next((e for e in reversed(out) if e["type"] == "at"), None):
         _set_location(campaign_dir, found[at["map"]], at["place"])
 
     # An unknown actor is not an error: the stage shows a silhouette.
     for actor in sorted({e["actor"] for e in events if "actor" in e}):
-        if actors.load(campaign_dir, actor) is None:
+        if actors.load_own(campaign_dir, actor) is not None:
+            continue
+        # A kind's look (preset or monster tile) is fixed on first sight: later
+        # changes to the presets or tiles must not change what players saw.
+        if (spec := actors.load(campaign_dir, actor)) is not None:
+            actors.save(campaign_dir, actor.split("#")[0], spec)
+        else:
             print(f"Warning: no appearance for {actor!r} yet; the stage shows a silhouette. "
                   f"Set one with: uv run dnd-cli actor set {actor.split('#')[0]} ... "
-                  "(see: uv run dnd-cli actor options). The stage updates the picture by itself: do not send this beat again.", file=sys.stderr)
+                  "(see: uv run dnd-cli actor options). The stage updates the picture by itself.", file=sys.stderr)
 
     # Same for a place: the stage shows a blank room until it has a look.
     for location in sorted({e["location"] for e in events if e["type"] == "scene"}):
         if scenes.load(campaign_dir, location) is None:
             print(f"Warning: no look for location {location!r} yet; the stage shows a blank room. "
                   f"Set one with: uv run dnd-cli scene set {location} template=... "
-                  "(see: uv run dnd-cli scene options). The stage updates the picture by itself: do not send this beat again.", file=sys.stderr)
+                  "(see: uv run dnd-cli scene options). The stage updates the picture by itself.", file=sys.stderr)
 
     for site_id in sorted(missing_sites):
         print(f"Warning: no site {site_id!r} yet; the stage shows an empty map. "
               f"Set one with: uv run dnd-cli site set {site_id} theme=... poi=<id>@<where> "
-              "(see: uv run dnd-cli site options). The stage updates by itself: do not send this beat again.", file=sys.stderr)
+              "(see: uv run dnd-cli site options). The stage updates by itself.", file=sys.stderr)
 
     print(f"Shown: {len(events)} event(s): " + ", ".join(e["type"] for e in events))
     return 0

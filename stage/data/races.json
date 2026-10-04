@@ -1,0 +1,14 @@
+{
+  "_comment": "What a D&D race adds to an LPC look (`actor set ... race=drow`). Settings fill only what the DM did not give; items come first, so the DM's own items win. {sex} becomes female or male from the body.",
+  "human": {},
+  "elf": {"items": ["elven"]},
+  "half-elf": {"items": ["elven"]},
+  "drow": {"skin": "blue", "eyes": "red", "items": ["elven"]},
+  "dwarf": {"body": "muscular", "items": ["beard:chestnut"]},
+  "halfling": {"body": "teen"},
+  "gnome": {"body": "teen", "items": ["elven"]},
+  "half-orc": {"skin": "pale_green", "items": ["heads_orc_{sex}"]},
+  "orc": {"skin": "green", "items": ["heads_orc_{sex}"]},
+  "dragonborn": {"body": "muscular", "skin": "bronze", "items": ["heads_lizard_{sex}", "tail_lizard"]},
+  "tiefling": {"skin": "lavender", "items": ["horns_curled", "tail_lizard"]}
+}

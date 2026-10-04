@@ -327,11 +327,43 @@ def create_parser():
     return parser
 
 
+SESSION_COMMANDS = {"add-fact", "add-item", "add-promise", "add-ruling", "session-report", "close-session"}
+
+
+def fill_defaults(argv: list[str]) -> list[str]:
+    """`canon` and `character` commands: the campaign and session number may be left out.
+
+    The campaign is the one the stage shows, else the active one. The session
+    is the one being played: `last_session_written` + 1. The DM then never
+    types the slug or does that arithmetic.
+    """
+    if len(argv) < 2 or argv[0] not in ("canon", "character") or argv[1] in ("init",):
+        return argv
+    from dnd_cli.campaign import CampaignError, resolve_campaign_dir
+    from dnd_cli.commands.show_cmd import _stage_campaign_dir
+    from stage.files import read_json
+
+    head, rest = argv[:2], argv[2:]
+    try:
+        is_campaign = bool(rest) and not rest[0].startswith("-") and resolve_campaign_dir(rest[0]).is_dir()
+    except (CampaignError, OSError):
+        is_campaign = False
+    if not is_campaign:
+        try:
+            rest = [str(_stage_campaign_dir(None)), *rest]
+        except (CampaignError, OSError, KeyError):
+            return argv  # argparse reports the missing campaign
+    if argv[0] == "canon" and argv[1] in SESSION_COMMANDS and not (len(rest) > 1 and rest[1].lstrip("-").isdigit()):
+        written = (read_json(resolve_campaign_dir(rest[0]) / "canon.json") or {}).get("last_session_written") or 0
+        rest = [rest[0], str(written + 1), *rest[1:]]
+    return head + rest
+
+
 def main():
     """Main entry point"""
     parser = create_parser()
     # `actor set` and `scene set` take free tokens; flags may sit between them.
-    args, extra = parser.parse_known_args()
+    args, extra = parser.parse_known_args(fill_defaults(sys.argv[1:]))
     if extra:
         if getattr(args, "tokens", None) is not None and not any(t.startswith("--") for t in extra):
             args.tokens += extra

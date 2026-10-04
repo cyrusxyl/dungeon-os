@@ -46,7 +46,7 @@ def _check_id(value: str, line_no: int, what: str) -> str:
     if not ID_RE.match(value):
         raise BeatError(
             f"line {line_no}: {what} {value!r} is not a valid id. "
-            "Use lower-case letters, digits, '-' or '_' (for example 'sister-gareth' or 'goblin#2')."
+            f"{ID_RULE[0].upper()}{ID_RULE[1:]} (for example 'sister-gareth' or 'goblin#2')."
         )
     return value
 
@@ -130,6 +130,37 @@ def parse(text: str) -> list[dict]:
 
 def log_path(campaign_dir: Path) -> Path:
     return campaign_dir / "stage" / "events.ndjson"
+
+
+def last_beat(path: Path) -> list[dict]:
+    """The events of the last beat in the log, without their beat ids.
+
+    Hook events (status, rolls) and `*_updated` notices from `actor set` and
+    friends sit between beats; they do not count.
+    """
+    try:
+        with open(path, "rb") as f:
+            size = f.seek(0, 2)
+            f.seek(max(0, size - 65536))
+            lines = f.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+    if size > 65536:
+        lines = lines[1:]  # the first line may be cut
+    out: list[dict] = []
+    beat_id = None
+    for line in reversed(lines):
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if "beat" not in e or e.get("type", "").endswith("_updated"):
+            continue
+        if beat_id is not None and e["beat"] != beat_id:
+            break
+        beat_id = e.pop("beat")
+        out.append(e)
+    return out[::-1]
 
 
 def append(campaign_dir: Path, events: list[dict]) -> Path:

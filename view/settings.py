@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+import uuid
 from pathlib import Path
 
 from dnd_cli.campaign import GAME_DIR
@@ -108,6 +109,7 @@ def build_dm_command(
     *,
     resume: bool = False,
     initial_prompt: str | None = None,
+    stage: bool = False,
 ) -> list[str]:
     """Build the shell command that runs the DM agent in the terminal widget.
 
@@ -116,6 +118,8 @@ def build_dm_command(
     interpolated value is shell-quoted: the model comes from a free-text field.
     `initial_prompt` starts the interactive session with that first message,
     so the DM opens the game without waiting for the player to type.
+    `stage`: the players watch the visual stage, so Claude does not get the
+    AskUserQuestion tool (it asks with @choices); it never wastes a turn on it.
     """
     framework = settings.get("agent_framework", DEFAULTS["agent_framework"])
     model = (settings.get("model") or "").strip()
@@ -124,6 +128,9 @@ def build_dm_command(
 
     if framework == "claude":
         parts = ["claude", "--no-chrome"]
+        if stage:
+            # Before the other options: the flag takes a list and would swallow the prompt.
+            parts += ["--disallowedTools", "AskUserQuestion"]
         if resume:
             parts += ["--resume", shlex.quote(session_id)]
         else:
@@ -144,6 +151,16 @@ def build_dm_command(
 
     inner = f"cd {shlex.quote(str(game_dir))} && exec " + " ".join(parts)
     return ["sh", "-c", inner]
+
+
+def new_dm_session(campaign_dir: Path, initial_prompt: str | None = None, stage: bool = False) -> tuple[str, list[str]]:
+    """Make the campaign active and build a fresh DM session for it: (session id, command)."""
+    from dnd_cli.campaign import set_active_campaign
+
+    set_active_campaign(campaign_dir.name)
+    session_id = str(uuid.uuid4())
+    set_last_session_id(campaign_dir.name, session_id)
+    return session_id, build_dm_command(load_settings(), GAME_DIR, session_id, initial_prompt=initial_prompt, stage=stage)
 
 
 def campaign_in_progress(campaign_dir: Path) -> bool:

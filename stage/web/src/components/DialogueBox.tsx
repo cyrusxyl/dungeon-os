@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { focusOwnsKeys, type StoryLine, titleCase, useActorName } from '@/lib/stage'
 
@@ -58,24 +58,27 @@ export function DialogueBox({
   versions: Record<string, number>
 }) {
   const [typed, done, finish] = useTypewriter(line?.text ?? '', line?.seq ?? 0)
-  const speakerName = useActorName(line?.type === 'say' ? line.actor : undefined)
+  const speaker = line?.type === 'say' ? line.actor : undefined
+  const speakerName = useActorName(speaker, speaker ? versions[speaker] : 0)
 
   const click = () => {
     if (!done) finish()
     else if (pending > 0) onAdvance()
   }
+  const clickRef = useRef(click)
+  clickRef.current = click
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (focusOwnsKeys(e)) return
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault()
-        click()
+        clickRef.current()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  })
+  }, [])
 
   if (!line) {
     return <div className="min-h-32 border-4 border-[var(--gold)] bg-[var(--panel)] p-4 text-[var(--dim)]">…</div>

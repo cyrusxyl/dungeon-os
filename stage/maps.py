@@ -10,12 +10,12 @@ scene location ids. See dungeon-crawl.md.
 
 from __future__ import annotations
 
-import json
 from collections import deque
 from pathlib import Path
 
 from stage import crawl
 from stage.beat import ID_RULE, SLUG_RE, title
+from stage.files import read_json, write_json
 
 DIRS = {"n": (0, -1), "ne": (1, -1), "e": (1, 0), "se": (1, 1), "s": (0, 1), "sw": (-1, 1), "w": (-1, 0), "nw": (-1, -1)}
 STEP = 2
@@ -30,16 +30,11 @@ def maps_dir(campaign_dir: Path) -> Path:
 
 
 def load(campaign_dir: Path, map_id: str) -> dict | None:
-    if not SLUG_RE.match(map_id):
-        return None
-    try:
-        return json.loads((maps_dir(campaign_dir) / f"{map_id}.json").read_text())
-    except (OSError, ValueError):
-        return None
+    return read_json(maps_dir(campaign_dir) / f"{map_id}.json") if SLUG_RE.match(map_id) else None
 
 
 def save(campaign_dir: Path, map_id: str, m: dict) -> Path:
-    return crawl.write_json(maps_dir(campaign_dir) / f"{map_id}.json", m)
+    return write_json(maps_dir(campaign_dir) / f"{map_id}.json", m)
 
 
 def all_maps(campaign_dir: Path) -> dict[str, dict]:

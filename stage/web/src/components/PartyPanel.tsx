@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { memo } from 'react'
 
 import { Progress } from '@/components/ui/8bit/progress'
+import { useJson } from '@/lib/stage'
 
 interface Party {
   location: string | null
@@ -18,14 +19,9 @@ interface Party {
   }[]
 }
 
-export function PartyPanel() {
-  const [party, setParty] = useState<Party | null>(null)
-  useEffect(() => {
-    const load = () => fetch('/api/party').then((r) => r.json()).then(setParty).catch(() => {})
-    load()
-    const id = window.setInterval(load, 4000)
-    return () => window.clearInterval(id)
-  }, [])
+/** The party sheet; read again each time the DM status changes (the DM writes the files during a turn). */
+export const PartyPanel = memo(function PartyPanel({ dmStatus }: { dmStatus: string }) {
+  const party = useJson<Party>('/api/party', dmStatus)
   if (!party) return null
 
   return (
@@ -81,4 +77,4 @@ export function PartyPanel() {
       )}
     </aside>
   )
-}
+})
