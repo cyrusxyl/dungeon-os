@@ -43,6 +43,7 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
   - Combat: `uv run dnd-cli encounter start goblin:3`, `attack <who> <weapon> <target>`, `save <targets> <ability> --dc N`, `encounter next|status|damage|heal|condition|end` — the `combat` skill.
   - Checks: `uv run dnd-cli check <who...|all> <skill|ability|death> --dc N` (group checks, `--passive`) — the `exploration` skill.
   - Sheets: `uv run dnd-cli character item|gold|equip|xp|level-up ...`, `uv run dnd-cli rest long|short`.
+  - World: `uv run dnd-cli state time +2h` (or `"Day 3, 18:00"`), `state set weather=Rain party_status=Resting`, `quest add|progress|done|fail|show`, `npc set|note|attitude`, `faction <name> +N`. Do not edit `state.json`, quest files or NPC files by hand for these.
   - Any other roll: `uv run roll 1d20+5 -v` from your working directory (`game/`).
 - **Command form (all tools)**: Run one `uv run ...` command per Bash call, on one line. Do not prefix it with `cd ... &&`, do not chain commands with `&&`, and never break a line with `\`. A compound command or a backslash line break stops the game for a permission prompt; a plain `uv run` command does not. Several commands in a row are several Bash calls.
 - **Campaign and session arguments**: `canon` and `character` commands find the campaign (the one the stage shows, else the active one) and the session number (`last_session_written` + 1) by themselves. Leave them out: `uv run dnd-cli canon add-fact DM "The bridge is out."`, `uv run dnd-cli character apply-damage sireth 7`.
@@ -133,7 +134,7 @@ The session brief (Session Start) gives you the campaign, state, party and canon
 4. **EXECUTE**: Follow the skill:
    - the rules commands (`encounter`, `attack`, `save`, `check`, `rest`, `character ...`) for rolls and every number on a sheet
    - `uv run dnd-cli get <endpoint> --fields ...` for rules data
-5. **UPDATE**: The rules commands save their own changes. Write only what they do not cover (new NPCs, quests, story files).
+5. **UPDATE**: The rules commands and the world commands (`state`, `quest`, `npc`, `faction`) save their own changes. Write by hand only what they do not cover (story files, locations).
 6. **NARRATE**: Describe the outcome (on the stage: one beat).
 
 If the player action is a claim about a past event ("you told us the gate was open"), do not skip to step 4. Go to referee mode first: read `canon.json`, state what it records, then continue. See "Canon File & Anti-Drift Rules" above.

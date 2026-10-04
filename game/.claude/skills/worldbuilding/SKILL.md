@@ -116,17 +116,7 @@ For NPCs who might fight:
 
 ### NPC Interaction Memory
 
-After meaningful interactions:
-
-1. **Update NPC file** with `notes` field:
-   ```json
-   "notes": "Session 1: Party helped rescue from goblins, now friendly. Offered free rooms."
-   ```
-
-2. **Update relationship**:
-   ```json
-   "relationship_to_party": "friendly"
-   ```
+After a meaningful interaction, run `uv run dnd-cli npc note <id> "<what happened>"`. It adds the session number by itself. Change the relationship with `uv run dnd-cli npc attitude <id> up|down|friendly|...`. Create a new NPC with `uv run dnd-cli npc set <id> name=... type=humanoid personality=...`.
 
 ## Location Generation
 
@@ -405,34 +395,14 @@ When players need a quest hook:
 
 ### Save Quest
 
-Create quest file at `{campaign}/world/quests/{quest-id}.json`:
+One command writes the quest file and the `state.json` quest log:
 
-```json
-{
-  "id": "rescue-sildar",
-  "title": "Rescue Sildar Hallwinter",
-  "description": "Gundren's bodyguard was captured by goblins and taken to Cragmaw Hideout",
-  "status": "active",
-  "objectives": [
-    {"task": "Find Cragmaw Hideout", "completed": false},
-    {"task": "Defeat or sneak past goblins", "completed": false},
-    {"task": "Free Sildar from captivity", "completed": false}
-  ],
-  "reward": "Sildar's gratitude, 50gp, information about Wave Echo Cave",
-  "notes": "Sildar knows about the Black Spider and can provide quest lead"
-}
-```
-
-Update `state.json` quest_log:
-```json
-"quest_log": [
-  {
-    "id": "rescue-sildar",
-    "title": "Rescue Sildar Hallwinter",
-    "status": "active",
-    "progress": "Found goblin trail leading east"
-  }
-]
+```bash
+uv run dnd-cli quest add rescue-sildar "Rescue Sildar Hallwinter" --description "Goblins took him to Cragmaw Hideout" --objective "Find Cragmaw Hideout" --objective "Free Sildar" --reward "50gp"
+uv run dnd-cli quest progress rescue-sildar "Found goblin trail leading east"
+uv run dnd-cli quest done rescue-sildar --objective 1    # one objective; without --objective, the whole quest
+uv run dnd-cli quest fail rescue-sildar
+uv run dnd-cli quest show
 ```
 
 ## Random Tables

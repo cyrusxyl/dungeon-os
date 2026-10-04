@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from dnd_cli import world
 from dnd_cli.commands.show_cmd import run_stage
 from stage.files import read_json, write_json
 
@@ -126,6 +127,7 @@ def end(campaign_dir: Path, recap: str, appeared: list[str], clocks: list[str], 
     if game_time:
         state = read_json(campaign_dir / "state.json") or {}
         state["game_time"] = game_time
+        state["clock"] = world.clock_from_text(game_time)
         write_json(campaign_dir / "state.json", state, indent=2)
     lines += [f"thread {t['id']}: staleness {t['staleness_count']} — {t['alert']}" for t in sweep if t["alert"]]
     return lines + [f"Session {session} closed and logged."]

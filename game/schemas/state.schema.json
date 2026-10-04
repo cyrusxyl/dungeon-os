@@ -89,6 +89,23 @@
         "required": ["id", "title", "status"]
       }
     },
+    "clock": {
+      "type": "object",
+      "description": "Structured game time; game_time is the display text made from it",
+      "properties": {
+        "day": {"type": "integer", "minimum": 1},
+        "minute": {"type": "integer", "minimum": 0, "maximum": 1439}
+      }
+    },
+    "place": {
+      "type": "string",
+      "description": "Map place id where the party is (set by the stage; used for travel time)"
+    },
+    "faction_reputation": {
+      "type": "object",
+      "description": "Reputation per faction (slug key)",
+      "additionalProperties": {"type": "integer"}
+    },
     "party_status": {
       "type": "string",
       "description": "General status of the party",

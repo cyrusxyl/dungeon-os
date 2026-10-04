@@ -148,15 +148,14 @@ Track how NPCs feel about the party:
 
 ### Updating Relationships
 
-After significant interactions, update NPC file:
+After a significant interaction, run one command per change:
 
-```json
-{
-  "name": "Sildar Hallwinter",
-  "relationship_to_party": "allied",
-  "notes": "Session 1: Party rescued from goblins. Session 2: Party helped clear Redbrand threat. Very grateful and loyal."
-}
+```bash
+uv run dnd-cli npc attitude sildar-hallwinter up      # or down, hostile, unfriendly, neutral, friendly, allied
+uv run dnd-cli npc note sildar-hallwinter "Party rescued him from goblins. Very grateful."
 ```
+
+`up` and `down` move one step on the scale. `npc note` adds the session number by itself.
 
 **Relationship changes**:
 - Helping NPC: Unfriendly → Neutral, Neutral → Friendly, Friendly → Allied
@@ -382,27 +381,10 @@ When offering or demanding surrender:
 
 ## Tracking Social Connections
 
-Update campaign state with NPC relationships:
+Use the commands from "Updating Relationships" for NPCs. For factions:
 
-**In NPC files** (`{campaign}/world/npcs/{name}.json`):
-```json
-{
-  "relationship_to_party": "friendly",
-  "favor_owed": "Party saved his daughter",
-  "last_interaction": "Session 3",
-  "notes": "Will help party with information about Black Spider if asked"
-}
-```
-
-**In state file** (`{campaign}/state.json`):
-```json
-{
-  "faction_reputation": {
-    "lords_alliance": 5,
-    "zhentarim": -3,
-    "harpers": 2
-  }
-}
+```bash
+uv run dnd-cli faction zhentarim -3    # prints the new reputation
 ```
 
 ## API Endpoints Reference

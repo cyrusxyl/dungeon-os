@@ -70,7 +70,7 @@
     },
     "relationship_to_party": {
       "type": "string",
-      "enum": ["friendly", "neutral", "hostile", "unknown"],
+      "enum": ["allied", "friendly", "neutral", "unfriendly", "hostile", "unknown"],
       "default": "neutral"
     },
     "notes": {

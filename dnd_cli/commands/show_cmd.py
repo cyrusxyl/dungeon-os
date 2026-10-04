@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+from dnd_cli import world
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
 from stage import actors, beat, crawl, maps, scenes
 from stage.files import read_json, write_json
@@ -43,12 +44,18 @@ def preview_path(campaign_dir: Path, name: str) -> Path:
     return out
 
 
-def _set_location(campaign_dir: Path, m: dict, place: str) -> None:
-    """Keep state.json's location in step with the map, so the DM need not edit it."""
+def _set_location(campaign_dir: Path, m: dict, place: str) -> str | None:
+    """Keep state.json's location, place and clock in step with the map, so the DM need not edit them.
+
+    Returns a time line when the move along map routes cost travel time.
+    """
     path = campaign_dir / "state.json"
-    if (state := read_json(path)) is not None:
-        state["location"] = f"{m['places'][place]['name']}, {m['name']}"
-        write_json(path, state, indent=2)
+    if (state := read_json(path)) is None:
+        return None
+    state["location"] = f"{m['places'][place]['name']}, {m['name']}"
+    line = world.travel(state, m, place)
+    write_json(path, state, indent=2)
+    return line
 
 
 def execute_beat(campaign: str | None, file: str | None) -> int:
@@ -94,7 +101,8 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
         return 0
     beat.append(campaign_dir, out)
     if at := next((e for e in reversed(out) if e["type"] == "at"), None):
-        _set_location(campaign_dir, found[at["map"]], at["place"])
+        if line := _set_location(campaign_dir, found[at["map"]], at["place"]):
+            print(line)
 
     # An unknown actor is not an error: the stage shows a silhouette.
     for actor in sorted({e["actor"] for e in events if "actor" in e}):

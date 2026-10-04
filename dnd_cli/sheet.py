@@ -27,6 +27,12 @@ def prof_for_level(level: int) -> int:
     return 2 + (level - 1) // 4
 
 
+def base_ac(class_name: str, m: dict) -> int:
+    """Unarmored AC: 10 + DEX, plus CON for a Barbarian or WIS for a Monk."""
+    extra = {"barbarian": m["constitution"], "monk": m["wisdom"]}.get(class_name.lower(), 0)
+    return 10 + m["dexterity"] + extra
+
+
 # -- items and gold ----------------------------------------------------------
 
 
@@ -180,6 +186,11 @@ def short_rest(sheet: dict, spend: int, rng=None) -> str:
 # -- XP and level-up ---------------------------------------------------------
 
 
+def hp_bonus_per_level(sheet: dict) -> int:
+    """Extra HP each level from a trait (Hill Dwarf: Dwarven Toughness)."""
+    return 1 if any(f.get("name") == "Dwarven Toughness" for f in sheet.get("features_and_traits", [])) else 0
+
+
 def add_xp(sheet: dict, xp: int) -> str:
     sheet["experience_points"] = sheet.get("experience_points", 0) + xp
     line = f"{sheet['name']}: {sheet['experience_points']} XP"
@@ -232,7 +243,7 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
 
     con = new_mods["constitution"]
     rolled = rng.randint(1, hit_die) if hp_mode == "roll" else hit_die // 2 + 1
-    gain = max(1, rolled + con) + (con - old_mods["constitution"]) * old_level
+    gain = max(1, rolled + con) + (con - old_mods["constitution"]) * old_level + hp_bonus_per_level(sheet)
     sheet["hp"]["max"] += gain
     sheet["hp"]["current"] += gain
     hd = sheet.setdefault("hit_dice", {"total": old_level, "remaining": old_level})

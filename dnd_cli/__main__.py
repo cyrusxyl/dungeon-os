@@ -28,6 +28,7 @@ from dnd_cli.commands import site_cmd
 from dnd_cli.commands import map_cmd
 from dnd_cli.commands import session_cmd
 from dnd_cli.commands import rules_cmd
+from dnd_cli.commands import world_cmd
 from dnd_cli.cache_warmup import warmup_cache, warmup_all_resources
 
 
@@ -254,6 +255,27 @@ def create_parser():
     p.add_argument("--hp", choices=["avg", "roll"], default="avg")
     p.add_argument("--asi", default=None, help="str+2, str+1,dex+1, or none (a feat)")
 
+    p = character_sub.add_parser("new", help="Create a level 1 character in one call: sheet, player file, party")
+    p.add_argument("campaign")
+    p.add_argument("id", help="File name of the sheet, e.g. thorin")
+    p.add_argument("--player", required=True, help="Player id")
+    p.add_argument("--player-name", default=None, help="Player's name (for a new player file)")
+    p.add_argument("--name", required=True)
+    p.add_argument("--race", required=True)
+    p.add_argument("--subrace", default=None)
+    p.add_argument("--class", dest="char_class", required=True)
+    p.add_argument("--background", required=True)
+    p.add_argument("--scores", required=True, help="Six scores, e.g. 15,14,13,12,10,8")
+    p.add_argument("--assign", required=True, help="Abilities for those scores, e.g. str,dex,con,int,wis,cha")
+    p.add_argument("--skills", required=True, help="The class's skill picks, e.g. athletics,perception")
+    p.add_argument("--background-skills", default=None, help="Background skills not in the API")
+    p.add_argument("--bonus-abilities", default=None, help="Half-elf: two abilities for +1")
+    p.add_argument("--languages", default=None, help="Extra languages")
+    p.add_argument("--cantrips", default=None)
+    p.add_argument("--spells", default=None)
+    p.add_argument("--equipment", default=None, help="API indexes, e.g. longsword,chain-mail,shield")
+    p.add_argument("--alignment", default="")
+
     p = character_sub.add_parser("restore-slots", help="Long rest: restore one level's slots, or all levels if --level omitted")
     p.add_argument("campaign")
     p.add_argument("name")
@@ -321,6 +343,55 @@ def create_parser():
     p.add_argument("--clock", action="append", default=[], help='"Villain/Clock=advance|action|warning" (default advance)')
     p.add_argument("--time", default=None, help="New game_time for state.json")
     p.add_argument("--force", action="store_true", help="Close even with report warnings")
+    p.add_argument("--campaign", default=None)
+
+    # World: clock, state fields, quests, NPCs, factions
+    state_parser = subparsers.add_parser("state", help="Game clock and state fields")
+    state_sub = state_parser.add_subparsers(dest="state_command", help="State subcommand")
+    p = state_sub.add_parser("time", help='+2h, +1d, +30m advance the clock; "Day 3, 18:00" sets it')
+    p.add_argument("value")
+    p.add_argument("--campaign", default=None)
+    p = state_sub.add_parser("set", help="weather= party_status= active_player_turn= location= (_ is a space)")
+    p.add_argument("tokens", nargs="+")
+    p.add_argument("--campaign", default=None)
+
+    quest_parser = subparsers.add_parser("quest", help="Quest files and the quest log")
+    quest_sub = quest_parser.add_subparsers(dest="quest_command", help="Quest subcommand")
+    p = quest_sub.add_parser("add", help='quest add <id> "<title>" [--description ..] [--objective ..]... [--reward ..]')
+    p.add_argument("id")
+    p.add_argument("title")
+    p.add_argument("--description", default="")
+    p.add_argument("--objective", action="append", default=[])
+    p.add_argument("--reward", default="")
+    p = quest_sub.add_parser("progress", help='quest progress <id> "<text>"')
+    p.add_argument("id")
+    p.add_argument("text")
+    p = quest_sub.add_parser("done", help="quest done <id> [--objective N]: one objective, or the whole quest")
+    p.add_argument("id")
+    p.add_argument("--objective", type=int, default=None)
+    p = quest_sub.add_parser("fail", help="quest fail <id>")
+    p.add_argument("id")
+    quest_sub.add_parser("show", help="One line per quest")
+    for p in quest_sub.choices.values():
+        p.add_argument("--campaign", default=None)
+
+    npc_parser = subparsers.add_parser("npc", help="NPC files")
+    npc_sub = npc_parser.add_subparsers(dest="npc_command", help="NPC subcommand")
+    p = npc_sub.add_parser("set", help="npc set <id> key=value ... (new NPC needs name= and type=)")
+    p.add_argument("id")
+    p.add_argument("tokens", nargs="+")
+    p = npc_sub.add_parser("note", help='npc note <id> "<text>": adds "Session N: text" to notes')
+    p.add_argument("id")
+    p.add_argument("text")
+    p = npc_sub.add_parser("attitude", help="npc attitude <id> up|down|hostile|unfriendly|neutral|friendly|allied")
+    p.add_argument("id")
+    p.add_argument("move")
+    for p in npc_sub.choices.values():
+        p.add_argument("--campaign", default=None)
+
+    p = subparsers.add_parser("faction", help="faction <name> +N|-N: change reputation (no change: show it)")
+    p.add_argument("name")
+    p.add_argument("delta", nargs="?", default=None)
     p.add_argument("--campaign", default=None)
 
     # Rules: encounters, attacks, saves, checks, rests
@@ -606,6 +677,8 @@ def main():
                 return rules_cmd.execute_equip(args.campaign, args.name, args.index, not args.not_proficient)
             if cc == "xp":
                 return rules_cmd.execute_xp(args.campaign, args.names, args.amount)
+            if cc == "new":
+                return rules_cmd.execute_new_character(args.campaign, args.id, args)
             if cc == "level-up":
                 return rules_cmd.execute_level_up(args.campaign, args.name, args.hp, args.asi)
             else:
@@ -651,6 +724,27 @@ def main():
                 return session_cmd.execute_end(args.campaign, args.appeared, args.clock, args.time, args.force)
             print("Usage: dnd-cli session brief [--campaign C]", file=sys.stderr)
             return 1
+
+        elif args.command == "state":
+            if args.state_command in ("time", "set"):
+                return world_cmd.execute_state(args.campaign, args)
+            print("Usage: dnd-cli state time <+2h|\"Day 3, 18:00\"> | state set key=value ...", file=sys.stderr)
+            return 1
+
+        elif args.command == "quest":
+            if args.quest_command:
+                return world_cmd.execute_quest(args.campaign, args)
+            print("Usage: dnd-cli quest add|progress|done|fail|show", file=sys.stderr)
+            return 1
+
+        elif args.command == "npc":
+            if args.npc_command:
+                return world_cmd.execute_npc(args.campaign, args)
+            print("Usage: dnd-cli npc set|note|attitude", file=sys.stderr)
+            return 1
+
+        elif args.command == "faction":
+            return world_cmd.execute_faction(args.campaign, args)
 
         elif args.command == "encounter":
             return rules_cmd.execute_encounter(args.campaign, args.encounter_command, args)

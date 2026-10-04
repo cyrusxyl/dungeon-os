@@ -105,6 +105,7 @@ uv run dnd-cli map place sword-coast cloakwood from=baldurs-gate dir=se travel=1
 uv run dnd-cli map reveal sword-coast cloakwood
 ```
 
+- Travel between places of one map along known routes advances game time by itself (the beat prints `Time: ...`). Do not run `state time` for it.
 - Add a place when the players learn of it (a rumor, a map, a guide) or arrive. Not before: a place you add is on their map at once. To plan ahead, add it with `hidden=yes` and `map reveal` it later.
 - The first place of a map needs nothing else. Every later place needs `from=` (a place on that map) and `dir=` (`n` `ne` `e` `se` `s` `sw` `w` `nw`); `travel=` is the time on that route. The stage does the layout.
 - A city map is the inside of the region place with the same id: give `in=<region-map>` with the first place of the city map.

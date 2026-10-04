@@ -197,3 +197,16 @@ def execute_level_up(campaign, name: str, hp_mode: str, asi: str | None) -> int:
                                     "--asi str+2 (or --asi str+1,dex+1), or --asi none if they take a feat instead.")
         return sheet.level_up(data, level, hit_die, hp_mode, _asi(None if asi == "none" else asi), feats)
     return _edit_sheet(campaign, name, fn)
+
+
+def execute_new_character(campaign, char_id: str, args) -> int:
+    from dnd_cli import creation
+
+    def go(campaign_dir):
+        return _out(creation.create(
+            campaign_dir, _api, char_id, player_name=args.player_name, player=args.player, name=args.name,
+            race=args.race, subrace=args.subrace, cls=args.char_class, background=args.background,
+            scores=args.scores, assign=args.assign, skills=args.skills, background_skills=args.background_skills,
+            cantrips=args.cantrips, spells=args.spells, equipment=args.equipment, alignment=args.alignment,
+            languages=args.languages, bonus_abilities=args.bonus_abilities))
+    return run_stage(campaign, go, *ERRORS)

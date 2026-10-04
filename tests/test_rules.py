@@ -188,6 +188,10 @@ def test_sheet(c: Path) -> None:
     check("a bow keeps DEX and follows the new modifier", longbow["damage"] == "1d8+3" and longbow["attack_bonus"] == 5)
     check("a skill keeps its proficiency", data["skills"]["athletics"] == 3 + 2)
     check("the wrong level is refused", raises(lambda: sheet.level_up(data, level, 10)))
+    data["features_and_traits"] = [{"name": "Dwarven Toughness", "description": ""}]
+    before = data["hp"]["max"]
+    sheet.level_up(data, {"level": 5, "prof_bonus": 3, "features": []}, 10, "avg")
+    check("Dwarven Toughness adds 1 HP per level", data["hp"]["max"] - before == 6 + 2 + 1)
 
 
 def test_session_end(c: Path) -> None:
