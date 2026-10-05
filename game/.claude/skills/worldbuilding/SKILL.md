@@ -16,7 +16,7 @@ Once `dm_story.md` names the campaign's villains and their quests (item 6, below
 uv run dnd-cli canon add-villain "{name}" "{goal}" "{trait}" --escape-plan "{how they escape capture}"
 uv run dnd-cli canon add-clock "{villain name}" "{clock name}" {4|6|8} --description "{what it tracks}"
 ```
-`add-clock` refuses any segment count other than 4, 6, or 8 (Operating Guide 2.2) — the command enforces this, so there is no need to double check it yourself.
+A clock that starts only on a trigger gets `--waiting`; `canon clock-status ... active` starts it later. `add-clock` refuses any segment count other than 4, 6, or 8 (Operating Guide 2.2) — the command enforces this, so there is no need to double check it yourself.
 
 ### What to write
 

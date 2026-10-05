@@ -121,9 +121,16 @@ def test_actors() -> None:
     if not (LPC_DIR / "sheet_definitions").is_dir():
         print("  skip (LPC art not fetched; run uv run dungeon-os once)")
         return
-    spec = actors.build("sireth", ["name=Sireth", "body=female", "skin=blue", "eyes=red", "elven", "robe:dark_gray"])
+    spec = actors.build("sireth", ["name=Sireth", "body=female", "skin=blue", "eyes=red", "elven", "robe:dark_gray", "hair_long:white"])
     check("build sets name and body", spec["name"] == "Sireth" and spec["body"] == "female")
     check("a known spec validates clean", lpc.validate(spec) == [])
+    check("a look with no hair or headwear warns that it is bald",
+          any("bald" in w for w in lpc.validate({"body": "female", "items": ["robe:dark_gray"]})))
+    check("an item for the other sex is swapped for its twin",
+          lpc.sex_fixed(["heads_human_male_elderly", "hair_long:white"], "female")[0] == "heads_human_female_elderly")
+    notes = []
+    check("a skin that does not fit the race is replaced, with a note",
+          actors.build("x", ["race=drow", "skin=dark_green"], None, None, notes)["skin"] == "blue" and notes)
     check("'_' in a color matches a space", dict((i.id, c) for i, c in lpc.resolve(spec)[1])["robe"] == "dark gray")
     frame = lpc.render(spec, "down")
     check("render gives one 64x64 frame with pixels", frame.size == (64, 64) and frame.getbbox() is not None)
@@ -357,6 +364,10 @@ def test_explore_beat() -> None:
         s = state.apply(s, e)
     check("the state knows the site and the place", s["explore"] == "crypt" and s["place"] == {"map": "city", "place": "inn"})
     check("@scene leaves the site", state.apply(s, {"type": "scene", "location": "x"})["explore"] is None)
+    room = state.apply(state.apply(state.empty(), {"type": "scene", "location": "inn"}), {"type": "enter", "actor": "pc"})
+    check("@scene of the same place keeps who is on stage",
+          "pc" in state.apply(room, {"type": "scene", "location": "inn"})["actors"])
+    check("@scene of a new place starts empty", not state.apply(room, {"type": "scene", "location": "road"})["actors"])
 
     import io, sys as _sys
     with tempfile.TemporaryDirectory() as tmp:

@@ -21,6 +21,8 @@ The only things you write by hand are pieces of text with no arithmetic behind t
 
 A clock is one quest, from Part A, moving toward a villain's goal. A clock has 4, 6, or 8 segments. New villains and clocks are created by the `worldbuilding` skill (`canon add-villain`, `canon add-clock`) when the campaign or a new antagonist is set up — this section is about advancing clocks that already exist.
 
+A clock whose description names a trigger ("only if the party goes to the Council") waits: `session end` does not advance it. When the trigger happens, start it: `uv run dnd-cli canon clock-status "{villain}" "{clock}" active` (also `waiting`, or `stopped` when the players end the threat).
+
 **At session end, `uv run dnd-cli session end` does this for every clock** (see Session End below). By hand, one of:
 ```bash
 uv run dnd-cli canon advance-clock "{villain}" "{clock}"                    # default: +1 segment
@@ -100,7 +102,8 @@ EOF
 ```
 
 - The heredoc is the recap: it becomes `## Session N` in `session_log.md`.
-- `--appeared`: the thread ids that came up in play. The others age by 1.
+- `--appeared`: every thread the session's scenes touched — the main quest too, whenever play moved it. The others age by 1.
+- A session with no recorded fact stops here: record what the scenes revealed (`canon add-fact`) first. Add `--no-facts` only when nothing canon-level happened.
 - Every active clock advances by 1, unless you name it: `--clock "Villain/Clock=action"` (players acted against it: +0) or `=warning` (they ignored a clear warning: +2).
 - `--time` sets `game_time` in `state.json`.
 - It checks the session report first. With a warning (most often: no `canon touch-clock` this session), it writes **nothing** and says what is missing; fix it and run it again. It also refuses a second close.

@@ -30,7 +30,7 @@ EOF
 
 | Line | Effect |
 |---|---|
-| `@scene <location-id>` | Change the room. Clears the characters on stage. |
+| `@scene <location-id>` | Change the room; a new room starts with no characters. The same room again keeps them, so you need not repeat it in every beat. |
 | `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. Position is optional. |
 | `@exit <actor-id>` | A character leaves. |
 | `@narrate <text>` | A narration line in the dialogue box, with no portrait. |
@@ -145,4 +145,5 @@ uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=me
 5. **Never speak or act for a player character.** Never write an `@say` line for a PC, even when the player said what the character does: tell the action with `@narrate` ("Aragorn's longsword sings through the air…") and leave the words to the player. Do not decide what a PC does, says, or feels beyond what the player stated. Put PCs on stage with `@enter`, describe the world and the NPCs, then let the players answer with `@choices` or free text.
 6. **Hidden information stays hidden.** A beat is shown to the players. Never put DM-only facts, villain plans, or clock counts in a beat. A disguised NPC uses an actor id and name the players know.
 7. **Referee mode is a beat too.** A ruling is an `@narrate` line, short and plain (AGENTS.md rule 5).
-8. **If the command fails**, read the error, fix the line it names, and send the beat again. Do not tell the story in chat instead.
+8. **Table talk is not story.** A player's remark about the game itself — how someone looks on the stage, a character missing from the picture, a rule, the screen — is not something their character says or does. Do not put it into the story, and do not let an NPC answer it. Fix the cause (a look: `uv run dnd-cli actor preview <id>` to see it, then `actor set <id> --change ...`; a missing character: `@enter`), then answer in one `@narrate` line that starts with `(DM)`.
+9. **If the command fails**, read the error, fix the line it names, and send the beat again. Do not tell the story in chat instead.

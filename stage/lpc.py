@@ -199,6 +199,34 @@ def normalize_items(items: list[str]) -> list[str]:
     return list({_item(entry)[0].type: entry for entry in items}.values())
 
 
+SEX_OF_BODY = {"male": "male", "muscular": "male", "female": "female", "pregnant": "female"}
+
+
+def matching_sex(item: Item, body: str) -> Item:
+    """The item's counterpart for the body's sex, if the item is made for the other one.
+
+    `heads_human_male_elderly` on a female body becomes `heads_human_female_elderly`.
+    Teen and child bodies take either.
+    """
+    want = SEX_OF_BODY.get(body)
+    parts = item.id.split("_")
+    other = {"male": "female", "female": "male"}.get(want or "")
+    if not want or other not in parts:
+        return item
+    twin = catalog().get("_".join(want if p == other else p for p in parts))
+    return twin or item
+
+
+def sex_fixed(items: list[str], body: str) -> list[str]:
+    """Item entries with each one for the other sex replaced by its counterpart (colors kept)."""
+    out = []
+    for entry in items:
+        item, _ = _item(entry)
+        twin = matching_sex(item, body)
+        out.append(entry if twin is item else twin.id + entry[len(entry.split(":")[0]):])
+    return out
+
+
 def resolve(spec: dict) -> tuple[str, list[tuple[Item, str | None]]]:
     """Body type and the final item list (one per LPC type), defaults filled in."""
     body = spec.get("body", "male")
@@ -208,6 +236,7 @@ def resolve(spec: dict) -> tuple[str, list[tuple[Item, str | None]]]:
     chosen: dict[str, tuple[Item, str | None]] = {}
     for entry in spec.get("items", []):
         item, color = _item(entry)
+        item = matching_sex(item, body)
         chosen[item.type] = (item, _match_color(item, color))
     chosen.setdefault("body", (cat["body"], None))
     chosen.setdefault("head", (cat[DEFAULT_HEAD[body]], None))
@@ -217,7 +246,12 @@ def resolve(spec: dict) -> tuple[str, list[tuple[Item, str | None]]]:
 def validate(spec: dict) -> list[str]:
     """Raise ActorError for a bad spec; return warnings for items that will not show."""
     body, items = resolve(spec)
-    warnings = []
+    warnings = [f"{_item(e)[0].id} is made for the other sex; {matching_sex(_item(e)[0], body).id} is used."
+                for e in spec.get("items", []) if matching_sex(_item(e)[0], body) is not _item(e)[0]]
+    head = next((i for i, _ in items if i.type == "head"), None)
+    if head and "human" in head.id and not any(i.type in ("hair", "updo", "ponytail", "hat", "headcover") for i, _ in items):
+        warnings.append("no hair or headwear: the character is bald. Add hair (for example hair_long:white) "
+                        "unless bald is meant.")
     if spec.get("skin") and spec["skin"] not in palette_names("body"):
         raise ActorError(f"skin {spec['skin']!r} is not one of {', '.join(palette_names('body'))}.")
     if spec.get("eyes") and spec["eyes"] not in palette_names("eye"):

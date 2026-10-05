@@ -54,12 +54,23 @@ def execute_add_villain(campaign: str, name: str, goal: str, trait: str, escape_
     return _run(campaign, go)
 
 
-def execute_add_clock(campaign: str, villain: str, clock: str, segments_total: int, description: str) -> int:
+def execute_add_clock(campaign: str, villain: str, clock: str, segments_total: int, description: str,
+                      waiting: bool = False) -> int:
     def go(campaign_dir):
         data = canon.load(campaign_dir)
-        canon.add_clock(data, villain, clock, segments_total, description or None)
+        canon.add_clock(data, villain, clock, segments_total, description or None, waiting)
         canon.save(campaign_dir, data)
-        print(f"Clock {clock!r} added to villain {villain!r}.")
+        print(f"Clock {clock!r} added to villain {villain!r}" + (" (waiting for its trigger)." if waiting else "."))
+        return 0
+    return _run(campaign, go)
+
+
+def execute_clock_status(campaign: str, villain: str, clock: str, status: str) -> int:
+    def go(campaign_dir):
+        data = canon.load(campaign_dir)
+        c = canon.set_clock_status(data, villain, clock, status)
+        canon.save(campaign_dir, data)
+        print(f"Clock {clock!r}: {c['status']} ({c['segments_filled']}/{c['segments_total']}).")
         return 0
     return _run(campaign, go)
 

@@ -54,8 +54,11 @@ def apply(state: dict, event: dict) -> dict:
     kind = event.get("type")
 
     if kind == "scene":
+        # A new place starts empty; the same place again (a new beat in the
+        # same room) keeps who is there.
+        if event["location"] != s["scene"] or s["explore"]:
+            s["actors"] = {}
         s["scene"] = event["location"]
-        s["actors"] = {}
         s["choices"] = None
         s["explore"] = None
     elif kind == "explore":

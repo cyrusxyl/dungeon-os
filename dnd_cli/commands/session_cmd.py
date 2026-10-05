@@ -81,7 +81,7 @@ CLOCK_MODES = {"advance": {}, "action": {"action_taken": True}, "warning": {"war
 
 
 def end(campaign_dir: Path, recap: str, appeared: list[str], clocks: list[str], game_time: str | None = None,
-        force: bool = False) -> list[str]:
+        force: bool = False, no_facts: bool = False) -> list[str]:
     """Close the session in one step: canon checks, thread sweep, clock advances, log, state.
 
     All or nothing: every check runs before anything is written, so a retry
@@ -96,6 +96,10 @@ def end(campaign_dir: Path, recap: str, appeared: list[str], clocks: list[str], 
     report = canon.session_end_report(data, session)
     if report["warnings"] and not force:
         raise canon.CanonError("session not closed, nothing written: " + " | ".join(report["warnings"]))
+    if not report["facts_this_session"] and not (no_facts or force):
+        raise canon.CanonError("session not closed, nothing written: no canon fact was recorded this session. "
+                               "Record what the scenes revealed (canon add-fact) and run it again, or add "
+                               "--no-facts if nothing canon-level happened.")
 
     modes: dict[tuple[str, str], str] = {}
     for spec in clocks:
@@ -110,7 +114,7 @@ def end(campaign_dir: Path, recap: str, appeared: list[str], clocks: list[str], 
     lines = []
     for villain in data["villains"]:
         for clock in villain["clocks"]:
-            if clock["status"] == "complete":
+            if clock.get("status", "active") != "active":  # complete, stopped, or waiting for its trigger
                 continue
             mode = modes.get((villain["name"], clock["name"]), "advance")
             canon.advance_clock(data, villain["name"], clock["name"], **CLOCK_MODES[mode])
@@ -133,7 +137,8 @@ def end(campaign_dir: Path, recap: str, appeared: list[str], clocks: list[str], 
     return lines + [f"Session {session} closed and logged."]
 
 
-def execute_end(campaign: str | None, appeared: str, clocks: list[str], game_time: str | None, force: bool) -> int:
+def execute_end(campaign: str | None, appeared: str, clocks: list[str], game_time: str | None, force: bool,
+                no_facts: bool = False) -> int:
     import sys
 
     from dnd_cli import canon
@@ -142,6 +147,6 @@ def execute_end(campaign: str | None, appeared: str, clocks: list[str], game_tim
 
     def go(campaign_dir):
         ids = [t.strip() for t in appeared.split(",") if t.strip()]
-        print("\n".join(end(campaign_dir, recap, ids, clocks, game_time, force)))
+        print("\n".join(end(campaign_dir, recap, ids, clocks, game_time, force, no_facts)))
         return 0
     return run_stage(campaign, go, canon.CanonError)

@@ -1,14 +1,172 @@
 {
-  "_comment": "What a D&D race adds to an LPC look (`actor set ... race=drow`). Settings fill only what the DM did not give; items come first, so the DM's own items win. {sex} becomes female or male from the body.",
-  "human": {},
-  "elf": {"items": ["elven"]},
-  "half-elf": {"items": ["elven"]},
-  "drow": {"skin": "blue", "eyes": "red", "items": ["elven"]},
-  "dwarf": {"body": "muscular", "items": ["beard:chestnut"]},
-  "halfling": {"body": "teen"},
-  "gnome": {"body": "teen", "items": ["elven"]},
-  "half-orc": {"skin": "pale_green", "items": ["heads_orc_{sex}"]},
-  "orc": {"skin": "green", "items": ["heads_orc_{sex}"]},
-  "dragonborn": {"body": "muscular", "skin": "bronze", "items": ["heads_lizard_{sex}", "tail_lizard"]},
-  "tiefling": {"skin": "lavender", "items": ["horns_curled", "tail_lizard"]}
+  "_comment": "What a D&D race adds to an LPC look (`actor set ... race=drow`). Settings fill only what the DM did not give; items come first, so the DM's own items win. {sex} becomes female or male from the body. `skins` lists the skins that fit; another skin is replaced by the race's default (`skin`, else the first in the list). `hair` is used when a new look has no hair or headwear.",
+  "human": {
+    "skins": [
+      "light",
+      "amber",
+      "olive",
+      "taupe",
+      "bronze",
+      "brown",
+      "black"
+    ],
+    "hair": "hair_plain:dark_brown"
+  },
+  "elf": {
+    "items": [
+      "elven"
+    ],
+    "skins": [
+      "light",
+      "amber",
+      "olive",
+      "taupe",
+      "bronze",
+      "brown",
+      "black"
+    ],
+    "hair": "hair_long:blonde"
+  },
+  "half-elf": {
+    "items": [
+      "elven"
+    ],
+    "skins": [
+      "light",
+      "amber",
+      "olive",
+      "taupe",
+      "bronze",
+      "brown",
+      "black"
+    ],
+    "hair": "hair_long:chestnut"
+  },
+  "drow": {
+    "skin": "blue",
+    "eyes": "red",
+    "items": [
+      "elven"
+    ],
+    "skins": [
+      "blue",
+      "black",
+      "lavender"
+    ],
+    "hair": "hair_long:white"
+  },
+  "dwarf": {
+    "body": "muscular",
+    "items": [
+      "beard:chestnut"
+    ],
+    "skins": [
+      "light",
+      "amber",
+      "olive",
+      "taupe",
+      "bronze",
+      "brown",
+      "black"
+    ],
+    "hair": "hair_plain:chestnut"
+  },
+  "halfling": {
+    "body": "teen",
+    "skins": [
+      "light",
+      "amber",
+      "olive",
+      "taupe",
+      "bronze",
+      "brown",
+      "black"
+    ],
+    "hair": "hair_curly_short:light_brown"
+  },
+  "gnome": {
+    "body": "teen",
+    "items": [
+      "elven"
+    ],
+    "skins": [
+      "light",
+      "amber",
+      "olive",
+      "taupe",
+      "bronze",
+      "brown",
+      "black"
+    ],
+    "hair": "hair_spiked:ginger"
+  },
+  "half-orc": {
+    "skin": "pale_green",
+    "items": [
+      "heads_orc_{sex}"
+    ],
+    "skins": [
+      "pale_green",
+      "green",
+      "dark_green",
+      "bright_green",
+      "taupe",
+      "olive"
+    ],
+    "hair": "hair_shorthawk:black"
+  },
+  "orc": {
+    "skin": "green",
+    "items": [
+      "heads_orc_{sex}"
+    ],
+    "skins": [
+      "green",
+      "dark_green",
+      "pale_green",
+      "bright_green",
+      "fur_grey"
+    ],
+    "hair": "hair_shorthawk:black"
+  },
+  "dragonborn": {
+    "body": "muscular",
+    "skin": "bronze",
+    "items": [
+      "heads_lizard_{sex}",
+      "tail_lizard"
+    ],
+    "skins": [
+      "bronze",
+      "amber",
+      "brown",
+      "black",
+      "blue",
+      "green",
+      "dark_green",
+      "bright_green",
+      "lavender",
+      "fur_copper",
+      "fur_gold",
+      "fur_white"
+    ]
+  },
+  "tiefling": {
+    "skin": "lavender",
+    "items": [
+      "horns_curled",
+      "tail_lizard"
+    ],
+    "skins": [
+      "lavender",
+      "blue",
+      "fur_copper",
+      "bronze",
+      "amber",
+      "brown",
+      "black",
+      "zombie"
+    ],
+    "hair": "hair_long:black"
+  }
 }

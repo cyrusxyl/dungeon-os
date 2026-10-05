@@ -109,6 +109,7 @@ def add_clock(
     clock_name: str,
     segments_total: int,
     description: Optional[str] = None,
+    waiting: bool = False,
 ) -> None:
     if segments_total not in (4, 6, 8):
         raise CanonError(
@@ -121,7 +122,7 @@ def add_clock(
         "name": clock_name,
         "segments_total": segments_total,
         "segments_filled": 0,
-        "status": "active",
+        "status": "waiting" if waiting else "active",
     }
     if description:
         clock["description"] = description
@@ -155,6 +156,9 @@ def advance_clock(
 
     if clock["status"] == "complete":
         raise CanonError(f"Clock {clock_name!r} is already complete. Nothing to advance.")
+    if clock.get("status", "active") != "active":
+        raise CanonError(f"Clock {clock_name!r} is {clock['status']}. Start it first: canon clock-status "
+                         f"\"{villain_name}\" \"{clock_name}\" active.")
 
     if action_taken:
         delta = 0
@@ -167,6 +171,20 @@ def advance_clock(
     if clock["segments_filled"] >= clock["segments_total"]:
         clock["status"] = "complete"
 
+    return clock
+
+
+CLOCK_STATUSES = ("active", "waiting", "stopped")
+
+
+def set_clock_status(data: dict, villain_name: str, clock_name: str, status: str) -> dict:
+    """active: it advances at session end. waiting: its trigger has not happened. stopped: the players ended it."""
+    if status not in CLOCK_STATUSES:
+        raise CanonError(f"status must be one of {', '.join(CLOCK_STATUSES)}.")
+    clock = _find_clock(_find_villain(data, villain_name), clock_name)
+    if clock.get("status") == "complete":
+        raise CanonError(f"Clock {clock_name!r} is complete; its status no longer changes.")
+    clock["status"] = status
     return clock
 
 

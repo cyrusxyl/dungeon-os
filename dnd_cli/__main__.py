@@ -127,6 +127,13 @@ def create_parser():
     p.add_argument("clock")
     p.add_argument("segments_total", type=int, choices=[4, 6, 8], help="OG 2.2: a clock has 4, 6, or 8 segments")
     p.add_argument("--description", default="")
+    p.add_argument("--waiting", action="store_true", help="The clock starts only when its trigger happens")
+
+    p = canon_sub.add_parser("clock-status", help="Set a clock active, waiting (trigger not yet happened) or stopped")
+    p.add_argument("campaign")
+    p.add_argument("villain")
+    p.add_argument("clock")
+    p.add_argument("status", choices=["active", "waiting", "stopped"])
 
     p = canon_sub.add_parser("advance-clock", help="Advance a villain's clock (OG 2.4-2.6)")
     p.add_argument("campaign")
@@ -343,6 +350,7 @@ def create_parser():
     p.add_argument("--clock", action="append", default=[], help='"Villain/Clock=advance|action|warning" (default advance)')
     p.add_argument("--time", default=None, help="New game_time for state.json")
     p.add_argument("--force", action="store_true", help="Close even with report warnings")
+    p.add_argument("--no-facts", action="store_true", help="Nothing canon-level happened this session")
     p.add_argument("--campaign", default=None)
 
     # World: clock, state fields, quests, NPCs, factions
@@ -616,8 +624,10 @@ def main():
                 return canon_cmd.execute_add_villain(args.campaign, args.name, args.goal, args.trait, args.escape_plan)
             elif cc == "add-clock":
                 return canon_cmd.execute_add_clock(
-                    args.campaign, args.villain, args.clock, args.segments_total, args.description
+                    args.campaign, args.villain, args.clock, args.segments_total, args.description, args.waiting
                 )
+            elif cc == "clock-status":
+                return canon_cmd.execute_clock_status(args.campaign, args.villain, args.clock, args.status)
             elif cc == "advance-clock":
                 return canon_cmd.execute_advance_clock(
                     args.campaign, args.villain, args.clock, args.action_taken, args.warning_ignored
@@ -721,7 +731,8 @@ def main():
             if args.session_command == "brief":
                 return session_cmd.execute_brief(args.campaign)
             if args.session_command == "end":
-                return session_cmd.execute_end(args.campaign, args.appeared, args.clock, args.time, args.force)
+                return session_cmd.execute_end(args.campaign, args.appeared, args.clock, args.time, args.force,
+                                               args.no_facts)
             print("Usage: dnd-cli session brief [--campaign C]", file=sys.stderr)
             return 1
 

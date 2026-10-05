@@ -22,15 +22,17 @@ def execute_set(campaign, actor_id: str, tokens: list[str], change: bool = False
                   "Nothing changed. Add --change only if the story changes the look "
                   "(never for a player character unless that player asks).", file=sys.stderr)
             return 1
-        # A player character's race comes from its sheet when the DM gives none.
-        sheet = read_json(campaign_dir / "characters" / f"{actor_id}.json") if current is None else None
+        # A player character's race comes from its sheet: its features on a new look, its skin colors always.
+        sheet = read_json(campaign_dir / "characters" / f"{actor_id}.json")
         race = actors.race_of(str(sheet.get("race", ""))) if sheet else None
-        spec = actors.build(actor_id, tokens, current, race)
+        notes: list[str] = []
+        spec = actors.build(actor_id, tokens, current, race, notes)
         if "tile" in spec:
             warnings = []
         else:
             spec["items"] = lpc.normalize_items(spec["items"])
-            warnings = lpc.validate(spec)
+            warnings = notes + lpc.validate(spec)
+            spec["items"] = lpc.sex_fixed(spec["items"], spec["body"])
         saved = actors.save(campaign_dir, actor_id, spec)
         notify_stage(campaign_dir, {"type": "actor_updated", "actor": actor_id})
         for w in warnings:

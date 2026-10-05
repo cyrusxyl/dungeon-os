@@ -101,16 +101,27 @@ def race_of(text: str) -> str | None:
     return next((r for r in sorted(races(), key=len, reverse=True) if r in t), None)
 
 
-def _apply_race(spec: dict, race: str, given: set[str]) -> None:
+def _apply_race(spec: dict, race: str, given: set[str], notes: list[str], fill: bool = True) -> None:
+    """Add the race's features (`fill`: a new look) and keep the skin within the race's colors."""
     kit = races()[race]
     for key in ("body", "skin", "eyes"):
-        if key in kit and key not in given:
+        if fill and key in kit and key not in given:
             spec[key] = kit[key]
-    sex = "female" if spec.get("body", "male") in ("female", "pregnant") else "male"
-    spec["items"] = [i.replace("{sex}", sex) for i in kit.get("items", [])] + spec["items"]
+    fits = kit.get("skins")
+    if fits and spec.get("skin") and spec["skin"] not in fits:
+        default = kit.get("skin", fits[0])
+        notes.append(f"skin {spec['skin']!r} does not fit a {race}; used {default!r}. Skins that fit: {', '.join(fits)}.")
+        spec["skin"] = default
+    if fill:
+        sex = "female" if spec.get("body", "male") in ("female", "pregnant") else "male"
+        spec["items"] = [i.replace("{sex}", sex) for i in kit.get("items", [])] + spec["items"]
+        heads = ("hair_", "updo", "ponytail", "hat", "headcover")
+        if kit.get("hair") and not any(i.split(":")[0].startswith(heads) for i in spec["items"]):
+            spec["items"].insert(0, kit["hair"])
 
 
-def build(actor_id: str, tokens: list[str], current: dict | None = None, race: str | None = None) -> dict:
+def build(actor_id: str, tokens: list[str], current: dict | None = None, race: str | None = None,
+          notes: list[str] | None = None) -> dict:
     """Make a spec from `key=value` and item tokens.
 
     `preset=<kind>` starts from a preset; `name=...`, `body=`, `skin=`,
@@ -143,6 +154,7 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None, race: s
             if value.lower() not in races():
                 raise lpc.ActorError(f"no race {value!r}. Races: {', '.join(races())}.")
             race = value.lower()
+            given.add("race")
         elif key == "name":
             spec["name"] = value.replace("_", " ").strip()
         elif key == "skin":
@@ -161,7 +173,7 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None, race: s
         spec.pop("items", None)
         return spec
     if race:
-        _apply_race(spec, race, given)
+        _apply_race(spec, race, given, notes if notes is not None else [], fill=current is None or "race" in given)
     spec.setdefault("body", "male")
     return spec
 

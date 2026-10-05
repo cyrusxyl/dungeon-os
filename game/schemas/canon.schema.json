@@ -47,9 +47,9 @@
                 "segments_filled": {"type": "integer", "minimum": 0},
                 "status": {
                   "type": "string",
-                  "enum": ["active", "complete", "stopped"],
+                  "enum": ["active", "waiting", "complete", "stopped"],
                   "default": "active",
-                  "description": "'complete' means segments_filled reached segments_total. Operating Guide 2.7-2.8: tell the players the result."
+                  "description": "'complete' means segments_filled reached segments_total. Operating Guide 2.7-2.8: tell the players the result. 'waiting' means the clock starts only when its trigger happens; session end does not advance it."
                 }
               }
             }
