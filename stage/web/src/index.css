@@ -79,11 +79,20 @@
     --radius: 0rem;
 }
 
+/* Pixelify Sans draws 5 like S and 2 like a reversed S. Digits and "+" come from Press Start 2P instead.
+   size-adjust makes 14px text show 10px digits, which is close to the font's 8px grid. */
+@font-face {
+    font-family: "Pixel Digits";
+    src: url("./assets/press-start-2p-latin.woff2") format("woff2");
+    unicode-range: U+0030-0039, U+002B;
+    size-adjust: 72%;
+}
+
 html, body, #root { height: 100%; }
 body {
     background: var(--ink);
     color: var(--parchment);
-    font-family: "Pixelify Sans", system-ui, sans-serif;
+    font-family: "Pixel Digits", "Pixelify Sans", system-ui, sans-serif;
 }
 .pixel-font { font-family: "Press Start 2P", system-ui, monospace; }
 .pixelated { image-rendering: pixelated; }
