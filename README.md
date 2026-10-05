@@ -38,8 +38,8 @@ scene with the new party. The **New character** button in the party panel
 opens the same screen for a new player who joins a running campaign.
 
 The first launch builds the web UI with npm (Node 22+) and downloads the
-pixel art (~130 MB, Universal LPC and CC0 Dungeon Crawl tiles) into the
-git-ignored `assets/` folder. The art is not redistributed; credits files are
+pixel art (~135 MB: Universal LPC, LPC tile and prop packs from OpenGameArt,
+and CC0 Dungeon Crawl tiles) into the git-ignored `assets/` folder. The art is not redistributed; credits files are
 kept next to it.
 
 In `--classic` mode, the start menu runs the DM in a real terminal on the

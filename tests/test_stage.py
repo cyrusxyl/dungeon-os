@@ -114,6 +114,16 @@ def test_initial_prompt() -> None:
     check("gemini takes the prompt with -i", "-i Go" in cmd[2])
 
 
+def _raises_actor(fn) -> bool:
+    from stage import lpc
+
+    try:
+        fn()
+    except lpc.ActorError:
+        return True
+    return False
+
+
 def test_actors() -> None:
     print("lpc / actors")
     from stage import actors, lpc
@@ -163,6 +173,46 @@ def test_actors() -> None:
         check("an unknown kind has no look", actors.load(d, "stranger") is None)
     bad = [k for k, p in actors.presets().items() if lpc.validate(p)]
     check(f"every preset validates without warnings {bad}", not bad)
+    root = Path(actors.ensure_dcss())
+    stems = actors.dcss_monsters()
+    missing = [k for k, v in actors.monster_aliases().items() if not (root / v).is_file() and v not in stems]
+    check(f"every monster alias points at a tile {missing}", not missing)
+    check("D&D names find a tile", all(actors.find_tile(n) for n in ["owlbear", "giant-spider", "dire-wolf", "mimic", "beholder", "young red dragon"]))
+    check("size words are ignored", actors.find_tile("giant-spider") == actors.find_tile("spider"))
+    from stage import creatures
+
+    cat = creatures.catalog()
+    check("every creature file exists", all((creatures.TILES_DIR / c["file"]).is_file() for c in cat.values()))
+    check("every creature name points at a creature", all(v in cat for v in creatures.names().values()))
+    ok = all(creatures.frame(creatures.PREFIX + cid, f).getbbox() for cid in cat for f in ("down", "up", "left", "right"))
+    check("every creature draws in all four facings", ok)
+    check("a left-facing creature is the right-facing one, flipped",
+          list(creatures.frame("creature:lion", "left").getdata()) != list(creatures.frame("creature:lion", "right").getdata()))
+    check("animals beat DCSS tiles of the same name", actors.find_tile("bear") == "creature:bear_grizzly")
+    check("an animal is drawn at its size, in a square frame",
+          actors._tile_frame({"tile": "creature:cow"}).size[0] == actors._tile_frame({"tile": "creature:cow"}).size[1] >= 64)
+    check("a dragon has a bigger frame than a goblin",
+          actors._tile_frame({"tile": actors.find_tile("dragon")}).width > actors._tile_frame({"tile": actors.find_tile("goblin")}).width)
+    import io
+
+    from PIL import Image
+
+    portrait = Image.open(io.BytesIO(actors.png({"tile": actors.find_tile("dragon")}, "portrait")))
+    check("the portrait of a huge monster stays one tile", max(portrait.size) <= 32)
+    check("scale= is checked", all(_raises_actor(lambda v=v: actors.build("x", ["tile=ogre", f"scale={v}"])) for v in ("5", "huge")))
+    check("scale= sets the size of a tile", actors.build("x", ["scale=2", "tile=goblin"])["scale"] == 2)
+    check("a person is not matched to a monster", actors.find_tile("sister-gareth") is None)
+    sizes = actors.sizes()
+    bad = [k for k in sizes["stems"] if k not in stems and k not in creatures.catalog()]
+    check(f"every size names a real tile {bad}", not bad)
+    bad = [k for k in sizes["folders"] if k and not (root / "monster" / k).is_dir()]
+    check(f"every size folder exists {bad}", not bad)
+    check("every size is a known scale", all(v in actors.SCALES for v in (*sizes["stems"].values(), *sizes["folders"].values())))
+    check("an alias never shadows a preset kind", not [k for k in actors.monster_aliases() if k in actors.presets()])
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        check("a preset kind with a size word gets no tile", actors.load(d, "young-goblin#1") is None)
+        check("a beast with a size word gets a tile", (actors.load(d, "giant-spider#1") or {}).get("tile", "").endswith("spider.png"))
 
 
 def test_scenes() -> None:
@@ -177,6 +227,27 @@ def test_scenes() -> None:
         img = scenes.render({"template": name})
         assert img.size == (scenes.W, scenes.H), name
     check("every template renders at 320x192", True)
+    cat = scenes.catalog()
+    bad = []
+    for name in cat["props"]:
+        try:
+            scenes.prop_image(name)
+        except Exception as e:  # a bad sheet, path or rect
+            bad.append(f"{name}: {e}")
+    check(f"every prop loads {bad}", not bad)
+    flat = [n for n, p in cat["props"].items() if "rect" in p and p["rect"][2] * p["rect"][3] == 0]
+    check("no prop has an empty rect", not flat)
+    empty = [n for n in cat["props"] if scenes.prop_image(n).getchannel("A").getbbox() is None]
+    check(f"no prop is fully transparent {empty}", not empty)
+    surfaces = [(s, c, r) for s in (*cat["floors"], *cat["grounds"]) for c in range(2) for r in range(2)]
+    check("every floor and ground makes a tile", all(scenes.surface_tile(s, c, r).size == (scenes.T, scenes.T) for s, c, r in surfaces))
+    check("every wall makes a tile", all(scenes._wall_tile(w, 1, 0, 9).size == (scenes.T, scenes.T * scenes.WALL_ROWS) for w in cat["walls"]))
+    for mood in cat["moods"]:
+        scenes.render({"template": "street", "mood": mood})
+    check("every mood renders", True)
+    skill = (Path(__file__).resolve().parent.parent / "game" / ".claude" / "skills" / "stage" / "SKILL.md").read_text()
+    missing = [n for n in (*cat["templates"], *cat["moods"]) if f"`{n}`" not in skill]
+    check(f"the DM skill names every template and mood {missing}", not missing)
     spec = scenes.build(["template=chapel", "mood=dusk", "wall_center=bust", "+barrel@back-right"], None)
     check("build keeps template, mood, slot and extra",
           spec["template"] == "chapel" and spec["mood"] == "dusk"
@@ -254,6 +325,12 @@ def test_crawl() -> None:
             ok &= all(c in dist for c in floors)
             ok &= all(grid[p["y"]][p["x"]] == crawl.FLOOR and (p["x"], p["y"]) in dist for p in site["pois"].values())
     check("every floor cell and POI can be reached, POIs never on a wall or door", ok)
+    for theme in crawl.themes():
+        _site(theme, (("a", "far", "chest"),), 1)
+        assert crawl.atlas_png(theme)
+    check("every theme makes a site and an atlas", True)
+    check("every icon is a tile", all(crawl.icon_png(name) for name in crawl.data()["icons"]))
+    check("every icon word points at an icon", all(v in crawl.data()["icons"] for v in crawl.data()["icon_words"].values()))
     check("the same seed gives the same layout", _site(seed=3)["grid"] == _site(seed=3)["grid"])
     site = _site(pois=(("near-thing", "near", "chest"), ("far-thing", "far", "chest")))
     area = lambda pid: site["area_of"][site["pois"][pid]["y"]][site["pois"][pid]["x"]]  # noqa: E731

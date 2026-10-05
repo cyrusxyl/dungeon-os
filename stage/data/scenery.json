@@ -1,11 +1,23 @@
 {
-  "_comment": "Scenery catalog for stage/scenes.py. Coordinates are in 32 px tiles: [col, row, width, height]. Sheets: walls, floors, city, out, terrain (LPC tile packs) and dcss:<path> (one CC0 DCSS png). Walls are 4x3 blocks: left edge, two repeating middles, right edge. Floors repeat a 2x2 pattern. Grounds pick one of their 1x1 variants per tile.",
+  "_comment": "Scenery catalog for stage/scenes.py. Coordinates are in 32 px tiles: [col, row, width, height]. Sheets: walls, floors, city, out, terrain, interior, decor, ruins, winter, winter_b (LPC tile packs; `keys` names a flat colour a pack uses for empty cells) and dcss:<path> (one CC0 DCSS png). Walls and floors are [col, row] on the walls/floors sheet, or {\"sheet\", \"at\"} on another. Walls are 4x3 blocks: left edge, two repeating middles, right edge. Floors repeat a 2x2 pattern. Grounds pick one of their 1x1 variants per tile.",
   "sheets": {
     "walls": "tiles/walls/lpc-walls/walls.png",
     "floors": "tiles/floors/lpc-floors/floors.png",
     "city": "tiles/city_inside/LPC_city_inside/city_inside.png",
     "out": "tiles/atlas/base_out_atlas.png",
-    "terrain": "tiles/atlas/terrain_atlas.png"
+    "terrain": "tiles/atlas/terrain_atlas.png",
+    "interior": "tiles/interior/LPC_house_interior/interior.png",
+    "decor": "tiles/decor/decoration_medieval/decorations-medieval.png",
+    "ruins": "tiles/ruins/LPC_cavern_ruins/cavern_ruins.png",
+    "winter": "tiles/winter/TilesA2.png",
+    "winter_b": "tiles/winter/TilesB.png"
+  },
+  "keys": {
+    "decor": [
+      129,
+      161,
+      0
+    ]
   },
   "walls": {
     "stone_grey": [
@@ -63,7 +75,151 @@
     "cave": [
       36,
       29
-    ]
+    ],
+    "crypt": {
+      "sheet": "ruins",
+      "at": [
+        19,
+        7
+      ],
+      "width": 3
+    },
+    "mine": {
+      "sheet": "ruins",
+      "at": [
+        12,
+        0
+      ],
+      "width": 3
+    },
+    "mine_beams": {
+      "sheet": "ruins",
+      "at": [
+        15,
+        0
+      ],
+      "width": 3
+    },
+    "cave_purple": {
+      "sheet": "ruins",
+      "at": [
+        18,
+        0
+      ],
+      "width": 3
+    },
+    "paper_green": [
+      36,
+      35
+    ],
+    "paper_green_dark": [
+      32,
+      35
+    ],
+    "paper_red": [
+      36,
+      38
+    ],
+    "paper_red_dark": [
+      32,
+      38
+    ],
+    "paper_blue": [
+      32,
+      41
+    ],
+    "paper_pale_blue": [
+      36,
+      32
+    ],
+    "paper_purple": [
+      40,
+      32
+    ],
+    "floral_cream": [
+      36,
+      44
+    ],
+    "floral_yellow": [
+      32,
+      44
+    ],
+    "floral_green": [
+      32,
+      47
+    ],
+    "floral_blue": [
+      36,
+      47
+    ],
+    "stone_dark_brick": [
+      44,
+      23
+    ],
+    "stone_pillars": [
+      48,
+      23
+    ],
+    "stone_light_brick": [
+      44,
+      26
+    ],
+    "stone_pillars_light": [
+      48,
+      26
+    ],
+    "half_timber_cream": [
+      56,
+      56
+    ],
+    "half_timber_stone": [
+      56,
+      59
+    ],
+    "plank_dark": [
+      32,
+      59
+    ],
+    "plank_dark2": [
+      36,
+      59
+    ],
+    "cream_brick": [
+      52,
+      50
+    ],
+    "cream_panel": [
+      44,
+      44
+    ],
+    "cream_columns": [
+      44,
+      47
+    ],
+    "cave_grey": {
+      "sheet": "ruins",
+      "at": [
+        12,
+        0
+      ],
+      "width": 3,
+      "recolor": {
+        "sat": 0.2,
+        "value": 1.15
+      }
+    },
+    "cave_grey_beams": {
+      "sheet": "ruins",
+      "at": [
+        15,
+        0
+      ],
+      "width": 3,
+      "recolor": {
+        "sat": 0.5,
+        "value": 1.1
+      }
+    }
   },
   "floors": {
     "planks": [
@@ -137,7 +293,21 @@
     "rock": [
       6,
       59
-    ]
+    ],
+    "brick_grey": {
+      "sheet": "ruins",
+      "at": [
+        3,
+        8
+      ]
+    },
+    "snow": {
+      "sheet": "winter",
+      "at": [
+        6,
+        0
+      ]
+    }
   },
   "grounds": {
     "grass": {
@@ -324,6 +494,67 @@
         [
           17,
           20
+        ]
+      ]
+    },
+    "ice": {
+      "sheet": "winter",
+      "tiles": [
+        [
+          1,
+          3
+        ]
+      ]
+    },
+    "dune": {
+      "sheet": "terrain",
+      "tiles": [
+        [
+          0,
+          14
+        ],
+        [
+          1,
+          14
+        ],
+        [
+          2,
+          14
+        ]
+      ]
+    },
+    "wheat": {
+      "sheet": "terrain",
+      "tiles": [
+        [
+          1,
+          26
+        ],
+        [
+          1,
+          29
+        ]
+      ]
+    },
+    "tilled": {
+      "sheet": "terrain",
+      "tiles": [
+        [
+          6,
+          20
+        ],
+        [
+          7,
+          20
+        ]
+      ]
+    },
+    "clay": {
+      "sheet": "terrain",
+      "tiles": [
+        [
+          4,
+          29
         ]
       ]
     }
@@ -945,6 +1176,1687 @@
         3,
         2
       ]
+    },
+    "gravestone_cross": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        0,
+        1,
+        2
+      ]
+    },
+    "gravestone_double": {
+      "sheet": "decor",
+      "rect": [
+        1,
+        0,
+        2,
+        2
+      ]
+    },
+    "grave_plot": {
+      "sheet": "decor",
+      "rect": [
+        3,
+        0,
+        2,
+        3
+      ]
+    },
+    "grave_cross_gold": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        0,
+        1,
+        1
+      ]
+    },
+    "grave_cross_stone": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        1,
+        1,
+        1
+      ]
+    },
+    "grave_cross_wood": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        2,
+        1,
+        1
+      ]
+    },
+    "tombstone_cross": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        2,
+        1,
+        1
+      ]
+    },
+    "tombstone": {
+      "sheet": "decor",
+      "rect": [
+        1,
+        2,
+        1,
+        1
+      ]
+    },
+    "tombstone_round": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        2,
+        1,
+        1
+      ]
+    },
+    "tombstone_flat": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        3,
+        1,
+        1
+      ]
+    },
+    "tombstone_cracked": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        4,
+        1,
+        1
+      ]
+    },
+    "grave_open": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        4,
+        1,
+        2
+      ]
+    },
+    "tomb_slab": {
+      "sheet": "decor",
+      "rect": [
+        1,
+        5,
+        2,
+        2
+      ]
+    },
+    "cross_monument": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        5,
+        1,
+        4
+      ]
+    },
+    "sundial": {
+      "sheet": "decor",
+      "rect": [
+        1,
+        8,
+        1,
+        1
+      ]
+    },
+    "pedestal_stone": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        7,
+        1,
+        2
+      ]
+    },
+    "birdbath": {
+      "sheet": "decor",
+      "rect": [
+        4,
+        7,
+        1,
+        2
+      ]
+    },
+    "statue_maiden": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        9,
+        1,
+        2
+      ]
+    },
+    "statue_kneeling": {
+      "sheet": "decor",
+      "rect": [
+        1,
+        9,
+        1,
+        2
+      ]
+    },
+    "statue_wolf": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        9,
+        1,
+        2
+      ]
+    },
+    "statue_hooded": {
+      "sheet": "decor",
+      "rect": [
+        3,
+        9,
+        1,
+        2
+      ]
+    },
+    "statue_monk": {
+      "sheet": "decor",
+      "rect": [
+        4,
+        9,
+        1,
+        2
+      ]
+    },
+    "monument": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        10,
+        3,
+        3
+      ]
+    },
+    "fountain_stone": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        16,
+        2,
+        2
+      ]
+    },
+    "fountain_stone_tall": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        16,
+        2,
+        2
+      ]
+    },
+    "well_roofed": {
+      "sheet": "decor",
+      "rect": [
+        14,
+        13,
+        2,
+        3
+      ]
+    },
+    "sign_blank": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        0,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_weapons": {
+      "sheet": "decor",
+      "rect": [
+        7,
+        0,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_pottery": {
+      "sheet": "decor",
+      "rect": [
+        8,
+        0,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_bakery": {
+      "sheet": "decor",
+      "rect": [
+        9,
+        0,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_purse": {
+      "sheet": "decor",
+      "rect": [
+        10,
+        0,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_books": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        1,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_tavern": {
+      "sheet": "decor",
+      "rect": [
+        7,
+        1,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_inn": {
+      "sheet": "decor",
+      "rect": [
+        8,
+        1,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_jeweler": {
+      "sheet": "decor",
+      "rect": [
+        9,
+        1,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "sign_smith": {
+      "sheet": "decor",
+      "rect": [
+        10,
+        1,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "lantern": {
+      "sheet": "decor",
+      "rect": [
+        13,
+        2,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "lantern_unlit": {
+      "sheet": "decor",
+      "rect": [
+        12,
+        2,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "torch_wall": {
+      "sheet": "decor",
+      "rect": [
+        13,
+        5,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "torch_unlit": {
+      "sheet": "decor",
+      "rect": [
+        12,
+        5,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "signpost": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        4,
+        1,
+        1
+      ]
+    },
+    "noticeboard": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        5,
+        1,
+        1
+      ]
+    },
+    "laundry": {
+      "sheet": "decor",
+      "rect": [
+        9,
+        6,
+        2,
+        1
+      ]
+    },
+    "stall_blue": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        25,
+        3,
+        5
+      ]
+    },
+    "stall_brown": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        25,
+        3,
+        5
+      ]
+    },
+    "handcart": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        16,
+        3,
+        2
+      ]
+    },
+    "wagon": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        41,
+        4,
+        3
+      ]
+    },
+    "wagon_stall": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        44,
+        4,
+        3
+      ]
+    },
+    "vendor_cart": {
+      "sheet": "decor",
+      "rect": [
+        12,
+        42,
+        3,
+        3
+      ]
+    },
+    "stool_wood": {
+      "sheet": "decor",
+      "rect": [
+        4,
+        30,
+        1,
+        1
+      ]
+    },
+    "chair_plain": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        30,
+        1,
+        1
+      ]
+    },
+    "trunk_big": {
+      "sheet": "decor",
+      "rect": [
+        7,
+        32,
+        2,
+        2
+      ]
+    },
+    "bench_long": {
+      "sheet": "decor",
+      "rect": [
+        6,
+        34,
+        2,
+        1
+      ]
+    },
+    "table_plank": {
+      "sheet": "decor",
+      "rect": [
+        8,
+        35,
+        2,
+        2
+      ]
+    },
+    "banner_white": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        38,
+        1,
+        3
+      ],
+      "on": "wall"
+    },
+    "banner_blue": {
+      "sheet": "decor",
+      "rect": [
+        1,
+        38,
+        1,
+        3
+      ],
+      "on": "wall"
+    },
+    "banner_green": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        38,
+        1,
+        3
+      ],
+      "on": "wall"
+    },
+    "banner_red": {
+      "sheet": "decor",
+      "rect": [
+        3,
+        38,
+        1,
+        3
+      ],
+      "on": "wall"
+    },
+    "banner_gold": {
+      "sheet": "decor",
+      "rect": [
+        4,
+        38,
+        1,
+        3
+      ],
+      "on": "wall"
+    },
+    "banner_black": {
+      "sheet": "decor",
+      "rect": [
+        5,
+        38,
+        1,
+        3
+      ],
+      "on": "wall"
+    },
+    "gallows": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        41,
+        2,
+        3
+      ]
+    },
+    "stage_platform": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        41,
+        3,
+        3
+      ]
+    },
+    "guillotine": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        44,
+        2,
+        3
+      ]
+    },
+    "pillory": {
+      "sheet": "decor",
+      "rect": [
+        4,
+        46,
+        2,
+        1
+      ]
+    },
+    "scarecrow": {
+      "sheet": "decor",
+      "rect": [
+        10,
+        4,
+        1,
+        2
+      ]
+    },
+    "twisted_tree": {
+      "sheet": "decor",
+      "rect": [
+        13,
+        9,
+        1,
+        3
+      ]
+    },
+    "outhouse": {
+      "sheet": "decor",
+      "rect": [
+        11,
+        11,
+        2,
+        3
+      ]
+    },
+    "hay_trough": {
+      "sheet": "decor",
+      "rect": [
+        13,
+        16,
+        3,
+        2
+      ]
+    },
+    "water_trough": {
+      "sheet": "decor",
+      "rect": [
+        13,
+        18,
+        3,
+        1
+      ]
+    },
+    "hay_roll": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        20,
+        2,
+        3
+      ]
+    },
+    "hay_mound": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        20,
+        2,
+        2
+      ]
+    },
+    "hay_bales": {
+      "sheet": "decor",
+      "rect": [
+        4,
+        21,
+        3,
+        2
+      ]
+    },
+    "hay_pile": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        23,
+        2,
+        1
+      ]
+    },
+    "cart_hay": {
+      "sheet": "decor",
+      "rect": [
+        7,
+        20,
+        2,
+        2
+      ]
+    },
+    "cart": {
+      "sheet": "decor",
+      "rect": [
+        7,
+        22,
+        2,
+        2
+      ]
+    },
+    "plough": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        24,
+        4,
+        1
+      ]
+    },
+    "shed_open": {
+      "sheet": "decor",
+      "rect": [
+        9,
+        20,
+        2,
+        4
+      ]
+    },
+    "firewood": {
+      "sheet": "decor",
+      "rect": [
+        14,
+        20,
+        2,
+        2
+      ]
+    },
+    "chopping_block": {
+      "sheet": "decor",
+      "rect": [
+        14,
+        22,
+        1,
+        1
+      ]
+    },
+    "anvil_stump": {
+      "sheet": "decor",
+      "rect": [
+        13,
+        23,
+        1,
+        1
+      ]
+    },
+    "anvil": {
+      "sheet": "decor",
+      "rect": [
+        14,
+        23,
+        1,
+        1
+      ]
+    },
+    "anvil_big": {
+      "sheet": "decor",
+      "rect": [
+        14,
+        24,
+        2,
+        1
+      ]
+    },
+    "crate_slats": {
+      "sheet": "decor",
+      "rect": [
+        11,
+        24,
+        2,
+        1
+      ]
+    },
+    "campfire": {
+      "sheet": "decor",
+      "rect": [
+        8,
+        48,
+        1,
+        1
+      ]
+    },
+    "campfire_out": {
+      "sheet": "decor",
+      "rect": [
+        10,
+        49,
+        1,
+        1
+      ]
+    },
+    "cauldron": {
+      "sheet": "decor",
+      "rect": [
+        11,
+        49,
+        1,
+        1
+      ]
+    },
+    "tripod": {
+      "sheet": "decor",
+      "rect": [
+        13,
+        48,
+        1,
+        1
+      ]
+    },
+    "firepit_stew": {
+      "sheet": "decor",
+      "rect": [
+        14,
+        48,
+        1,
+        1
+      ]
+    },
+    "tent_pavilion": {
+      "sheet": "decor",
+      "rect": [
+        7,
+        50,
+        6,
+        5
+      ]
+    },
+    "tent_open": {
+      "sheet": "decor",
+      "rect": [
+        0,
+        50,
+        7,
+        5
+      ]
+    },
+    "tent_small": {
+      "sheet": "decor",
+      "rect": [
+        12,
+        54,
+        4,
+        5
+      ]
+    },
+    "weapon_rack": {
+      "sheet": "decor",
+      "rect": [
+        1,
+        47,
+        2,
+        1
+      ]
+    },
+    "bow_rack": {
+      "sheet": "decor",
+      "rect": [
+        2,
+        48,
+        1,
+        2
+      ]
+    },
+    "target_hay": {
+      "sheet": "decor",
+      "rect": [
+        3,
+        48,
+        1,
+        1
+      ]
+    },
+    "archery_target": {
+      "sheet": "decor",
+      "rect": [
+        4,
+        47,
+        2,
+        2
+      ]
+    },
+    "quiver": {
+      "sheet": "decor",
+      "rect": [
+        3,
+        49,
+        1,
+        1
+      ]
+    },
+    "bookshelf": {
+      "sheet": "interior",
+      "rect": [
+        1,
+        6,
+        1,
+        2
+      ]
+    },
+    "bookshelf_low": {
+      "sheet": "interior",
+      "rect": [
+        5,
+        6,
+        1,
+        2
+      ]
+    },
+    "dish_shelf": {
+      "sheet": "interior",
+      "rect": [
+        2,
+        6,
+        1,
+        2
+      ]
+    },
+    "cupboard": {
+      "sheet": "interior",
+      "rect": [
+        0,
+        6,
+        1,
+        2
+      ]
+    },
+    "drawers": {
+      "sheet": "interior",
+      "rect": [
+        3,
+        6,
+        1,
+        2
+      ]
+    },
+    "spear_rack": {
+      "sheet": "interior",
+      "rect": [
+        6,
+        8,
+        1,
+        2
+      ]
+    },
+    "helmets_shelf": {
+      "sheet": "interior",
+      "rect": [
+        7,
+        3,
+        2,
+        1
+      ]
+    },
+    "armor_shelf": {
+      "sheet": "interior",
+      "rect": [
+        9,
+        3,
+        2,
+        1
+      ]
+    },
+    "barrels_three": {
+      "sheet": "interior",
+      "rect": [
+        1,
+        8,
+        2,
+        2
+      ]
+    },
+    "chest_tall": {
+      "sheet": "interior",
+      "rect": [
+        3,
+        8,
+        1,
+        2
+      ]
+    },
+    "wall_clock": {
+      "sheet": "interior",
+      "rect": [
+        1,
+        10,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "table_round": {
+      "sheet": "interior",
+      "rect": [
+        13,
+        2,
+        1,
+        1
+      ]
+    },
+    "table_horns": {
+      "sheet": "interior",
+      "rect": [
+        0,
+        10,
+        1,
+        1
+      ]
+    },
+    "still": {
+      "sheet": "interior",
+      "rect": [
+        0,
+        11,
+        2,
+        2
+      ]
+    },
+    "table_candle": {
+      "sheet": "interior",
+      "rect": [
+        0,
+        12,
+        2,
+        1
+      ]
+    },
+    "stove_pot": {
+      "sheet": "interior",
+      "rect": [
+        10,
+        7,
+        1,
+        3
+      ]
+    },
+    "stove_kitchen": {
+      "sheet": "interior",
+      "rect": [
+        4,
+        3,
+        1,
+        2
+      ]
+    },
+    "counter_sink": {
+      "sheet": "interior",
+      "rect": [
+        2,
+        3,
+        1,
+        2
+      ]
+    },
+    "sacks": {
+      "sheet": "interior",
+      "rect": [
+        12,
+        0,
+        1,
+        2
+      ]
+    },
+    "barrel_tall": {
+      "sheet": "interior",
+      "rect": [
+        13,
+        0,
+        1,
+        2
+      ]
+    },
+    "wall_sword": {
+      "sheet": "interior",
+      "rect": [
+        7,
+        0,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "wall_bow": {
+      "sheet": "interior",
+      "rect": [
+        7,
+        1,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "wall_axe": {
+      "sheet": "interior",
+      "rect": [
+        8,
+        0,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "wall_shield": {
+      "sheet": "interior",
+      "rect": [
+        8,
+        1,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "hanging_pots": {
+      "sheet": "interior",
+      "rect": [
+        10,
+        2,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "crystal": {
+      "sheet": "ruins",
+      "rect": [
+        10,
+        10,
+        1,
+        2
+      ]
+    },
+    "crystal_cluster": {
+      "sheet": "ruins",
+      "rect": [
+        9,
+        10,
+        1,
+        1
+      ]
+    },
+    "chest_pearls": {
+      "sheet": "ruins",
+      "rect": [
+        11,
+        11,
+        1,
+        1
+      ]
+    },
+    "chest_gold": {
+      "sheet": "ruins",
+      "rect": [
+        12,
+        11,
+        1,
+        1
+      ]
+    },
+    "chest_gems": {
+      "sheet": "ruins",
+      "rect": [
+        13,
+        11,
+        1,
+        1
+      ]
+    },
+    "demon_statue": {
+      "sheet": "ruins",
+      "rect": [
+        15,
+        9,
+        2,
+        2
+      ]
+    },
+    "statue_cloaked": {
+      "sheet": "ruins",
+      "rect": [
+        17,
+        7,
+        1,
+        2
+      ]
+    },
+    "obelisk": {
+      "sheet": "ruins",
+      "rect": [
+        18,
+        7,
+        1,
+        2
+      ]
+    },
+    "pentagram": {
+      "sheet": "ruins",
+      "rect": [
+        14,
+        10,
+        1,
+        1
+      ],
+      "flat": true
+    },
+    "pentagram_big": {
+      "sheet": "ruins",
+      "rect": [
+        6,
+        12,
+        3,
+        2
+      ],
+      "flat": true
+    },
+    "summoning_circle": {
+      "sheet": "ruins",
+      "rect": [
+        17,
+        9,
+        1,
+        1
+      ],
+      "flat": true
+    },
+    "window_barred": {
+      "sheet": "ruins",
+      "rect": [
+        17,
+        10,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "window_barred_lit": {
+      "sheet": "ruins",
+      "rect": [
+        18,
+        9,
+        1,
+        1
+      ],
+      "on": "wall"
+    },
+    "rubble": {
+      "sheet": "ruins",
+      "rect": [
+        15,
+        11,
+        1,
+        1
+      ],
+      "flat": true
+    },
+    "column_ruined": {
+      "sheet": "ruins",
+      "rect": [
+        18,
+        10,
+        1,
+        2
+      ]
+    },
+    "pillar_stub": {
+      "sheet": "ruins",
+      "rect": [
+        16,
+        11,
+        1,
+        1
+      ]
+    },
+    "coffin": {
+      "sheet": "ruins",
+      "rect": [
+        22,
+        2,
+        1,
+        2
+      ]
+    },
+    "bones": {
+      "sheet": "ruins",
+      "rect": [
+        23,
+        2,
+        1,
+        1
+      ],
+      "flat": true
+    },
+    "armor_suit": {
+      "sheet": "ruins",
+      "rect": [
+        22,
+        4,
+        1,
+        2
+      ]
+    },
+    "bed_skeleton": {
+      "sheet": "ruins",
+      "rect": [
+        23,
+        7,
+        1,
+        2
+      ]
+    },
+    "tombstone_large": {
+      "sheet": "ruins",
+      "rect": [
+        20,
+        13,
+        3,
+        2
+      ]
+    },
+    "railing_gold": {
+      "sheet": "ruins",
+      "rect": [
+        17,
+        13,
+        3,
+        2
+      ]
+    },
+    "pillars_gold": {
+      "sheet": "ruins",
+      "rect": [
+        15,
+        13,
+        1,
+        2
+      ]
+    },
+    "rock_tall": {
+      "sheet": "ruins",
+      "rect": [
+        13,
+        5,
+        1,
+        2
+      ]
+    },
+    "boulder_dark": {
+      "sheet": "ruins",
+      "rect": [
+        12,
+        9,
+        1,
+        1
+      ]
+    },
+    "ruin_brick": {
+      "sheet": "terrain",
+      "rect": [
+        19,
+        23,
+        3,
+        3
+      ]
+    },
+    "ruin_brick_small": {
+      "sheet": "terrain",
+      "rect": [
+        22,
+        24,
+        2,
+        2
+      ]
+    },
+    "ruin_pillars": {
+      "sheet": "terrain",
+      "rect": [
+        24,
+        23,
+        2,
+        3
+      ]
+    },
+    "menhir": {
+      "sheet": "terrain",
+      "rect": [
+        31,
+        21,
+        1,
+        2
+      ]
+    },
+    "boulder_big": {
+      "sheet": "terrain",
+      "rect": [
+        27,
+        23,
+        2,
+        2
+      ]
+    },
+    "rock_tan": {
+      "sheet": "terrain",
+      "rect": [
+        26,
+        21,
+        2,
+        2
+      ]
+    },
+    "rock_tan_flat": {
+      "sheet": "terrain",
+      "rect": [
+        28,
+        21,
+        2,
+        2
+      ]
+    },
+    "stone_head": {
+      "sheet": "terrain",
+      "rect": [
+        15,
+        12,
+        2,
+        3
+      ]
+    },
+    "pillar_stone": {
+      "sheet": "terrain",
+      "rect": [
+        14,
+        12,
+        1,
+        3
+      ]
+    },
+    "pillar_vines": {
+      "sheet": "terrain",
+      "rect": [
+        20,
+        12,
+        1,
+        3
+      ]
+    },
+    "cactus": {
+      "sheet": "terrain",
+      "rect": [
+        11,
+        14,
+        2,
+        2
+      ]
+    },
+    "corn": {
+      "sheet": "terrain",
+      "rect": [
+        15,
+        28,
+        1,
+        3
+      ]
+    },
+    "bridge_arched": {
+      "sheet": "terrain",
+      "rect": [
+        13,
+        16,
+        3,
+        2
+      ]
+    },
+    "bridge_rail": {
+      "sheet": "terrain",
+      "rect": [
+        16,
+        16,
+        3,
+        3
+      ]
+    },
+    "stove_pipe": {
+      "sheet": "out",
+      "rect": [
+        20,
+        12,
+        1,
+        4
+      ]
+    },
+    "sink_pump": {
+      "sheet": "out",
+      "rect": [
+        18,
+        12,
+        1,
+        2
+      ]
+    },
+    "pine_snow": {
+      "sheet": "winter_b",
+      "rect": [
+        0,
+        0,
+        3,
+        4
+      ]
+    },
+    "pine_snow_wide": {
+      "sheet": "winter_b",
+      "rect": [
+        3,
+        0,
+        3,
+        4
+      ]
+    },
+    "pine_snow_small": {
+      "sheet": "winter_b",
+      "rect": [
+        0,
+        5,
+        2,
+        2
+      ]
+    },
+    "fountain_blue": {
+      "sheet": "dcss:dungeon/blue_fountain.png"
+    },
+    "fountain_sparkling": {
+      "sheet": "dcss:dungeon/sparkling_fountain.png"
+    },
+    "fountain_blood": {
+      "sheet": "dcss:dungeon/blood_fountain.png"
+    },
+    "fountain_dry": {
+      "sheet": "dcss:dungeon/dry_fountain.png"
+    },
+    "sarcophagus": {
+      "sheet": "dcss:dungeon/vaults/sarcophagus_sealed.png"
+    },
+    "sarcophagus_open": {
+      "sheet": "dcss:dungeon/sarcophagus_open.png"
+    },
+    "chest_iron": {
+      "sheet": "dcss:dungeon/chest_2_closed.png"
+    },
+    "chest_iron_open": {
+      "sheet": "dcss:dungeon/chest_2_open.png"
+    },
+    "crate_large": {
+      "sheet": "dcss:dungeon/large_box.png"
+    },
+    "statue_wraith": {
+      "sheet": "dcss:dungeon/statues/statue_wraith.png"
+    },
+    "statue_naga": {
+      "sheet": "dcss:dungeon/statues/statue_naga.png"
+    },
+    "statue_mermaid": {
+      "sheet": "dcss:dungeon/statues/statue_mermaid.png"
+    },
+    "statue_centaur": {
+      "sheet": "dcss:dungeon/statues/statue_centaur.png"
+    },
+    "statue_archer": {
+      "sheet": "dcss:dungeon/statues/statue_archer.png"
+    },
+    "statue_sword": {
+      "sheet": "dcss:dungeon/statues/statue_sword.png"
+    },
+    "statue_orb": {
+      "sheet": "dcss:dungeon/statues/statue_orb.png"
+    },
+    "statue_princess": {
+      "sheet": "dcss:dungeon/statues/statue_princess.png"
+    },
+    "statue_twins": {
+      "sheet": "dcss:dungeon/statues/statue_twins.png"
+    },
+    "statue_cat": {
+      "sheet": "dcss:dungeon/statues/statue_cat.png"
+    },
+    "statue_dwarf": {
+      "sheet": "dcss:dungeon/statues/statue_dwarf.png"
+    },
+    "statue_imp": {
+      "sheet": "dcss:dungeon/statues/statue_imp.png"
+    },
+    "statue_hydra": {
+      "sheet": "dcss:dungeon/statues/statue_hydra.png"
+    },
+    "statue_golden": {
+      "sheet": "dcss:dungeon/vaults/golden_statue_1.png"
+    },
+    "statue_golden_shield": {
+      "sheet": "dcss:dungeon/vaults/golden_statue_2.png"
+    },
+    "statue_iron_golem": {
+      "sheet": "dcss:dungeon/vaults/statue_iron_golem.png"
+    },
+    "altar_skulls": {
+      "sheet": "dcss:dungeon/altars/altar_kikubaaqudgha.png"
+    },
+    "altar_flames": {
+      "sheet": "dcss:dungeon/altars/altar_makhleb_flame_1.png"
+    },
+    "altar_sword": {
+      "sheet": "dcss:dungeon/altars/altar_okawaru.png"
+    },
+    "altar_gold": {
+      "sheet": "dcss:dungeon/altars/altar_shining_one.png"
+    },
+    "altar_blue": {
+      "sheet": "dcss:dungeon/altars/altar_sif_muna.png"
+    },
+    "altar_nature": {
+      "sheet": "dcss:dungeon/altars/altar_fedhas.png"
+    },
+    "altar_void": {
+      "sheet": "dcss:dungeon/altars/altar_lugonu.png"
+    },
+    "altar_candles": {
+      "sheet": "dcss:dungeon/altars/misc_altar.png"
+    },
+    "altar_white": {
+      "sheet": "dcss:dungeon/altars/altar_zin.png"
+    },
+    "trap_pressure": {
+      "sheet": "dcss:dungeon/traps/pressure_plate.png",
+      "flat": true
+    },
+    "trap_spikes": {
+      "sheet": "dcss:dungeon/traps/trap_spear.png",
+      "flat": true
+    },
+    "trap_arrows": {
+      "sheet": "dcss:dungeon/traps/trap_arrow.png",
+      "flat": true
+    },
+    "trap_blades": {
+      "sheet": "dcss:dungeon/traps/trap_blade.png",
+      "flat": true
+    },
+    "trap_net": {
+      "sheet": "dcss:dungeon/traps/trap_net.png",
+      "flat": true
+    },
+    "trap_rune": {
+      "sheet": "dcss:dungeon/traps/trap_teleport.png",
+      "flat": true
+    },
+    "trap_alarm": {
+      "sheet": "dcss:dungeon/traps/trap_alarm.png",
+      "flat": true
+    },
+    "mold": {
+      "sheet": "dcss:dungeon/mold_large_1.png",
+      "flat": true
+    },
+    "grate_floor": {
+      "sheet": "dcss:dungeon/vaults/grate.png",
+      "flat": true
+    },
+    "gold_hoard": {
+      "sheet": "dcss:item/gold/gold_pile_25.png"
+    },
+    "gold_coins": {
+      "sheet": "dcss:item/gold/gold_pile_10.png",
+      "flat": true
+    },
+    "smoke": {
+      "sheet": "dcss:effect/cloud_grey_smoke.png"
+    },
+    "smoke_black": {
+      "sheet": "dcss:effect/cloud_black_smoke.png"
+    },
+    "fire_cloud": {
+      "sheet": "dcss:effect/cloud_fire_0.png"
+    },
+    "frost_cloud": {
+      "sheet": "dcss:effect/cloud_cold_0.png"
+    },
+    "poison_cloud": {
+      "sheet": "dcss:effect/cloud_meph_0.png"
+    },
+    "acid_cloud": {
+      "sheet": "dcss:effect/cloud_acid_0.png"
     }
   },
   "templates": {
@@ -1139,6 +3051,581 @@
         "back_right": "rocks",
         "front_left": "stones"
       }
+    },
+    "library": {
+      "wall": "plaster_beige",
+      "floor": "planks_dark",
+      "slots": {
+        "wall_left": "window_arched",
+        "wall_left2": "wall_clock",
+        "wall_center": "painting_king",
+        "wall_right": "window_arched",
+        "back_left": "bookshelf",
+        "back_center": "bookshelf",
+        "back_right": "bookshelf_low",
+        "mid_center": "table_desk",
+        "mid_left": "chair",
+        "front_right": "plant",
+        "front_left": "rug_stripes"
+      }
+    },
+    "smithy": {
+      "wall": "stone_dark",
+      "floor": "flagstone_dark",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "torch_wall",
+        "wall_left2": "wall_axe",
+        "wall_center": "hearth",
+        "wall_right2": "wall_shield",
+        "wall_right": "torch_wall",
+        "back_left": "weapon_rack",
+        "back_right": "stove_pot",
+        "mid_center": "anvil_stump",
+        "mid_right": "anvil",
+        "front_left": "barrel",
+        "front_right": "chopping_block"
+      }
+    },
+    "market": {
+      "wall": [
+        "brick_red",
+        "plaster"
+      ],
+      "floor": "cobble",
+      "slots": {
+        "wall_left": "window_small",
+        "wall_left2": "door_wood",
+        "wall_center": "sign_purse",
+        "wall_right2": "window_tall",
+        "wall_right": "door_plank",
+        "mid_left": "stall_blue",
+        "mid_right": "stall_brown",
+        "back_center": "barrel_pile",
+        "front_left": "crate_slats",
+        "front_right": "handcart",
+        "front_center": null
+      }
+    },
+    "graveyard": {
+      "wall": null,
+      "floor": "grass",
+      "mood": "dusk",
+      "slots": {
+        "back_left": "twisted_tree",
+        "back_center": "gravestone_double",
+        "back_right": "tombstone_round",
+        "mid_left": "tombstone",
+        "mid_center": "cross_monument",
+        "mid_right": "tombstone_cross",
+        "front_right": "tombstone_cracked",
+        "front_center": "grave_open"
+      }
+    },
+    "crypt": {
+      "wall": "crypt",
+      "floor": "brick_grey",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "torch_wall",
+        "wall_center": "door_iron",
+        "wall_right": "torch_wall",
+        "wall_left2": "banner_black",
+        "back_left": "sarcophagus",
+        "back_right": "sarcophagus",
+        "mid_center": "tomb_slab",
+        "front_left": "bones",
+        "front_right": "rubble"
+      }
+    },
+    "prison": {
+      "wall": "stone_dark",
+      "floor": "flagstone_darker",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "window_barred",
+        "wall_center": "door_iron",
+        "wall_right": "window_barred",
+        "back_left": "bed_skeleton",
+        "back_right": "guillotine",
+        "mid_center": "bones",
+        "mid_left": "pillory",
+        "front_left": "bucket",
+        "front_right": "stool"
+      }
+    },
+    "camp": {
+      "wall": null,
+      "floor": "grass",
+      "mood": "dusk",
+      "slots": {
+        "back_right": "oak",
+        "back_center": "pine",
+        "mid_center": "campfire",
+        "mid_right": "firewood",
+        "front_left": "bush",
+        "front_right": "cauldron",
+        "mid_left": "tent_small"
+      }
+    },
+    "ruins": {
+      "wall": null,
+      "floor": "grass",
+      "slots": {
+        "back_left": "ruin_brick",
+        "back_center": "statue_hooded",
+        "back_right": "ruin_pillars",
+        "mid_left": "rubble",
+        "mid_right": "boulder",
+        "front_left": "mushroom",
+        "front_right": "stones"
+      }
+    },
+    "snowfield": {
+      "wall": null,
+      "floor": "snow",
+      "mood": "snow",
+      "slots": {
+        "back_left": "pine_snow",
+        "back_center": "pine_snow_wide",
+        "back_right": "pine_snow_small",
+        "mid_right": "boulder",
+        "front_left": "signpost",
+        "front_right": "stones"
+      }
+    },
+    "desert": {
+      "wall": null,
+      "floor": "dune",
+      "slots": {
+        "back_left": "rock_tan",
+        "back_center": "cactus",
+        "back_right": "boulder_big",
+        "mid_left": "bones",
+        "mid_right": "cactus",
+        "front_left": "rocks",
+        "front_right": "stones"
+      }
+    },
+    "farm": {
+      "wall": null,
+      "floor": "wheat",
+      "rows": {
+        "0": "grass",
+        "1": "grass"
+      },
+      "slots": {
+        "back_left": "shed_open",
+        "back_right": "hay_bales",
+        "mid_left": "scarecrow",
+        "mid_right": "cart_hay",
+        "front_left": "corn",
+        "front_right": "hay_roll"
+      }
+    },
+    "ship": {
+      "wall": null,
+      "floor": "planks_dark",
+      "rows": {
+        "0": "water",
+        "1": "water"
+      },
+      "slots": {
+        "back_left": "barrel_pile",
+        "back_center": "rope_fence",
+        "back_right": "chests",
+        "mid_center": "crate_large",
+        "front_left": "bucket",
+        "front_right": "barrels_three"
+      }
+    },
+    "mine": {
+      "wall": [
+        "mine",
+        "mine_beams",
+        "mine"
+      ],
+      "floor": "cave_floor",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "lantern",
+        "wall_right": "lantern",
+        "back_left": "cart",
+        "back_center": "crystal",
+        "back_right": "crate_slats",
+        "mid_center": "handcart",
+        "front_left": "boulder_dark",
+        "front_right": "rocks"
+      }
+    },
+    "alchemist": {
+      "wall": "timber",
+      "floor": "planks_dark",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "window_square",
+        "wall_left2": "hanging_pots",
+        "wall_center": "wall_clock",
+        "wall_right": "window_arched",
+        "back_left": "bookshelf",
+        "back_center": "still",
+        "back_right": "dish_shelf",
+        "front_left": "cauldron",
+        "front_right": "barrel_tall"
+      }
+    },
+    "armory": {
+      "wall": "stone_grey",
+      "floor": "flagstone_grey",
+      "slots": {
+        "wall_left": "banner_red",
+        "wall_left2": "wall_sword",
+        "wall_center": "wall_shield",
+        "wall_right2": "wall_axe",
+        "wall_right": "banner_red",
+        "back_left": "weapon_rack",
+        "back_center": "armor_suit",
+        "back_right": "spear_rack",
+        "mid_center": "table_plank",
+        "front_left": "target_hay",
+        "front_right": "bow_rack"
+      }
+    },
+    "kitchen": {
+      "wall": "plaster",
+      "floor": "flagstone_beige",
+      "slots": {
+        "wall_left": "window_square",
+        "wall_center": "hearth",
+        "wall_right": "pots",
+        "back_left": "counter_sink",
+        "back_center": "dish_shelf",
+        "back_right": "stove_kitchen",
+        "mid_center": "table_plank",
+        "front_left": "barrel",
+        "front_right": "sacks"
+      }
+    },
+    "plaza": {
+      "wall": null,
+      "floor": "cobble_grey",
+      "slots": {
+        "back_left": "oak",
+        "back_center": "monument",
+        "back_right": "oak",
+        "mid_center": "fountain_stone",
+        "front_left": "noticeboard",
+        "front_right": "well_roofed"
+      }
+    },
+    "barn": {
+      "wall": "timber",
+      "floor": "dirt",
+      "slots": {
+        "wall_left": "window_small",
+        "wall_center": "door_wood",
+        "wall_right": "window_small",
+        "back_left": "hay_bales",
+        "back_right": "hay_roll",
+        "mid_left": "cart_hay",
+        "mid_right": "hay_trough",
+        "front_left": "hay_pile",
+        "front_right": "crate_slats"
+      }
+    },
+    "treasury": {
+      "wall": "stone_dark",
+      "floor": "flagstone_dark",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "torch_wall",
+        "wall_center": "door_iron",
+        "wall_right": "torch_wall",
+        "back_left": "chest_gold",
+        "back_center": "gold_hoard",
+        "back_right": "chest_gems",
+        "mid_left": "crystal",
+        "mid_right": "chest_pearls",
+        "front_left": "gold_coins",
+        "front_right": "statue_golden"
+      }
+    },
+    "dark_shrine": {
+      "wall": "crypt",
+      "floor": "brick_grey",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "banner_black",
+        "wall_center": "tapestry",
+        "wall_right": "banner_black",
+        "back_left": "brazier",
+        "back_center": "demon_statue",
+        "back_right": "brazier",
+        "mid_left": "altar_skulls",
+        "mid_center": "pentagram_big",
+        "mid_right": "altar_flames"
+      }
+    },
+    "sewer": {
+      "wall": "brick_dark",
+      "floor": "flagstone_dark",
+      "rows": {
+        "4": "water",
+        "5": "water"
+      },
+      "mood": "fog",
+      "slots": {
+        "wall_left": "window_barred",
+        "wall_center": "door_iron",
+        "wall_right": "window_barred",
+        "back_left": "barrel",
+        "back_right": "rubble",
+        "mid_center": "grate_floor"
+      }
+    },
+    "river": {
+      "wall": null,
+      "floor": "grass",
+      "rows": {
+        "2": "water",
+        "3": "water"
+      },
+      "slots": {
+        "back_left": "oak",
+        "back_right": "pine",
+        "mid_center": "bridge_rail",
+        "front_left": "reeds",
+        "front_right": "bush"
+      }
+    },
+    "training_yard": {
+      "wall": null,
+      "floor": "dirt",
+      "slots": {
+        "back_left": "archery_target",
+        "back_center": "rope_fence",
+        "back_right": "archery_target",
+        "mid_left": "weapon_rack",
+        "mid_right": "hay_bales",
+        "front_left": "target_hay",
+        "front_right": "bow_rack"
+      }
+    },
+    "cavern": {
+      "wall": [
+        "cave_grey",
+        "cave_grey_beams",
+        "cave_grey"
+      ],
+      "floor": "cave_floor",
+      "mood": "torchlit",
+      "slots": {
+        "back_left": "rock_tall",
+        "back_center": "crystal",
+        "back_right": "boulder_dark",
+        "mid_left": "mushrooms",
+        "mid_right": "rocks",
+        "front_left": "stones",
+        "front_right": "stump"
+      }
+    },
+    "inn_room": {
+      "wall": "floral_cream",
+      "floor": "planks",
+      "slots": {
+        "wall_left": "window_square",
+        "wall_center": "painting_flowers",
+        "wall_right": "window_square",
+        "back_left": "bed_blue",
+        "back_right": "dresser",
+        "mid_center": "rug_stripes",
+        "front_left": "chest",
+        "front_right": "plant",
+        "mid_right": "stool"
+      }
+    },
+    "bedroom": {
+      "wall": "paper_blue",
+      "floor": "parquet",
+      "slots": {
+        "wall_left": "window_arched",
+        "wall_center": "painting_king",
+        "wall_right": "window_arched",
+        "back_left": "bed",
+        "back_right": "dresser",
+        "back_center": "mirror",
+        "mid_center": "rug_red",
+        "front_left": "chair",
+        "front_right": "plant_tall"
+      }
+    },
+    "study": {
+      "wall": "paper_green_dark",
+      "floor": "planks_dark",
+      "mood": "torchlit",
+      "slots": {
+        "wall_left": "window_arched",
+        "wall_center": "fireplace",
+        "wall_right": "wall_clock",
+        "back_left": "bookshelf",
+        "back_right": "bookshelf",
+        "mid_center": "table_desk",
+        "mid_left": "chair",
+        "front_left": "plant",
+        "front_right": "table_round"
+      }
+    },
+    "throne_room": {
+      "wall": "stone_pillars_light",
+      "floor": "flagstone_cream",
+      "slots": {
+        "wall_left": "banner_blue",
+        "wall_left2": "window_arched",
+        "wall_center": "tapestry",
+        "wall_right2": "window_arched",
+        "wall_right": "banner_blue",
+        "back_center": "throne",
+        "back_left": "pillars_gold",
+        "back_right": "pillars_gold",
+        "mid_center": "rug_red",
+        "front_left": "brazier",
+        "front_right": "brazier"
+      }
+    },
+    "courtyard": {
+      "wall": "stone_pillars",
+      "floor": "cobble_grey",
+      "slots": {
+        "wall_left": "banner_red",
+        "wall_left2": "torch_wall",
+        "wall_center": "door_iron",
+        "wall_right2": "torch_wall",
+        "wall_right": "banner_red",
+        "mid_center": "fountain_stone",
+        "back_left": "statue_hooded",
+        "back_right": "statue_maiden",
+        "front_left": "weapon_rack",
+        "front_right": "barrel"
+      }
+    },
+    "mountain_pass": {
+      "wall": null,
+      "floor": "dirt_cracked",
+      "slots": {
+        "back_left": "rock_tan",
+        "back_center": "menhir",
+        "back_right": "boulder_big",
+        "mid_left": "pine",
+        "mid_right": "rocks",
+        "front_left": "stones",
+        "front_right": "bush"
+      }
+    },
+    "lava_cave": {
+      "wall": "cave_grey",
+      "floor": "cave_floor",
+      "rows": {
+        "4": "lava",
+        "5": "lava"
+      },
+      "mood": "torchlit",
+      "slots": {
+        "back_left": "boulder_dark",
+        "back_right": "rock_tall",
+        "mid_center": "bones",
+        "front_left": "smoke_black",
+        "mid_right": "stones"
+      }
+    },
+    "frozen_lake": {
+      "wall": null,
+      "floor": "ice",
+      "rows": {
+        "0": "snow",
+        "1": "snow"
+      },
+      "mood": "snow",
+      "slots": {
+        "back_left": "pine_snow",
+        "back_right": "pine_snow_wide",
+        "mid_center": "stones",
+        "front_left": "frost_cloud",
+        "front_right": "signpost"
+      }
+    },
+    "haunted_woods": {
+      "wall": null,
+      "floor": "grass",
+      "mood": "fog",
+      "slots": {
+        "back_left": "twisted_tree",
+        "back_center": "pine",
+        "mid_left": "tombstone_cracked",
+        "mid_right": "grave_cross_wood",
+        "front_left": "mushrooms",
+        "front_right": "bones"
+      }
+    },
+    "battlefield": {
+      "wall": null,
+      "floor": "dirt",
+      "mood": "dusk",
+      "slots": {
+        "back_left": "ruin_pillars",
+        "back_right": "boulder",
+        "mid_left": "bones",
+        "mid_center": "campfire_out",
+        "mid_right": "rubble",
+        "front_left": "smoke",
+        "front_right": "stones"
+      }
+    },
+    "tavern_cellar": {
+      "wall": "stone_dark_brick",
+      "floor": "flagstone_darker",
+      "mood": "torchlit",
+      "slots": {
+        "wall_center": "door_inner",
+        "wall_left": "torch_wall",
+        "wall_right": "torch_wall",
+        "back_left": "barrels_three",
+        "back_right": "barrel_pile",
+        "mid_center": "crate_slats",
+        "front_left": "sacks",
+        "front_right": "chest"
+      }
+    },
+    "guild_hall": {
+      "wall": "half_timber_stone",
+      "floor": "planks_dark",
+      "slots": {
+        "wall_left": "banner_green",
+        "wall_left2": "window_square",
+        "wall_center": "hearth",
+        "wall_right2": "window_square",
+        "wall_right": "banner_green",
+        "back_left": "noticeboard",
+        "back_right": "bookshelf",
+        "mid_center": "table_plank",
+        "mid_left": "bench_long",
+        "front_left": "weapon_rack",
+        "front_right": "barrel"
+      }
+    },
+    "stable": {
+      "wall": "plank_dark2",
+      "floor": "dirt",
+      "slots": {
+        "wall_left": "window_small",
+        "wall_center": "door_plank",
+        "wall_right": "window_small",
+        "back_left": "hay_bales",
+        "back_right": "hay_roll",
+        "mid_left": "water_trough",
+        "mid_right": "hay_trough",
+        "front_left": "bucket",
+        "front_right": "cart"
+      }
     }
   },
   "moods": [
@@ -1147,6 +3634,7 @@
     "night",
     "torchlit",
     "fog",
-    "rain"
+    "rain",
+    "snow"
   ]
 }

@@ -19,11 +19,14 @@ from pathlib import Path
 
 from PIL import Image
 
-from stage import beat, lpc
+from stage import beat, creatures, lpc
 from stage.assets import ensure_dcss
 from stage.files import read_json, write_json
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
+MONSTERS_PATH = Path(__file__).resolve().parent / "data" / "monsters.json"
+SIZES_PATH = Path(__file__).resolve().parent / "data" / "sizes.json"
+SCALES = (1, 1.5, 2, 3, 4)
 CLASS_LOOKS_PATH = Path(__file__).resolve().parent / "data" / "class_looks.json"
 RACES_PATH = Path(__file__).resolve().parent / "data" / "races.json"
 SPEC_KEYS = ("body", "skin", "eyes")
@@ -50,17 +53,39 @@ def dcss_monsters() -> dict[str, str]:
     return out
 
 
+@cache
+def monster_aliases() -> dict[str, str]:
+    """D&D names DCSS spells differently: 'owlbear' -> 'grizzly_bear' (stem) or a path with a '/'."""
+    data = json.loads(MONSTERS_PATH.read_text())
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+# Size and age words that do not change the picture: 'giant spider' looks like 'spider'.
+MODIFIERS = {"dire", "giant", "young", "adult", "ancient", "elder", "greater", "lesser", "wild"}
+
+
 @lru_cache(maxsize=512)
 def find_tile(name: str, cutoff: float = 90) -> str | None:
-    """The DCSS tile for a monster name, if one matches closely."""
+    """The tile for a monster name: an LPC animal, a DCSS alias, an exact or close DCSS match, each then without size words."""
     from rapidfuzz import fuzz, process
 
     tiles = dcss_monsters()
-    key = name.replace("-", "_")
-    if key in tiles:
-        return tiles[key]
-    best = process.extractOne(key, list(tiles), scorer=fuzz.ratio, score_cutoff=cutoff)
-    return tiles[best[0]] if best else None
+    words = name.lower().replace("_", "-").replace(" ", "-").split("-")
+    for i in range(len(words)):
+        if i and words[i - 1] not in MODIFIERS:
+            break
+        key = "-".join(words[i:])
+        if found := creatures.find(key):
+            return found
+        if key in (aliases := monster_aliases()):
+            return aliases[key] if "/" in aliases[key] else tiles[aliases[key]]
+        key = key.replace("-", "_")
+        if key in tiles:
+            return tiles[key]
+        best = process.extractOne(key, list(tiles), scorer=fuzz.ratio, score_cutoff=cutoff)
+        if best:
+            return tiles[best[0]]
+    return None
 
 
 def actors_dir(campaign_dir: Path) -> Path:
@@ -83,6 +108,12 @@ def load(campaign_dir: Path, actor_id: str) -> dict | None:
     base = actor_id.split("#")[0]
     if base in presets():
         return presets()[base]
+    # A preset kind with a size word ('young-goblin') stays an LPC figure the DM styles: no tile.
+    kind = base.lower().replace("_", "-").split("-")
+    while len(kind) > 1 and kind[0] in MODIFIERS:
+        kind.pop(0)
+    if "-".join(kind) in presets():
+        return None
     # A beast or monster LPC has no body for: a CC0 DCSS tile, if the name matches.
     try:
         tile = find_tile(base)
@@ -148,13 +179,21 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None, race: s
     spec: dict = dict(current or {})
     spec["items"] = list(spec.get("items", []))
     given: set[str] = set()
+    scale = None
     for token in tokens:
         key, eq, value = token.partition("=")
         if not eq:
             spec["items"].append(token)
             continue
         key = key.strip().lower()
-        if key == "preset":
+        if key == "scale":
+            try:
+                scale = float(value)
+            except ValueError:
+                scale = None
+            if scale not in SCALES:
+                raise lpc.ActorError(f"scale is one of {', '.join(map(str, SCALES))} (1 small, 1.5 human-sized, 2 large, 3 huge).")
+        elif key == "preset":
             if value not in presets():
                 raise lpc.ActorError(f"no preset {value!r}. Presets: {', '.join(presets())}.")
             spec = {**presets()[value], "items": list(presets()[value]["items"])}
@@ -181,12 +220,16 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None, race: s
         else:
             raise lpc.ActorError(
                 f"unknown setting {key!r}. Use name=, body=, skin=, eyes=, race=, preset=, reset=yes, "
-                "or an item such as robe:white."
+                "scale= (a monster tile), or an item such as robe:white."
             )
     spec.setdefault("name", beat.title(actor_id))
     if "tile" in spec:
         spec.pop("items", None)
+        if scale:
+            spec["scale"] = scale
         return spec
+    if scale:
+        raise lpc.ActorError("scale= only fits a monster tile (tile=...).")
     if race:
         _apply_race(spec, race, given, notes if notes is not None else [], fill=current is None or "race" in given)
     spec.setdefault("body", "male")
@@ -236,13 +279,44 @@ def set_look(campaign_dir: Path, actor_id: str, tokens: list[str], change: bool 
     return spec, warnings, saved
 
 
-def _tile_frame(spec: dict, flip: bool) -> Image.Image:
-    """A 32 px DCSS tile standing at the bottom of a 64 px frame, like an LPC sprite."""
-    tile = Image.open(ensure_dcss() / spec["tile"]).convert("RGBA")
-    if flip:
-        tile = tile.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-    frame = Image.new("RGBA", (lpc.FRAME, lpc.FRAME))
-    frame.alpha_composite(tile, ((lpc.FRAME - tile.width) // 2, lpc.FRAME - tile.height - 2))
+@cache
+def sizes() -> dict:
+    return json.loads(SIZES_PATH.read_text())
+
+
+def tile_scale(spec: dict) -> float:
+    """How much to stretch a tile: the actor's own `scale`, else by its name, else by its folder."""
+    if spec.get("scale"):
+        return spec["scale"]
+    if spec["tile"].startswith(creatures.PREFIX):
+        return creatures.scale(spec["tile"])
+    path = Path(spec["tile"])
+    table = sizes()
+    if path.stem in table["stems"]:
+        return table["stems"][path.stem]
+    if path.parts[0] != "monster":
+        return 1
+    folder = path.parts[1] if len(path.parts) > 2 else ""
+    return table["folders"].get(folder, 1)
+
+
+def _tile_frame(spec: dict, facing: str = "down", scale: float | None = None) -> Image.Image:
+    """A monster or animal stretched to its size and standing at the bottom of a frame, like an LPC sprite.
+
+    The frame is 64 px, or bigger when the figure is: the stage reads its size from the PNG.
+    """
+    scale = tile_scale(spec) if scale is None else scale
+    if spec["tile"].startswith(creatures.PREFIX):
+        tile = creatures.frame(spec["tile"], facing)
+    else:
+        tile = Image.open(ensure_dcss() / spec["tile"]).convert("RGBA")
+        if facing == "left":  # DCSS monsters look right
+            tile = tile.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    if scale != 1:
+        tile = tile.resize((round(tile.width * scale), round(tile.height * scale)), Image.Resampling.NEAREST)
+    side = max(lpc.FRAME, tile.width, tile.height)
+    frame = Image.new("RGBA", (side, side))
+    frame.alpha_composite(tile, ((side - tile.width) // 2, side - tile.height - 2))
     return frame
 
 
@@ -257,9 +331,13 @@ FACING = {"left": "right", "far-left": "right", "right": "left", "far-right": "l
 def _png(spec_json: str, kind: str, facing: str, emotion: str | None) -> bytes:
     spec = json.loads(spec_json)
     if "tile" in spec:
-        frame = _tile_frame(spec, flip=facing == "left")
-        box = frame.getbbox() or (0, 0, lpc.FRAME, lpc.FRAME)
-        img = frame.crop(box) if kind == "portrait" else frame
+        if spec["tile"].startswith(creatures.PREFIX) and facing not in ("left", "right"):
+            facing = "right"  # an animal is best seen from the side
+        if kind == "portrait":
+            frame = _tile_frame(spec, facing, scale=1)
+            img = frame.crop(frame.getbbox() or (0, 0, lpc.FRAME, lpc.FRAME))
+        else:
+            img = _tile_frame(spec, facing)
     else:
         img = lpc.portrait(spec, emotion) if kind == "portrait" else lpc.render(spec, facing, emotion)
     buf = io.BytesIO()
@@ -278,9 +356,9 @@ def png(spec: dict, kind: str, position: str | None = None, emotion: str | None 
 def preview(spec: dict, out: Path, emotion: str | None = None) -> Path:
     """Full body, side view, and portrait in one image, for the DM to check."""
     if "tile" in spec:
-        frame = _tile_frame(spec, False)
+        frame = _tile_frame(spec)
         out.parent.mkdir(parents=True, exist_ok=True)
-        frame.resize((256, 256), Image.NEAREST).save(out)
+        frame.resize((frame.width * 4, frame.height * 4), Image.NEAREST).save(out)
         return out
     parts = [lpc.render(spec, "down", emotion), lpc.render(spec, "right", emotion),
              lpc.portrait(spec, emotion).resize((64, 64), Image.NEAREST)]

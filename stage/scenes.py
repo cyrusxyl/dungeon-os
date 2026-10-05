@@ -23,6 +23,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 from stage.assets import ASSETS_DIR, ensure_dcss, ensure_tiles
+from stage.creatures import recolor
 from stage.files import read_json, write_json
 
 T = 32
@@ -68,7 +69,12 @@ def _sheet(name: str) -> Image.Image:
     if name.startswith("dcss:"):
         return Image.open(ensure_dcss() / name[5:]).convert("RGBA")
     ensure_tiles()
-    return Image.open(ASSETS_DIR / catalog()["sheets"][name]).convert("RGBA")
+    img = Image.open(ASSETS_DIR / catalog()["sheets"][name]).convert("RGBA")
+    if key := catalog().get("keys", {}).get(name):
+        # Some packs fill unused cells with one flat colour: make it clear.
+        r, g, b = key
+        img.putdata([(0, 0, 0, 0) if px == (r, g, b, 255) else px for px in img.getdata()])
+    return img
 
 
 def _crop(sheet: str, rect: list[int]) -> Image.Image:
@@ -93,8 +99,8 @@ def prop_image(name: str) -> Image.Image:
 def surface_tile(name: str, col: int, row: int) -> Image.Image:
     cat = catalog()
     if name in cat["floors"]:
-        c, r = cat["floors"][name]
-        return _crop("floors", [c + col % 2, r + row % 2, 1, 1])
+        sheet, (c, r) = _origin(cat["floors"][name], "floors")
+        return _crop(sheet, [c + col % 2, r + row % 2, 1, 1])
     ground = cat["grounds"][name]
     # Pick a variant per tile, stable for the same spot.
     pick = int(hashlib.md5(f"{name}{col},{row}".encode()).hexdigest(), 16) % len(ground["tiles"])
@@ -102,21 +108,37 @@ def surface_tile(name: str, col: int, row: int) -> Image.Image:
     return _crop(ground["sheet"], [c, r, 1, 1])
 
 
+def _origin(entry: list | dict, default_sheet: str) -> tuple[str, list[int]]:
+    """A wall or floor entry is [col, row] on the default sheet, or {"sheet": name, "at": [col, row]}.
+
+    A wall entry may add "width": 3 or 4, when the block's edge column is not a plain right edge,
+    and "recolor": {"hue", "sat", "value"} to change its colours.
+    """
+    if isinstance(entry, dict):
+        return entry["sheet"], entry["at"]
+    return default_sheet, entry
+
+
 @cache
 def _wall_width(style: str) -> int:
     """3 or 4: some wall blocks have no separate right-edge column."""
-    c, r = catalog()["walls"][style]
-    edge = _crop("walls", [c + 3, r, 1, WALL_ROWS]).getchannel("A")
+    entry = catalog()["walls"][style]
+    if isinstance(entry, dict) and "width" in entry:
+        return entry["width"]
+    sheet, (c, r) = _origin(entry, "walls")
+    edge = _crop(sheet, [c + 3, r, 1, WALL_ROWS]).getchannel("A")
     return 4 if sum(edge.getdata()) > 0.8 * 255 * edge.width * edge.height else 3
 
 
 def _wall_tile(style: str, col: int, first: int, last: int) -> Image.Image:
-    c, r = catalog()["walls"][style]
+    sheet, (c, r) = _origin(catalog()["walls"][style], "walls")
     if _wall_width(style) == 4:
         offset = 0 if col == first else 3 if col == last else 1 + (col - first) % 2
     else:
         offset = 0 if col == first else 2 if col == last else 1
-    return _crop("walls", [c + offset, r, 1, WALL_ROWS])
+    tile = _crop(sheet, [c + offset, r, 1, WALL_ROWS])
+    entry = catalog()["walls"][style]
+    return recolor(tile, **entry["recolor"]) if isinstance(entry, dict) and "recolor" in entry else tile
 
 
 def _suggest(name: str, options) -> str:
@@ -176,7 +198,7 @@ def _place(img: Image.Image, name: str, slot: str, nudge: int = 0) -> tuple[int,
     if slot in WALL_SLOTS:
         x = WALL_SLOTS[slot] - w // 2
         # Doors stand on the floor line; other wall pieces hang near the top.
-        y = WALL_ROWS * T - h if h >= 2 * T and prop.get("on") == "wall" and "door" in name else 12
+        y = WALL_ROWS * T - h if prop.get("on") == "wall" and "door" in name else 12
         return x, y
     row, col = slot.split("_")
     baseline = ZONE_BASELINE[row]
@@ -203,6 +225,15 @@ def _mood(img: Image.Image, mood: str) -> Image.Image:
             y = (i * 53) % H
             d.line((x, y, x - 4, y + 10), fill=(200, 210, 255, 90))
         rgb = Image.alpha_composite(rgb.convert("RGBA"), streaks).convert("RGB")
+    elif mood == "snow":
+        rgb = Image.blend(rgb, Image.new("RGB", rgb.size, (150, 175, 215)), 0.22)
+        flakes = Image.new("RGBA", rgb.size)
+        d = ImageDraw.Draw(flakes)
+        for i in range(70):
+            x = (i * 61) % W
+            y = (i * 47) % H
+            d.rectangle((x, y, x + 1, y + 1), fill=(255, 255, 255, 200))
+        rgb = Image.alpha_composite(rgb.convert("RGBA"), flakes).convert("RGB")
     elif mood == "fog":
         fog = Image.new("L", rgb.size)
         d = ImageDraw.Draw(fog)

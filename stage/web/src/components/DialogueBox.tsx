@@ -15,7 +15,7 @@ function Portrait({ actor, emotion, version }: { actor: string; emotion: string;
         <img
           src={`/asset/actor/${encodeURIComponent(actor)}/portrait/${emotion}.png?v=${version}`}
           alt={titleCase(actor)}
-          className="pixelated h-full w-full"
+          className="pixelated h-full w-full object-contain"
           onError={() => setFailed(true)}
         />
       )}

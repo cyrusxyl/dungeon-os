@@ -1,0 +1,534 @@
+{
+  "_comment": "LPC-style animals from OpenGameArt packs in assets/tiles (see stage/assets.py). A creature is one frame of a walk sheet: 'file' under assets/tiles, 'frame' [w, h], 'rows' maps a facing to a sheet row (a missing left or right is the other one, flipped), 'col' is the first frame of a colour block, 'recolor' shifts hue (degrees), saturation and value, 'scale' stretches the figure. 'names' are D&D names for a creature; an id is a name too, with '-' for '_'. Creature names win over DCSS monster tiles (see actors.find_tile).",
+  "creatures": {
+    "lion": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/lion.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "lioness": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/lioness.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "tiger": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/lioness.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      },
+      "recolor": {
+        "hue": -14,
+        "sat": 1.7
+      }
+    },
+    "panther": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/lioness.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      },
+      "recolor": {
+        "sat": 0.5,
+        "value": 0.3
+      }
+    },
+    "bear_grizzly": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/bear, grizzly.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "bear_black": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/bear, black.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "bear_polar": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/bear, polar.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "owlbear": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/bear, grizzly.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      },
+      "recolor": {
+        "hue": 6,
+        "sat": 0.8,
+        "value": 0.75
+      },
+      "scale": 1.5
+    },
+    "deer_buck": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/deer, dark buck.png",
+      "frame": [
+        64,
+        96
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "deer_stag": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/deer, light buck.png",
+      "frame": [
+        64,
+        96
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "deer_doe": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/deer, dark doe.png",
+      "frame": [
+        64,
+        96
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "deer_fawn": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/deer, light doe.png",
+      "frame": [
+        64,
+        96
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "right": 2,
+        "down": 3
+      }
+    },
+    "fox": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/fox, woods.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "down": 0,
+        "left": 1,
+        "right": 2,
+        "up": 3
+      }
+    },
+    "fox_arctic": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/fox, arctic.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "down": 0,
+        "left": 1,
+        "right": 2,
+        "up": 3
+      }
+    },
+    "shiba": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/dog, shiba (Sevarihk).png",
+      "frame": [
+        48,
+        48
+      ],
+      "rows": {
+        "down": 0,
+        "left": 1,
+        "right": 2,
+        "up": 3
+      }
+    },
+    "giant_rat": {
+      "file": "animals/lpc animals 2022 v1.1/individual creature spritesheets/giant rat (Sevarihk).png",
+      "frame": [
+        80,
+        64
+      ],
+      "rows": {
+        "down": 0,
+        "left": 1,
+        "right": 2,
+        "up": 3
+      }
+    },
+    "horse": {
+      "file": "horses/PNG/64x64/horse-brown.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "right": 1,
+        "down": 2,
+        "left": 3
+      }
+    },
+    "horse_white": {
+      "file": "horses/PNG/64x85/horse-white.png",
+      "frame": [
+        64,
+        85
+      ],
+      "rows": {
+        "up": 0,
+        "right": 1,
+        "down": 2,
+        "left": 3
+      }
+    },
+    "nightmare": {
+      "file": "horses/PNG/64x64/horse-brown.png",
+      "frame": [
+        64,
+        64
+      ],
+      "rows": {
+        "up": 0,
+        "right": 1,
+        "down": 2,
+        "left": 3
+      },
+      "recolor": {
+        "sat": 0.4,
+        "value": 0.22
+      },
+      "scale": 1.25
+    },
+    "unicorn": {
+      "file": "horses/PNG/64x85/unicorn.png",
+      "frame": [
+        64,
+        85
+      ],
+      "rows": {
+        "up": 0,
+        "right": 1,
+        "down": 2,
+        "left": 3
+      }
+    },
+    "pegasus": {
+      "file": "pets/pegasus.png",
+      "frame": [
+        64,
+        85
+      ],
+      "rows": {
+        "up": 0,
+        "right": 1,
+        "down": 2
+      }
+    },
+    "cat_white": {
+      "file": "pets/cat_0.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 0
+    },
+    "cat_orange": {
+      "file": "pets/cat_0.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 4
+    },
+    "cat_brown": {
+      "file": "pets/cat_0.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 8
+    },
+    "cat_black": {
+      "file": "pets/cat_0.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 12
+    },
+    "dog_white": {
+      "file": "pets/dog_2.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 0,
+      "scale": 1.5
+    },
+    "dog_brown": {
+      "file": "pets/dog_2.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 4,
+      "scale": 1.5
+    },
+    "dog_tan": {
+      "file": "pets/dog_2.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 8,
+      "scale": 1.5
+    },
+    "dog_black": {
+      "file": "pets/dog_2.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "right": 0,
+        "up": 1,
+        "down": 2,
+        "left": 3
+      },
+      "col": 12,
+      "scale": 1.5
+    },
+    "cow": {
+      "file": "pets/cow_walk.png",
+      "frame": [
+        128,
+        128
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "down": 2,
+        "right": 3
+      }
+    },
+    "pig": {
+      "file": "pets/pig_walk.png",
+      "frame": [
+        128,
+        128
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "down": 2,
+        "right": 3
+      }
+    },
+    "sheep": {
+      "file": "pets/sheep_walk.png",
+      "frame": [
+        128,
+        128
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "down": 2,
+        "right": 3
+      }
+    },
+    "llama": {
+      "file": "pets/llama_walk_0.png",
+      "frame": [
+        128,
+        128
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "down": 2,
+        "right": 3
+      }
+    },
+    "chicken": {
+      "file": "pets/chicken_walk.png",
+      "frame": [
+        32,
+        32
+      ],
+      "rows": {
+        "up": 0,
+        "left": 1,
+        "down": 2,
+        "right": 3
+      }
+    }
+  },
+  "names": {
+    "bear": "bear_grizzly",
+    "brown-bear": "bear_grizzly",
+    "grizzly-bear": "bear_grizzly",
+    "grizzly": "bear_grizzly",
+    "black-bear": "bear_black",
+    "polar-bear": "bear_polar",
+    "cave-bear": "bear_grizzly",
+    "deer": "deer_buck",
+    "stag": "deer_stag",
+    "buck": "deer_buck",
+    "doe": "deer_doe",
+    "elk": "deer_stag",
+    "fawn": "deer_fawn",
+    "arctic-fox": "fox_arctic",
+    "dog": "dog_brown",
+    "mastiff": "dog_black",
+    "guard-dog": "dog_black",
+    "hunting-dog": "dog_tan",
+    "puppy": "dog_white",
+    "white-dog": "dog_white",
+    "cat": "cat_orange",
+    "house-cat": "cat_white",
+    "white-cat": "cat_white",
+    "black-cat": "cat_black",
+    "orange-cat": "cat_orange",
+    "brown-cat": "cat_brown",
+    "kitten": "cat_white",
+    "familiar-cat": "cat_black",
+    "dire-rat": "giant_rat",
+    "rat-giant": "giant_rat",
+    "warhorse": "horse",
+    "riding-horse": "horse",
+    "draft-horse": "horse",
+    "pony": "horse",
+    "mule": "horse",
+    "steed": "horse",
+    "white-horse": "horse_white",
+    "black-horse": "nightmare",
+    "bull": "cow",
+    "ox": "cow",
+    "calf": "cow",
+    "goat": "sheep",
+    "ram": "sheep",
+    "lamb": "sheep",
+    "alpaca": "llama",
+    "hen": "chicken",
+    "rooster": "chicken",
+    "cockerel": "chicken",
+    "leopard": "tiger",
+    "big-cat": "lioness",
+    "jaguar": "panther",
+    "black-panther": "panther",
+    "mountain-lion": "lioness",
+    "cougar": "lioness",
+    "puma": "lioness"
+  }
+}

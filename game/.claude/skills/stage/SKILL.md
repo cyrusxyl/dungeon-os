@@ -67,8 +67,8 @@ uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin
   The `child` body fits only a few items. Use `teen` for small folk.
 - A saved look is final. `actor set` on an id that has a look does nothing and prints the saved look. Add `--change` only when the story changes the look (a disguise, a wound, new armor); it changes only the pieces you give. Never change a player character's look unless that player asks.
 - A warning "has no sprite for body ..." means the item will not show on that body. Pick an item the warning says fits.
-- Unnamed monsters need nothing: `goblin#1` and `goblin#2` use the `goblin` preset. A beast with no preset (`wolf#1`, `rat#2`) finds a matching monster tile by its name.
-- For a beast or monster LPC has no body for, use a monster tile: `uv run dnd-cli actor set the-beast name=The_Beast tile=bear`. The command prints the tile it picked.
+- Unnamed monsters need nothing: `goblin#1` and `goblin#2` use the `goblin` preset. A beast with no preset (`wolf#1`, `rat#2`) finds a matching monster tile by its name. Animals have LPC art: `horse`, `unicorn`, `pegasus`, `nightmare`, `lion`, `tiger`, `panther`, `bear`, `owlbear`, `deer`, `fox`, `dog`, `cat`, `black-cat`, `cow`, `pig`, `sheep`, `llama`, `chicken`, `giant-rat`. Common D&D names work (`owlbear`, `giant-spider`, `mimic`, `beholder`, `gelatinous-cube`); size words such as `dire` and `young` are ignored.
+- For a beast or monster LPC has no body for, use a monster tile: `uv run dnd-cli actor set the-beast name=The_Beast tile=bear`. The command prints the tile it picked. A monster tile is drawn at its size: small things small, an ogre larger than a person, a dragon or giant huge. If the size looks wrong for your story, add `scale=1`, `1.5`, `2` or `3` to the same command (`scale=3 tile=ogre` makes a giant).
 - Look from the players' side: a disguised NPC wears the disguise. Use what the players can see, never the secret.
 - To check a look: `uv run dnd-cli actor preview <id>` writes a PNG you can read. Use it once for an important character, not every turn.
 - Player characters need a look too. If a character file has none, make one from the sheet (race, class, gear), and ask the player in a beat if a detail matters to them.
@@ -81,10 +81,14 @@ Each location shows as a room or outdoor place built from LPC tiles. Places are 
 uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center=bust +plant@front_left
 ```
 
-- `template=` sets the whole place: `chapel`, `temple`, `tavern`, `shop`, `house`, `hall`, `cellar`, `dungeon`, `cave`, `street`, `dock`, `forest`, `road`, `swamp`, `beach`. Pick the closest one.
+- `template=` sets the whole place. Pick the closest one:
+  - Rooms: `chapel`, `temple`, `tavern`, `shop`, `house`, `hall`, `throne_room`, `inn_room`, `bedroom`, `study`, `library`, `kitchen`, `smithy`, `alchemist`, `armory`, `guild_hall`, `barn`, `stable`, `ship`.
+  - Towns: `street`, `market`, `plaza`, `courtyard`, `dock`, `graveyard`.
+  - Wild: `forest`, `road`, `swamp`, `beach`, `river`, `camp`, `ruins`, `farm`, `desert`, `snowfield`, `frozen_lake`, `mountain_pass`, `haunted_woods`, `battlefield`, `training_yard`.
+  - Underground: `cellar`, `tavern_cellar`, `dungeon`, `prison`, `crypt`, `treasury`, `dark_shrine`, `sewer`, `cavern` (natural rock; use it, not `cave`), `mine`, `lava_cave`.
 - Change it only where the story needs it:
   - `wall=` and `floor=` change the materials (`wall=brick_red`, `floor=planks_dark`).
-  - `mood=` sets the light: `day`, `dusk`, `night`, `torchlit`, `fog`, `rain`.
+  - `mood=` sets the light: `day`, `dusk`, `night`, `torchlit`, `fog`, `rain`, `snow`.
   - `<slot>=<prop>` replaces what stands in a slot, and `<slot>=none` empties it. Wall slots: `wall_left`, `wall_left2`, `wall_center`, `wall_right2`, `wall_right`. Floor slots: `back_left` … `front_right` (back, mid, front × left, center, right).
   - `+<prop>@<zone>` adds an extra prop in a floor zone; the composer finds the spot. `clear=add` removes the extras.
 - Lists of templates, walls, floors, props and moods: `uv run dnd-cli scene options` (or `scene options props`).
@@ -120,7 +124,7 @@ A site is a generated floor plan that the players walk through by themselves. Yo
 uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=medium danger=low poi=dragon-altar@far poi=goblin-camp@mid:goblin poi=old-well@near:fountain
 ```
 
-- `theme=`: `dungeon` `crypt` `castle` `sewer` `temple` `cave` (dungeons), `house` `tavern` `manor` (buildings). `size=`: `small` `medium` `large`. `danger=`: `none` `low` `mid` `high` (the chance of a wandering encounter in each new area).
+- `theme=`: `dungeon` `crypt` `castle` `sewer` `temple` `cave` `tomb` `palace` `mine` `lair` `ice_cave` `volcano` `hive` `crystal` `overgrown` `hell` (dungeons), `house` `tavern` `manor` `tower` (buildings). `size=`: `small` `medium` `large`. `danger=`: `none` `low` `mid` `high` (the chance of a wandering encounter in each new area).
 - `poi=<id>@<where>[:<icon>]`. `where` is the walking distance from the entrance: `entrance` `near` `mid` `far` `any`. `icon` is an object (`altar` `chest` `stairs-down` `statue` `coffin` `trap` `treasure` ...) or an actor kind (`goblin`, `skeleton`, an actor id): the players see that sprite. List: `uv run dnd-cli site options`.
 - A POI shows only when the players see it. Never put a secret in its id: they read the id as its name.
 - A saved site is final. `site set <id> --change poi=...` adds POIs where the players have not looked yet; it can also change `name=` and `danger=`.

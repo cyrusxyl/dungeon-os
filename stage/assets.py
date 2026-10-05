@@ -9,7 +9,8 @@ credits file next to it (LPC art is CC-BY-SA / GPL / OGA-BY; see those files).
   depends on it). Only the walk sheets are fetched (~45 MB): frame 0 of a walk
   row is the standing pose the stage uses.
 - `assets/tiles/` — LPC tile packs from OpenGameArt (walls, floors, city
-  interior, base exterior and terrain atlases), for rooms and streets.
+  interior, base exterior and terrain atlases, house interior, medieval
+  decorations, cavern and ruins, winter tiles), for rooms, streets and camps.
 - `assets/dcss/` — the CC0 Dungeon Crawl Stone Soup tiles (Snowdrama's
   bundle), for beasts and monsters LPC has no body for.
 """
@@ -65,17 +66,46 @@ def ensure_lpc() -> Path:
 
 TILES_DIR = ASSETS_DIR / "tiles"
 OGA = "https://opengameart.org/sites/default/files/"
-# folder -> (archive, the file in it that proves it is unpacked)
+# folder -> (archive, the file in it that proves it is unpacked). A list of
+# PNG names instead of an archive downloads each PNG into the folder, and
+# CREDITS writes the credit line that the PNGs do not carry.
 TILE_PACKS = {
     "walls": ("lpc-walls.zip", "lpc-walls/walls.png"),
     "floors": ("lpc-floors.zip", "lpc-floors/floors.png"),
     "city_inside": ("LPC_city_inside.zip", "LPC_city_inside/city_inside.png"),
     "atlas": ("Atlas_0.zip", "base_out_atlas.png"),
+    "interior": ("LPC_house_interior_0.zip", "LPC_house_interior/interior.png"),
+    "decor": ("decoration_medieval.zip", "decoration_medieval/decorations-medieval.png"),
+    "ruins": ("LPC_cavern_ruins.zip", "LPC_cavern_ruins/cavern_ruins.png"),
+    "winter": (["TilesA2.png", "TilesB.png"], "TilesB.png"),
+    "animals": ("lpc_animals_2022_v1.1.zip", "lpc animals 2022 v1.1/individual creature spritesheets/lion.png"),
+    "horses": ("horse-1.1.zip", "PNG/64x64/horse-brown.png"),
+    "pets": (["cat_0.png", "dog_2.png", "chicken_walk.png", "cow_walk.png", "llama_walk_0.png", "pig_walk.png",
+              "sheep_walk.png", "pegasus.png", "unicorn_0.png"], "unicorn_0.png"),
+}
+CREDITS = {
+    "winter": "LPC Winter Tiles by Demetrius, https://opengameart.org/content/lpc-winter-tiles\n"
+              "Based on LPC Modified Base tiles by Lanea Zimmerman. Licenses: CC-BY 3.0, OGA-BY 3.0, GPL 3.0, CC-BY-SA 3.0.\n",
+    "animals": "[LPC] bears, deer, lions and more, https://opengameart.org/content/lpc-bears-deer-lions-and-more\n"
+               "License: CC-BY 4.0. Adapted from work by Sevarihk (shiba dog, shark, giant rat, mushroom walker) under CC-BY 4.0.\n",
+    "horses": "[LPC] Horses by bluecarrot16, reworked by Jordan Irwin (AntumDeluge), https://opengameart.org/content/lpc-horses-rework\n"
+              "Licenses: CC-BY 3.0, CC-BY-SA 3.0, GPL 3.0, GPL 2.0, OGA-BY 3.0.\n",
+    "pets": "[LPC] Cats and Dogs by bluecarrot16, https://opengameart.org/content/lpc-cats-and-dogs (CC-BY 3.0, GPL 3.0, GPL 2.0, OGA-BY 3.0).\n"
+            "LPC style farm animals (chicken, cow, llama, pig, sheep), https://opengameart.org/content/lpc-style-farm-animals (CC-BY 3.0, GPL 2.0).\n"
+            "Pegasus and unicorn from LPC Horses Rework, https://opengameart.org/content/lpc-horses-rework (CC-BY 3.0, CC-BY-SA 3.0).\n",
 }
 
 DCSS_DIR = ASSETS_DIR / "dcss"
 DCSS_REPO = "https://github.com/Snowdrama/CC0-Dungeon-Pack.git"
 DCSS_COMMIT = "ce84ee3930ae2ed6449925a54cf847e754c8836e"
+
+
+def _download(name: str) -> bytes:
+    try:
+        with urllib.request.urlopen(OGA + name, timeout=60) as resp:
+            return resp.read()
+    except OSError as e:
+        raise AssetError(f"Could not fetch {OGA + name}: {e}. Check the network and start again.") from e
 
 
 def ensure_tiles() -> Path:
@@ -84,15 +114,19 @@ def ensure_tiles() -> Path:
         dest = TILES_DIR / folder
         if (dest / marker).exists():
             continue
-        print(f"dungeon-os: fetching LPC tiles: {archive}…", file=sys.stderr)
-        try:
-            with urllib.request.urlopen(OGA + archive, timeout=60) as resp:
-                data = resp.read()
-            dest.mkdir(parents=True, exist_ok=True)
-            with zipfile.ZipFile(io.BytesIO(data)) as z:
-                z.extractall(dest, [n for n in z.namelist() if not n.startswith("__MACOSX")])
-        except (OSError, zipfile.BadZipFile) as e:
-            raise AssetError(f"Could not fetch {OGA + archive}: {e}. Check the network and start again.") from e
+        print(f"dungeon-os: fetching LPC tiles: {folder}…", file=sys.stderr)
+        dest.mkdir(parents=True, exist_ok=True)
+        if isinstance(archive, list):
+            for name in archive:
+                (dest / name).write_bytes(_download(name))
+        else:
+            try:
+                with zipfile.ZipFile(io.BytesIO(_download(archive))) as z:
+                    z.extractall(dest, [n for n in z.namelist() if not n.startswith("__MACOSX")])
+            except zipfile.BadZipFile as e:
+                raise AssetError(f"Could not unpack {OGA + archive}: {e}. Check the network and start again.") from e
+        if folder in CREDITS:
+            (dest / "CREDITS.txt").write_text(CREDITS[folder])
     return TILES_DIR
 
 
@@ -100,12 +134,4 @@ def ensure_dcss() -> Path:
     """Return the CC0 DCSS tiles, cloning them on first use (~35 MB)."""
     if not (DCSS_DIR / "monster").is_dir():
         _clone_pinned(DCSS_DIR, DCSS_REPO, DCSS_COMMIT, "CC0 Dungeon Crawl tiles (~35 MB)")
-    return DCSS_DIR
-    print("dungeon-os: fetching CC0 monster tiles (first run only, ~35 MB)…", file=sys.stderr)
-    try:
-        if not (DCSS_DIR / ".git").is_dir():
-            _git("clone", "--quiet", "--no-checkout", DCSS_REPO, str(DCSS_DIR))
-        _git("checkout", "--quiet", DCSS_COMMIT, cwd=DCSS_DIR)
-    except (AssetError, OSError) as e:
-        raise AssetError(f"Could not fetch the DCSS tiles into {DCSS_DIR}: {e}. Delete it and start again.") from e
     return DCSS_DIR

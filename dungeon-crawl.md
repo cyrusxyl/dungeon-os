@@ -84,7 +84,7 @@ uv run dnd-cli site show sunless-citadel
 uv run dnd-cli site preview sunless-citadel
 ```
 
-- `theme=` sets the tiles and the generator: `dungeon`, `crypt`, `cave`, `sewer`, `temple`, `castle`, `house`, `tavern`, `manor`.
+- `theme=` sets the tiles and the generator: `dungeon`, `crypt`, `cave`, `sewer`, `temple`, `castle`, `tomb` (desert), `palace` (marble), `mine`, `lair` (beast den), `ice_cave`, `volcano`, `hive` (insect nest), `crystal`, `overgrown` (ruin with vines), `hell`, `house`, `tavern`, `manor`, `tower` (wizard's tower).
 - `size=` is `small`, `medium` or `large`.
 - `danger=` is the wandering-encounter chance when the party enters an area for the first time: `none`, `low` (1 in 8), `mid` (1 in 5), `high` (1 in 3). The default is `low` for dungeon themes and `none` for building themes.
 - `poi=<id>@<where>[:<icon>]` places a point of interest.

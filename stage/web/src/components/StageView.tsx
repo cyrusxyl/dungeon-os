@@ -24,6 +24,32 @@ function Img({ src, fallback, className }: { src: string; fallback: React.ReactN
   return <img src={src} alt="" draggable={false} className={`pixelated ${className ?? ''}`} onError={() => setFailed(true)} />
 }
 
+// A big monster's PNG is bigger than the 64 px frame: draw it at its own size, centered on its slot, feet on the floor line.
+function ActorSprite({ id, src, x, lift, filter }: { id: string; src: string; x: number; lift: number; filter: string }) {
+  const [size, setSize] = useState(FRAME)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [src])
+  return (
+    <div
+      className="absolute transition-[left] duration-300"
+      style={{ left: Math.max(0, Math.min(STAGE_W - size, x - (size - FRAME) / 2)), top: FLOOR_Y + FRAME - size - lift, width: size, height: size, filter }}
+    >
+      {failed ? (
+        <Silhouette id={id} />
+      ) : (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          className="pixelated h-full w-full"
+          onLoad={(e) => setSize(Math.max(FRAME, e.currentTarget.naturalWidth))}
+          onError={() => setFailed(true)}
+        />
+      )}
+    </div>
+  )
+}
+
 function Silhouette({ id }: { id: string }) {
   // Shown until an actor has an appearance: a plain figure shape, never a guess.
   return (
@@ -44,6 +70,7 @@ const MOOD_FILTER: Record<string, string> = {
   torchlit: 'brightness(0.8) sepia(0.25)',
   fog: 'contrast(0.85) brightness(1.05) saturate(0.8)',
   rain: 'brightness(0.75) saturate(0.8)',
+  snow: 'brightness(1.03) saturate(0.85)',
 }
 
 function useMood(scene: string | null, version: number): string {
@@ -80,13 +107,14 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
           const x = SLOT_X[actor.position] ?? SLOT_X.center
           const talking = id === speaker
           return (
-            <div
+            <ActorSprite
               key={id}
-              className="absolute transition-[left] duration-300"
-              style={{ left: x, top: FLOOR_Y - (talking ? 2 : 0), width: FRAME, height: FRAME, filter: MOOD_FILTER[mood] ?? 'none' }}
-            >
-              <Img src={`/asset/actor/${encodeURIComponent(id)}/full.png?f=${actor.position}&v=${state.versions?.[id] ?? 0}`} fallback={<Silhouette id={id} />} className="h-full w-full" />
-            </div>
+              id={id}
+              src={`/asset/actor/${encodeURIComponent(id)}/full.png?f=${actor.position}&v=${state.versions?.[id] ?? 0}`}
+              x={x}
+              lift={talking ? 2 : 0}
+              filter={MOOD_FILTER[mood] ?? 'none'}
+            />
           )
         })}
         {!scene && Object.keys(state.actors).length === 0 &&

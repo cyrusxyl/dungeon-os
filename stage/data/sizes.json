@@ -1,0 +1,37 @@
+{
+  "_comment": "How big a DCSS monster tile is drawn next to a 52 px LPC person: 1 small, 1.5 human-sized, 2 large, 3 huge. A tile is 32 px; the scale is a nearest-neighbour stretch. 'folders' gives the default for a folder under monster/ ('' is the top level); 'stems' overrides one tile by name. A tile in neither is drawn at 1. An actor file may carry its own 'scale'.",
+  "folders": {
+    "": 1.5, "aberration": 1.5, "abyss": 1.5, "demons": 1.5, "draconic": 1.5, "dragons": 3, "eyes": 1.5,
+    "holy": 1.5, "nonliving": 1.5, "panlord": 1.5, "undead": 1.5, "unique": 1.5, "vault": 1.5
+  },
+  "stems": {
+    "goblin": 1, "kobold": 1, "kobold_demonologist": 1, "halfling": 1, "gnome": 1, "dwarf": 1, "boggart": 1,
+    "imp": 1, "quasit": 1, "shadow_imp": 1, "white_imp": 1, "iron_imp": 1, "midge": 1, "ufetubus": 1, "cherub": 1,
+    "flying_skull": 1, "curse_skull": 1, "crawling_corpse": 1, "macabre_mass": 1, "unborn": 1, "skeleton_fish": 1,
+    "ogre": 2, "ogre_mage": 2, "two_headed_ogre": 2, "ettin": 2, "cyclops": 2, "troll": 2, "rock_troll": 2,
+    "deep_troll": 2, "deep_troll_berserker": 2, "deep_troll_earth_mage": 2, "deep_troll_shaman": 2, "iron_troll": 2,
+    "moon_troll": 2, "minotaur": 2, "juggernaut": 2, "hydrataur": 2, "mutant_beast": 2, "giant_amoeba": 2, "phoenix": 2,
+    "centaur": 2, "centaur_warrior": 2, "yaktaur": 2, "yaktaur_captain": 2, "manticore": 2, "griffon": 2,
+    "hippogriff": 2, "sphinx": 2, "fire_drake": 2, "forest_drake": 2, "swamp_drake": 2, "death_drake": 2,
+    "naga": 2, "greater_naga": 2, "guardian_naga": 2, "naga_mage": 2, "naga_ritualist": 2, "naga_sharpshooter": 2, "naga_warrior": 2,
+    "hill_giant": 3, "fire_giant": 3, "frost_giant": 3, "stone_giant": 3, "titan": 3, "lindwurm": 3,
+    "bear": 2, "black_bear": 2, "grizzly_bear": 2, "polar_bear": 2, "elephant": 2, "elephant_dire": 2, "elephant_demonic": 2,
+    "yak": 2, "death_yak": 2, "crocodile": 2, "alligator": 2, "anaconda": 2, "komodo_dragon": 2, "catoblepas": 2,
+    "spider": 2, "emperor_scorpion": 2, "ice_beast": 2, "hog": 1.5, "war_dog": 1.5, "warg": 1.5, "wolf": 1.5,
+    "hell_hound": 1.5, "hound": 1.5, "wolf_spider": 1.5, "giant_beetle": 1.5, "boulder_beetle": 1.5, "queen_ant": 1.5,
+    "basilisk": 1.5, "raiju": 1.5, "lava_worm": 1.5, "rock_worm": 1.5, "shock_serpent": 1.5, "salamander": 1.5,
+    "alligator_snapping_turtle": 1.5, "snapping_turtle": 1,
+    "shark": 2, "kraken_head": 3, "electric_eel": 1.5,
+    "stone_golem": 2, "clay_golem": 2, "flesh_golem": 2, "iron_golem": 2, "wood_golem": 2, "crystal_golem": 2,
+    "electric_golem": 2, "guardian_golem": 2, "toenail_golem": 2, "metal_gargoyle": 2,
+    "earth_elemental": 2, "fire_elemental": 2, "water_elemental": 2, "air_elemental": 2, "iron_elemental": 2,
+    "balrug": 2, "pit_fiend": 2, "fiend": 2, "ice_fiend": 2, "ice_devil": 2, "iron_devil": 2, "executioner": 2,
+    "hell_sentinel": 2, "tentacled_monstrosity": 2, "abomination_large": 2, "blizzard_demon": 2, "soul_eater": 2,
+    "sun_demon": 2, "efreet": 2,
+    "great_orb_of_eyes": 2, "treant": 3, "rotting_hulk": 2, "zombie_ogre": 2, "zombie_drake": 2, "zombie_kraken_head": 3,
+    "skeleton_dragon": 3, "bone_dragon": 3, "skeleton_hydra_1": 2, "skeleton_quadruped_large": 2, "skeleton_naga": 2,
+    "skeleton_centaur": 2, "holy_dragon": 3, "eastern_dragon": 3, "ophan": 2, "shedu": 2, "apis": 2, "centaur_paladin": 2,
+    "tiamat": 3, "jormungandr": 3, "iron_giant": 3, "polyphemus": 3, "lernaean_hydra": 3, "antaeus": 2,
+    "wandering_mushroom": 1, "deathcap": 1, "giant_spore": 1, "plant": 1
+  }
+}
