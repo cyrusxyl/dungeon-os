@@ -1,7 +1,9 @@
 """Claude Code hook: tell the stage what state the DM is in.
 
 Registered in game/.claude/settings.json for UserPromptSubmit, Stop,
-Notification, and PostToolUse on Bash (dice rolls). The stage server sets
+Notification, PostToolUse on Bash (dice rolls), and PreToolUse on
+Bash, Write, Edit and Skill (dm_activity: what the DM does, for the
+filler screen while a world is built). The stage server sets
 DUNGEON_STAGE_LOG for the DM process; hooks inherit it. Without it (a plain `claude` session in game/, or the
 classic terminal view) this script is never even started, because the hook
 command checks the variable in the shell first.
@@ -16,6 +18,30 @@ import re
 import sys
 
 ROLL_CMD = re.compile(r"uv run roll\s+(\S+)")
+# What the DM does, as the player reads it: (pattern, label). First match wins.
+SKILLS = {
+    "worldbuilding": "Studying the art of worldbuilding",
+    "stage": "Rehearsing the stagecraft",
+    "character-creation": "Opening the rulebooks",
+}
+# Matched against the words after `dnd-cli`. `show beat` and `uv run roll` are not here: the players see them.
+CLI_LABELS = (
+    (r"session brief", "Reading the campaign notes"),
+    (r"session end", "Writing the session record"),
+    (r"canon add-villain", "Casting the villains"),
+    (r"canon add-clock", "Winding the villain clocks"),
+    (r"canon (add-|touch-)", "Pinning down the facts"),
+    (r"scene set", "Painting the scene"),
+    (r"map (place|route|reveal)", "Drawing the map"),
+    (r"actor set", "Dressing the cast"),
+    (r"site set", "Digging the dungeon"),
+    (r"character new", "Rolling up the party"),
+    (r"character level-up", "Levelling the party"),
+    (r"character show", "Reading the character sheets"),
+    (r"(quest|npc|faction)\b", "Weaving the plot threads"),
+    (r"(encounter|attack|save|check|rest)\b", "Checking the rules"),
+    (r"(get|search|list|info)\b", "Looking up the rules"),
+)
 ROLL_DICE = re.compile(r"^Rolled: (\S+): \[([^\]]*)\]")
 
 
@@ -44,6 +70,24 @@ def roll_event(data: dict) -> dict | None:
     return {"type": "roll", "expr": match.group(1), "total": totals[-1], "dice": dice}
 
 
+def activity_label(tool_name: str, tool_input: dict) -> str | None:
+    """A short line for what the DM is doing, or None for a call the players need not hear about."""
+    tool_input = tool_input or {}
+    if tool_name == "Skill":
+        return SKILLS.get(str(tool_input.get("skill", "")))
+    if tool_name in ("Write", "Edit"):
+        path = str(tool_input.get("file_path", ""))
+        if "campaigns/" not in path:
+            return None
+        return "Writing the story bible" if path.endswith("dm_story.md") else "Writing the lore"
+    if tool_name == "Bash":
+        match = re.search(r"dnd-cli\s+(\S+(?:\s+\S+)?)", str(tool_input.get("command", "")))
+        for pattern, label in CLI_LABELS:
+            if match and re.match(pattern, match.group(1)):
+                return label
+    return None
+
+
 def main() -> None:
     log = os.environ.get("DUNGEON_STAGE_LOG")
     if not log:
@@ -67,6 +111,11 @@ def main() -> None:
         if kind == "idle_prompt":
             return
         event = {"type": "dm_status", "status": "waiting", "reason": kind, "message": data.get("message", "")}
+    elif name == "PreToolUse":
+        label = activity_label(data.get("tool_name", ""), data.get("tool_input"))
+        if label is None:
+            return
+        event = {"type": "dm_activity", "text": label}
     elif name == "PostToolUse":
         event = roll_event(data)
         if event is None:

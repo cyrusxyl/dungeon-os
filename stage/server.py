@@ -8,11 +8,14 @@
   server is the only place that folds events (stage/state.py).
 - `/api/input` submits a line the player typed in the input box.
 
-Allowlist: besides `{campaign}/stage/`, this server reads only state.json and
-characters/*.json (for the party panel). Site and map files under `stage/`
-hold secrets (the whole layout, hidden places): the routes send only what the
-party has seen or been told. It never opens dm_story.md,
-canon.json, session_log.md, or world/*. The console drawer shows the DM's raw
+Allowlist: besides `{campaign}/stage/`, this server reads only state.json,
+config.json (pitch and party mode) and characters/*.json (for the party panel
+and the creator). It writes characters/, players/ and state.json (through
+`creation.register`, when the player makes a character) and stage/actors/.
+Site and map files under `stage/` hold secrets (the whole layout, hidden
+places): the routes send only what the party has seen or been told. It never
+opens dm_story.md (it only checks that the file exists), canon.json,
+session_log.md, or world/*. The console drawer shows the DM's raw
 terminal, which can include DM-only tool output; the UI keeps it closed by
 default, as the classic view shows the same terminal.
 """
@@ -38,7 +41,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from stage import actors, beat, crawl, maps, scenes, state as stage_state
+from stage import actors, beat, crawl, lpc, maps, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
 
@@ -109,6 +112,10 @@ class Stage:
         self.event_clients: set[WebSocket] = set()
         self.pty_clients: set[WebSocket] = set()
         self.loop: asyncio.AbstractEventLoop | None = None
+        self.pending: list[str] = []  # prompts for the DM, sent one at a time when it is idle
+        self.seen_ids = character_ids(campaign_dir)  # sheets that existed when the creator opened
+        # Open from the start for a new party; it stays open until the player is done (not when the first sheet lands).
+        self.opened = not self.seen_ids and self.party_mode() != "premade"
         env = {
             **os.environ,
             "TERM": "xterm-256color",
@@ -141,13 +148,48 @@ class Stage:
             self.state = stage_state.apply(self.state, event)
         return bool(events)
 
+    def party_mode(self) -> str:
+        return "premade" if (read_json(self.campaign_dir / "config.json") or {}).get("party") == "premade" else "create"
+
+    def creating(self) -> bool:
+        return self.opened
+
     def snapshot(self) -> dict:
-        return {"kind": "snapshot", "state": self.state, "campaign": self.campaign_dir.name}
+        state = {**self.state, "creating": self.creating(), "party_mode": self.party_mode()}
+        return {"kind": "snapshot", "state": state, "campaign": self.campaign_dir.name}
+
+    def open_creator(self) -> None:
+        self.opened = True
+        self.seen_ids = character_ids(self.campaign_dir)
+
+    def close_creator(self) -> None:
+        """Close the creator; queue one prompt that names the characters made since it opened."""
+        self.opened = False
+        now = character_ids(self.campaign_dir)
+        new = [i for i in now if i not in self.seen_ids]
+        if new:
+            self.pending.append(creation_done_prompt(new, joined=bool(self.seen_ids)))
+            if not self.seen_ids:
+                self.show_start_scene()
+        self.seen_ids = now
+
+    def show_start_scene(self) -> None:
+        """Put the starting scene and the new party on stage at once, before the DM writes the first beat.
+
+        The DM sets the starting scene last while it builds the world, so it is the newest scene file.
+        """
+        scenes_dir = self.campaign_dir / "stage" / "scenes"
+        newest = max(scenes_dir.glob("*.json"), key=lambda f: f.stat().st_mtime, default=None)
+        if newest is not None and self.state.get("scene") is None:
+            beat.append(self.campaign_dir, [{"type": "scene", "location": newest.stem,
+                                             "party": beat.party(self.campaign_dir)}])
 
     async def tail(self) -> None:
         while True:
             if self.fold(self.read_new_events()):
                 await self.broadcast(self.snapshot())
+            if self.pending and self.dm_ready():
+                await self.submit(self.pending.pop(0))  # busy at once: the next loop waits
             await asyncio.sleep(0.15)
 
     async def broadcast(self, message: dict) -> None:
@@ -303,14 +345,82 @@ def error(text: str, status: int = 409) -> JSONResponse:
     return JSONResponse({"error": text}, status_code=status)
 
 
-def stage_first_prompt(campaign_slug: str) -> str:
+def character_ids(campaign_dir: Path) -> list[str]:
+    return sorted(p.stem for p in (campaign_dir / "characters").glob("*.json"))
+
+
+def stage_first_prompt(campaign_dir: Path) -> str:
+    """The DM's first prompt, chosen from the files. Written for a small model: short, explicit, one paragraph."""
+    slug = campaign_dir.name
+    config = read_json(campaign_dir / "config.json") or {}
+    premade = config.get("party") == "premade"
     # Name the campaign: without it, the DM may "correct" active.json from memory.
+    pointer = f"campaigns/active.json already points at `{slug}`; do not change that file."
+    if not (campaign_dir / "dm_story.md").exists():  # exists() only: the server never reads the story bible
+        pitch = str(config.get("pitch") or "").strip()
+        text = (
+            f"Build a new world for the campaign `{slug}`. {pointer} Run `uv run dnd-cli session brief`. "
+            "Load the `worldbuilding` skill. Save the story bible (dm_story.md), the canon file with its "
+            "villains and clocks, the look of the starting scene, and the map. "
+            + (f"The player's pitch: {pitch.rstrip('.')}. " if pitch else "")
+        )
+        if premade:
+            return (
+                f"Build a new world for the campaign `{slug}`. {pointer} Run `uv run dnd-cli session brief`. "
+                "Load the `worldbuilding` skill and the `stage` skill. "
+                + (f"The player's pitch: {pitch.rstrip('.')}. " if pitch else "")
+                + "Do these steps in this order. 1: save the story bible (dm_story.md). 2: add the canon villains "
+                "and clocks (canon.json exists: do not run `canon init`). 3: set the look of the starting scene "
+                "(`scene set`) and put it on the map (`map place`). 4: make each character the pitch names: "
+                "`uv run dnd-cli character new` at level 1 (add --help), then `character level-up <id>` up to the "
+                "level the pitch implies (add --asi on an Ability Score Improvement level). The SRD has one "
+                "background (Acolyte) and no drow: use `--race elf --subrace high-elf` and a custom "
+                '`--background "<name>" --background-skills a,b` (two skills that neither the class picks nor the '
+                "race gives), and give the look with `actor set <id> race=drow ...`. 5: set each character's look "
+                "with `uv run dnd-cli actor set`. 6: open the first scene with `uv run dnd-cli show beat`. "
+                "Do not write files under world/ by hand. In the first beat the program puts the player character "
+                "on stage: write only `@scene`, narration and `@choices`. Use the second person only if the "
+                "character is the player's. Do not narrate what the player's character does or says, unless "
+                "the beat sets up a choice."
+            )
+        return text + (
+            "Set the starting scene LAST: the program shows the newest scene when the player is ready. "
+            "Then load the `stage` skill now, so that the first beat is fast. "
+            "Show no beat. Make no characters. Do not ask for a player name: the player makes characters on "
+            'the creation screen. When all is saved, end your turn with the words "World ready."'
+        )
+    if not character_ids(campaign_dir) and not premade:
+        return (
+            f"The world for the campaign `{slug}` exists. {pointer} The player is on the creation screen and "
+            "makes the characters. Show no beat. Do not ask for a player name. Do nothing and wait for the next prompt."
+        )
     return (
-        f"Start the session for the campaign `{campaign_slug}`. campaigns/active.json "
-        "already points at it; do not change that file. Begin with `uv run dnd-cli session brief`. "
+        f"Start the session for the campaign `{slug}`. {pointer} Begin with `uv run dnd-cli session brief`. "
         "The players watch the visual "
         "stage, so show every scene, narration line and NPC line with "
         "`uv run dnd-cli show beat` (load the `stage` skill first)."
+    )
+
+
+def creation_done_prompt(ids: list[str], joined: bool) -> str:
+    """The prompt after the player made characters. `joined`: the campaign already had a party."""
+    names = ", ".join(f"`{i}`" for i in ids)
+    text = (
+        f"The player made new characters: {names}. For each one run `uv run dnd-cli character show <id>`. "
+        "Do not set a look: the looks are saved. "
+    )
+    hooks = ("After the beat, add each character's `hooks` and `backstory` to the Player-Specific Hooks "
+             "in dm_story.md.")
+    if joined:
+        return text + (
+            "Each new character joins a party that has already played. Run `uv run dnd-cli character level-up <id>` "
+            "until it has the party's level (add --asi on a level that gives an Ability Score Improvement). "
+            "Bring them into the story at a fitting moment, with `uv run dnd-cli show beat` (load the `stage` skill first). "
+            + hooks
+        )
+    return text + (
+        "Then send the first beat at once with `uv run dnd-cli show beat` (the scene and the party are already "
+        "on stage; load the `stage` skill if you have not). Do not ask for a player name. " + hooks
     )
 
 
@@ -318,7 +428,54 @@ def default_command(campaign_dir: Path) -> list[str]:
     """Make the campaign active and build a fresh DM session for it."""
     from view.settings import new_dm_session
 
-    return new_dm_session(campaign_dir, stage_first_prompt(campaign_dir.name), stage=True)[1]
+    return new_dm_session(campaign_dir, stage_first_prompt(campaign_dir), stage=True)[1]
+
+
+def make_character(campaign_dir: Path, body: dict) -> dict:
+    """Build the sheet, the player file and the party entry with `creation.create`, then the story fields and the look.
+
+    Blocking (the 5e API, files): run it in a thread. Raises RulesError, or ActorError for a bad look.
+    """
+    from dnd_cli import character, creation
+    from dnd_cli.campaign import slugify
+    from dnd_cli.combat import RulesError
+    from dnd_cli.commands import rules_cmd
+
+    def text(key: str) -> str:
+        return str(body.get(key) or "").strip()
+
+    def csv(key: str) -> str:
+        value = body.get(key) or []
+        return ",".join(str(v) for v in value) if isinstance(value, list) else str(value)
+
+    name = text("name")
+    char_id = base = slugify(name)
+    if not char_id:
+        raise RulesError("Give the character a name.")
+    n = 1
+    # An NPC look with the same id would make set_look fail after the sheet is written.
+    while character.character_path(campaign_dir, char_id).exists() or (actors.actors_dir(campaign_dir) / f"{char_id}.json").exists():
+        n += 1
+        char_id = f"{base}-{n}"
+    player_name = text("player_name") or "Player"
+    look = body.get("look") if isinstance(body.get("look"), dict) else {}
+    tokens = actors.creator_tokens(look, text("class"), name)
+    actors.look_spec(char_id, tokens)  # a bad look fails before anything is written
+    lines = creation.create(
+        campaign_dir, rules_cmd._api, char_id, player_name=player_name, player=slugify(player_name) or "player",
+        name=name, race=text("race"), subrace=text("subrace") or None, cls=text("class"), background=text("background"),
+        scores=csv("scores"), assign=csv("assign"), skills=csv("skills"), background_skills=csv("background_skills") or None,
+        cantrips=csv("cantrips") or None, spells=csv("spells") or None, equipment=csv("equipment") or None,
+        alignment=text("alignment"), bonus_abilities=csv("bonus_abilities") or None)
+    data = character.load(campaign_dir, char_id)
+    for key in ("personality_traits", "ideals", "bonds", "flaws", "backstory"):
+        if text(key):
+            data[key] = text(key)
+    if isinstance(body.get("hooks"), dict):
+        data["hooks"] = {str(k): str(v).strip() for k, v in body["hooks"].items() if str(v).strip()}
+    character.save(campaign_dir, char_id, data)
+    actors.set_look(campaign_dir, char_id, tokens)
+    return {"id": char_id, "lines": lines[:-1]}  # the last line asks the DM to ask the player: the creator did
 
 
 class Table:
@@ -329,9 +486,11 @@ class Table:
         self.stage: Stage | None = None
         self.tail_task: asyncio.Task | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
+        self.on_start: Callable[[], None] = lambda: None
 
     async def start(self, campaign_dir: Path, dm_command: list[str] | None = None) -> Stage:
         await self.stop()
+        self.on_start()
         stage = Stage(campaign_dir, dm_command or self.command_factory(campaign_dir))
         stage.loop = self.loop
         # Restore the stage from earlier sessions without broadcasting it.
@@ -459,7 +618,8 @@ def create_app(
         body = await request.json()
         try:
             if body.get("new_name"):
-                slug = create_campaign(str(body["new_name"]))
+                slug = create_campaign(str(body["new_name"]), str(body.get("pitch") or ""),
+                                       str(body.get("party") or "create"))
             else:
                 slug = str(body.get("campaign", ""))
             campaign = resolve_campaign_dir(slug)
@@ -492,6 +652,70 @@ def create_app(
             return spec and actors.png(spec, "portrait" if emotion else "full", q.get("f"),
                                        emotion if emotion != "neutral" else None, q.get("d"))
         return await png_response(render)
+
+    # -- character creation ---------------------------------------------
+
+    rules = {"lock": threading.Lock(), "doc": None}
+
+    def options_doc() -> dict:
+        """The creator's options, built once (slow on a cold cache). Raises RulesError."""
+        from dnd_cli import creation
+        from dnd_cli.commands import rules_cmd
+
+        with rules["lock"]:
+            if rules["doc"] is None:
+                rules["doc"] = creation.options(rules_cmd._api)
+            return rules["doc"]
+
+    def prefetch() -> None:
+        def run():
+            try:
+                options_doc()
+            except Exception:
+                pass  # the route reports it when the player asks
+        threading.Thread(target=run, daemon=True).start()
+    table.on_start = prefetch
+
+    async def api_creation_options(request: Request):
+        from dnd_cli.combat import RulesError
+
+        try:
+            return JSONResponse(await run_in_threadpool(options_doc))
+        except (RulesError, OSError, KeyError):
+            return error("The 5e rules API cannot be reached. Check the network and try again.", 503)
+
+    async def asset_look(request: Request):
+        q = request.query_params
+        look = {k: q[k] for k in ("race", "body", "skin", "eyes", "hair") if q.get(k)}
+
+        def render():
+            spec, _ = actors.look_spec("preview", actors.creator_tokens(look, q.get("class", "")))
+            return actors.png(spec, "full" if q.get("kind") == "full" else "portrait")
+        return await png_response(render)
+
+    async def api_creation_character(request: Request):
+        from dnd_cli.character import CharacterError
+        from dnd_cli.combat import RulesError
+
+        stage = need()
+        body = await request.json()
+        try:
+            made = await run_in_threadpool(make_character, stage.campaign_dir, body)
+        except (RulesError, CharacterError, lpc.ActorError, AssetError) as e:
+            return error(str(e), 400)
+        return JSONResponse(made)
+
+    async def api_creation_open(request: Request):
+        stage = need()
+        stage.open_creator()
+        await stage.broadcast(stage.snapshot())
+        return JSONResponse({"ok": True})
+
+    async def api_creation_done(request: Request):
+        stage = need()
+        stage.close_creator()
+        await stage.broadcast(stage.snapshot())
+        return JSONResponse({"ok": True})
 
     async def asset_scene(request: Request):
         campaign = need().campaign_dir
@@ -669,6 +893,11 @@ def create_app(
         Route("/api/restart", api_restart, methods=["POST"]),
         Route("/api/party", api_party),
         Route("/api/actor/{actor_id}", api_actor),
+        Route("/api/creation/options", api_creation_options),
+        Route("/api/creation/character", api_creation_character, methods=["POST"]),
+        Route("/api/creation/open", api_creation_open, methods=["POST"]),
+        Route("/api/creation/done", api_creation_done, methods=["POST"]),
+        Route("/asset/look.png", asset_look),
         Route("/asset/scene/{location}.png", asset_scene),
         Route("/api/scene/{location}", api_scene),
         Route("/asset/template/{name}.png", asset_template),
@@ -687,7 +916,11 @@ def create_app(
     ]
     if (WEB_DIST / "assets").is_dir():
         routes.append(Mount("/assets", StaticFiles(directory=WEB_DIST / "assets")))
-    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(LocalOnly)])
+    async def http_error(request: Request, exc: HTTPException):
+        return error(str(exc.detail), exc.status_code)
+
+    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(LocalOnly)],
+                    exception_handlers={HTTPException: http_error})
     app.state.table = table
     return app
 

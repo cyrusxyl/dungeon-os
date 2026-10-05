@@ -8,6 +8,7 @@ Plain asserts so no test runner is needed.
 from __future__ import annotations
 
 import json
+import time
 import tempfile
 from pathlib import Path
 
@@ -122,6 +123,18 @@ def test_actors() -> None:
         print("  skip (LPC art not fetched; run uv run dungeon-os once)")
         return
     spec = actors.build("sireth", ["name=Sireth", "body=female", "skin=blue", "eyes=red", "elven", "robe:dark_gray", "hair_long:white"])
+    for bad, want in [("tiara", "formal_tiara"), ("hat_formla", "hat_formal_crown")]:
+        try:
+            lpc._item(bad)
+            check(f"{bad} resolves", bad == "tiara")
+        except lpc.ActorError as e:
+            check(f"unknown item {bad} suggests close names and a type", want in str(e) and "actor options hat" in str(e))
+    try:
+        lpc.validate({"items": ["hair_braid:platnum"]})
+        check("a bad color is refused", False)
+    except lpc.ActorError as e:
+        check("a bad color names the closest first", "platnum: use platinum" in str(e))
+    check("silver is an alias of platinum", lpc.validate({"items": ["hair_braid:silver"]}) is not None)
     check("build sets name and body", spec["name"] == "Sireth" and spec["body"] == "female")
     check("a known spec validates clean", lpc.validate(spec) == [])
     check("a look with no hair or headwear warns that it is bald",
@@ -339,6 +352,13 @@ def test_maps() -> None:
                 check(f"{label} is refused", False)
             except maps.MapError:
                 check(f"{label} is refused", True)
+        try:
+            maps.place(c, "nope", "y", ["in=coast"])
+        except maps.MapError as e:
+            check("in= error says what in= is", "id of the parent map" in str(e) and "map place coast nope" in str(e))
+        from dnd_cli.commands.map_cmd import _summary
+        check("map show works on routes with no known key", "city - tower 2 days" in _summary("coast", maps.load(c, "coast"))
+              and "city - lair 3 days hidden" in _summary("coast", maps.load(c, "coast")))
         maps.reveal(c, "coast", "lair")
         check("reveal shows the place and its route", "lair" in json.dumps(maps.view(maps.load(c, "coast"), "coast", None)))
         found = maps.all_maps(c)
@@ -433,6 +453,317 @@ def test_cli_defaults_and_races() -> None:
     check("a sheet's race text maps to a race", actors.race_of("Drow (High Elf)") == "drow" and actors.race_of("Half-Elf") == "half-elf")
 
 
+def test_creator() -> None:
+    print("creator: first prompt, snapshot, queue, routes")
+    import asyncio
+    import shutil
+    import sys
+
+    from dnd_cli.commands import rules_cmd
+    from stage import server
+    from stage.server import Stage, create_app, stage_first_prompt
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    import test_creation as tc
+
+    def camp(tmp, config=None, story=False, sheets=()):
+        c = Path(tmp) / f"c{len(list(Path(tmp).iterdir()))}"
+        (c / "characters").mkdir(parents=True)
+        (c / "config.json").write_text(json.dumps(config or {}))
+        (c / "state.json").write_text("{}")
+        if story:
+            (c / "dm_story.md").write_text("secret")
+        for i in sheets:
+            (c / "characters" / f"{i}.json").write_text("{}")
+        return c
+
+    with tempfile.TemporaryDirectory() as tmp:
+        world = stage_first_prompt(camp(tmp, {"pitch": "Dwarf miners", "party": "create"}))
+        check("no story bible: new world, no beat, no characters, no name, World ready",
+              "worldbuilding" in world and "Dwarf miners" in world and "Show no beat" in world
+              and "Make no characters" in world and "player name" in world and 'World ready.' in world)
+        pre = stage_first_prompt(camp(tmp, {"pitch": "Karlach and Wyll, level 7", "party": "premade"}))
+        check("premade: world, then the characters from the pitch", "Karlach and Wyll" in pre and "character new" in pre
+              and "level-up" in pre and "--asi" in pre and "actor set" in pre and "World ready" not in pre
+              and "do not run `canon init`" in pre and "race=drow" in pre and "world/" in pre)
+        check("the story exists, no sheets: wait on the creation screen",
+              "creation screen" in stage_first_prompt(camp(tmp, {"party": "create"}, story=True)))
+        check("the story exists, premade, no sheets: the normal prompt",
+              "session brief" in stage_first_prompt(camp(tmp, {"party": "premade"}, story=True)))
+        normal = stage_first_prompt(camp(tmp, {}, story=True, sheets=["a"]))
+        check("the story and a sheet: the normal prompt", "session brief" in normal and "show beat" in normal)
+        check("every prompt is one paragraph", all("\n" not in x for x in (world, pre, normal)))
+
+        c = camp(tmp, {"party": "create"})
+        st = Stage(c, ["cat"])
+        snap = lambda: st.snapshot()["state"]
+        check("no sheets: creating, party_mode create", snap()["creating"] is True and snap()["party_mode"] == "create")
+        (c / "characters" / "a.json").write_text("{}")
+        check("the first sheet does not close the creator", snap()["creating"] is True)
+        st.close_creator()
+        check("done: one prompt for the first party", snap()["creating"] is False and len(st.pending) == 1
+              and "first beat" in st.pending.pop())
+        check("a restart with a sheet: not creating", Stage(c, ["cat"]).snapshot()["state"]["creating"] is False)
+        st.open_creator()
+        check("opened: creating", snap()["creating"] is True)
+        st.close_creator()
+        check("no new character: no prompt", st.pending == [] and snap()["creating"] is False)
+        (c / "characters" / "b.json").write_text("{}")
+        st.open_creator()
+        (c / "characters" / "c.json").write_text("{}")
+        st.close_creator()
+        check("a joiner: one prompt, new id only, level-up", len(st.pending) == 1 and "`c`" in st.pending[0]
+              and "`b`" not in st.pending[0] and "level-up" in st.pending[0] and "\n" not in st.pending[0])
+        c2 = camp(tmp, {"party": "create"})
+        st2 = Stage(c2, ["cat"])
+        (c2 / "characters" / "x.json").write_text("{}")
+        st2.close_creator()
+        check("first party: open the first scene", "first beat" in st2.pending[0] and "level-up" not in st2.pending[0])
+        c3 = camp(tmp, {"party": "create"})
+        (c3 / "stage" / "scenes").mkdir(parents=True)
+        (c3 / "stage" / "scenes" / "old.json").write_text("{}")
+        time.sleep(0.02)
+        (c3 / "stage" / "scenes" / "start.json").write_text("{}")
+        st3 = Stage(c3, ["cat"])
+        (c3 / "characters" / "x.json").write_text("{}")
+        st3.close_creator()
+        st3.fold(st3.read_new_events())
+        check("Begin shows the newest scene with the party at once",
+              st3.state["scene"] == "start" and "x" in st3.state["actors"])
+        st3.open_creator()
+        (c3 / "characters" / "y.json").write_text("{}")
+        before = st3.log_path.read_text()
+        st3.close_creator()
+        check("a joiner does not reset the scene", st3.log_path.read_text() == before)
+        pm = Stage(camp(tmp, {"party": "premade"}), ["cat"])
+        check("premade with no sheets: not creating", pm.snapshot()["state"]["creating"] is False
+              and pm.snapshot()["state"]["party_mode"] == "premade")
+
+        async def queue():
+            q = Stage(camp(tmp), ["cat"])
+            sent = []
+
+            async def fake(text):
+                sent.append(text)
+                q.state["dm"] = {"status": "busy"}
+            q.submit = fake
+            q.pending = ["one", "two"]
+            q.state["dm"] = {"status": "busy"}
+            task = asyncio.ensure_future(q.tail())
+            await asyncio.sleep(0.4)
+            check("the queue waits while the DM is busy", sent == [])
+            q.state["dm"] = {"status": "idle"}
+            await asyncio.sleep(0.4)
+            check("one prompt per idle, never two at once", sent == ["one"])
+            q.state["dm"] = {"status": "idle"}
+            await asyncio.sleep(0.4)
+            task.cancel()
+            check("the next prompt follows the next idle", sent == ["one", "two"] and q.pending == [])
+        asyncio.run(queue())
+
+        async def call(app, method, target, body=None):
+            """One request straight into the ASGI app (no httpx needed): (status, content type, bytes)."""
+            path, _, query = target.partition("?")
+            data = json.dumps(body).encode() if body is not None else b""
+            scope = {"type": "http", "method": method, "path": path, "query_string": query.encode(), "headers": [
+                (b"host", b"localhost"), (b"content-type", b"application/json")], "scheme": "http", "http_version": "1.1"}
+            out = {"body": b""}
+            sent = False
+
+            async def receive():
+                nonlocal sent
+                if sent:
+                    await asyncio.sleep(10)
+                sent = True
+                return {"type": "http.request", "body": data, "more_body": False}
+
+            async def send(msg):
+                if msg["type"] == "http.response.start":
+                    out["status"] = msg["status"]
+                    out["type"] = dict(msg["headers"]).get(b"content-type", b"").decode()
+                else:
+                    out["body"] += msg.get("body", b"")
+            await app(scope, receive, send)
+            return out["status"], out["type"], out["body"]
+
+        async def api(app, method, target, body=None):
+            status, _, raw = await call(app, method, target, body)
+            return status, json.loads(raw)
+
+        async def routes():
+            saved = rules_cmd._api
+            try:
+                rules_cmd._api = lambda ep: (_ for _ in ()).throw(tc.combat.RulesError("down"))
+                app = create_app(None)
+                await app.state.table.start(camp(tmp, {"party": "create"}), ["cat"])
+                status, r = await api(app, "GET", "/api/creation/options")
+                check("options: 503 with the message when the API is down", status == 503 and "cannot be reached" in r["error"])
+                await app.state.table.stop()
+                rules_cmd._api = tc.fetch
+                c = camp(tmp, {"party": "create"})
+                app = create_app(None)
+                stage = await app.state.table.start(c, ["cat"])
+                status, r = await api(app, "GET", "/api/creation/options")
+                check("options: served and memoized", status == 200 and r["classes"][0]["index"] == "fighter")
+                look = {"race": "elf", "body": "female", "skin": "light", "eyes": "green", "hair": "hair_long:blonde"}
+                body = {"player_name": "Cyrus", "name": "Lyra Moon", "race": "elf", "subrace": "", "class": "fighter",
+                        "background": "acolyte", "background_skills": [], "scores": [15, 14, 13, 12, 10, 8],
+                        "assign": ["str", "dex", "con", "int", "wis", "cha"], "bonus_abilities": [],
+                        "skills": ["athletics", "survival"], "cantrips": [], "spells": [],
+                        "equipment": ["longsword", "longsword", "shield", "explorers-pack"], "alignment": "Neutral Good",
+                        "personality_traits": "Calm", "ideals": "Truth", "bonds": "Home", "flaws": "Proud",
+                        "backstory": "Born far away.", "hooks": {"past": "the old mentor", "problem": "a debt"}, "look": look}
+                post = lambda path, b: api(app, "POST", path, b)
+                status, r = await post("/api/creation/character", body)
+                check("character: id and lines", status == 200 and r["id"] == "lyra-moon"
+                      and r["lines"][0].startswith("Lyra Moon: Elf Fighter 1") and len(r["lines"]) == 1)
+                sheet = json.loads((c / "characters" / "lyra-moon.json").read_text())
+                inv = {i["name"]: i["quantity"] for i in sheet["inventory"]}
+                check("sheet: story fields, hooks, equipment quantity",
+                      sheet["bonds"] == "Home" and sheet["backstory"] == "Born far away." and sheet["hooks"]["past"] == "the old mentor"
+                      and inv["Longsword"] == 2)
+                spec = json.loads((c / "stage" / "actors" / "lyra-moon.json").read_text())
+                check("the look is saved: race, picks, class outfit",
+                      spec["body"] == "female" and spec["eyes"] == "green" and "hair_long:blonde" in spec["items"]
+                      and "elven" in spec["items"] and "chainmail" in spec["items"] and spec["name"] == "Lyra Moon")
+                check("player file and party", (c / "players" / "cyrus.json").exists()
+                      and "lyra-moon" in json.loads((c / "state.json").read_text())["party_members"])
+                check("the stage hears about the look", "actor_updated" in (c / "stage" / "events.ndjson").read_text())
+                status, r = await post("/api/creation/character", body)
+                check("a second character of the same name gets -2", r["id"] == "lyra-moon-2")
+                (c / "stage" / "actors" / "npc-zed.json").write_text('{"name": "Zed", "body": "male", "items": []}')
+                status, r = await post("/api/creation/character", {**body, "name": "Npc Zed"})
+                check("an id taken by an NPC look gets -2", status == 200 and r["id"] == "npc-zed-2")
+                status, r = await post("/api/creation/character", {**body, "name": "Bad", "skills": ["athletics"]})
+                check("a bad choice is 400 and writes nothing", status == 400 and "picks 2" in r["error"]
+                      and not (c / "characters" / "bad.json").exists())
+                status, r = await post("/api/creation/character", {**body, "name": "Hal", "race": "half-elf",
+                                                                   "bonus_abilities": ["strength", "constitution"]})
+                check("full-name bonus abilities work", status == 200)
+                status, r = await post("/api/creation/character", {**body, "name": "Odd", "look": {**look, "race": "ent"}})
+                check("a bad look is 400 and writes nothing", status == 400 and not (c / "characters" / "odd.json").exists())
+                stage.seen_ids = []
+                status, r = await post("/api/creation/done", {})
+                check("done: creating false, one prompt", r == {"ok": True} and len(stage.pending) == 1
+                      and "lyra-moon" in stage.pending[0])
+                status, r = await post("/api/creation/open", {})
+                check("open: creating true", r == {"ok": True} and stage.snapshot()["state"]["creating"] is True)
+                q = "race=elf&body=female&skin=light&eyes=green&hair=hair_long:blonde&class=wizard"
+                status, kind, png = await call(app, "GET", f"/asset/look.png?{q}")
+                check("look preview is a PNG and saves nothing", status == 200 and png[:4] == b"\x89PNG"
+                      and not (c / "stage" / "actors" / "preview.json").exists())
+                check("look preview 404 for an unknown race", (await call(app, "GET", "/asset/look.png?race=ent"))[0] == 404)
+                status, r = await api(app, "POST", "/api/game/start", {"new_name": "x", "party": "premade"})
+                check("game start: premade needs a pitch", status == 400)
+                await app.state.table.stop()
+            finally:
+                rules_cmd._api = saved
+        asyncio.run(routes())
+
+
+def test_activity() -> None:
+    print("dm activity feed")
+    import hook, io, os, sys as _sys
+    label = hook.activity_label
+    check("skills", label("Skill", {"skill": "worldbuilding"}) == "Studying the art of worldbuilding"
+          and label("Skill", {"skill": "stage"}) == "Rehearsing the stagecraft"
+          and label("Skill", {"skill": "character-creation"}) == "Opening the rulebooks"
+          and label("Skill", {"skill": "combat"}) is None)
+    check("files", label("Write", {"file_path": "/g/campaigns/x/dm_story.md"}) == "Writing the story bible"
+          and label("Edit", {"file_path": "/g/campaigns/x/world/locations/A.md"}) == "Writing the lore"
+          and label("Write", {"file_path": "/tmp/x.py"}) is None)
+    for cmd, want in [
+        ("uv run dnd-cli session brief 2>&1 | head -50", "Reading the campaign notes"),
+        ('uv run dnd-cli canon add-villain "The Envoy" "Recruit"', "Casting the villains"),
+        ('uv run dnd-cli canon add-clock "The Envoy" "Gate" 6', "Winding the villain clocks"),
+        ('uv run dnd-cli canon add-fact DM "A seal"', "Pinning down the facts"),
+        ('uv run dnd-cli canon touch-clock "Voss" "Leak"', "Pinning down the facts"),
+        ("uv run dnd-cli scene set druid-clearing template=forest", "Painting the scene"),
+        ("uv run dnd-cli map place underdark deepvale-settlement name=D", "Drawing the map"),
+        ("uv run dnd-cli actor set minthara name=Minthara", "Dressing the cast"),
+        ("uv run dnd-cli site set crypt theme=dungeon", "Digging the dungeon"),
+        ("uv run dnd-cli character new menzoberranzan minthara --player cyrus", "Rolling up the party"),
+        ("uv run dnd-cli character level-up menzoberranzan minthara", "Levelling the party"),
+        ("uv run dnd-cli character show halsin", "Reading the character sheets"),
+        ("uv run dnd-cli quest add x", "Weaving the plot threads"),
+        ("uv run dnd-cli attack goblin", "Checking the rules"),
+        ("uv run dnd-cli get races/elf --fields subraces", "Looking up the rules"),
+        ("uv run dnd-cli search subraces --name drow", "Looking up the rules"),
+        ("uv run dnd-cli session end --appeared x <<'EOF'", "Writing the session record"),
+        ("dnd-cli state set location=x", None),
+        ("uv run dnd-cli show beat <<'EOF'\n@scene x", None),
+        ("uv run roll 1d20 -v", None),
+        ("ls -la campaigns", None),
+    ]:
+        check(f"label: {cmd[:40]!r}", label("Bash", {"command": cmd}) == want)
+    check("a label is short", all(len(v) <= 40 for v in list(hook.SKILLS.values()) + [x[1] for x in hook.CLI_LABELS]))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        log = Path(tmp) / "events.ndjson"
+        os.environ["DUNGEON_STAGE_LOG"] = str(log)
+        try:
+            for payload in [{"hook_event_name": "PreToolUse", "tool_name": "Skill", "tool_input": {"skill": "stage"}},
+                            {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}}]:
+                _sys.stdin = io.StringIO(json.dumps(payload))
+                hook.main()
+        finally:
+            _sys.stdin = _sys.__stdin__
+            del os.environ["DUNGEON_STAGE_LOG"]
+        check("hook writes dm_activity, skips the trivial call",
+              [json.loads(l) for l in log.read_text().splitlines()] == [{"type": "dm_activity", "text": "Rehearsing the stagecraft"}])
+
+    s = state.empty()
+    check("activity starts empty", s["activity"] == [])
+    for t in ["a", "a", "b"]:
+        s = state.apply(s, {"type": "dm_activity", "text": t})
+    check("fold drops a consecutive duplicate", s["activity"] == ["a", "b"])
+    for i in range(20):
+        s = state.apply(s, {"type": "dm_activity", "text": str(i)})
+    check("fold keeps the last 12", len(s["activity"]) == 12 and s["activity"][-1] == "19")
+    check("busy keeps it", state.apply(s, {"type": "dm_status", "status": "busy"})["activity"] == s["activity"])
+    check("idle clears it", state.apply(s, {"type": "dm_status", "status": "idle"})["activity"] == [])
+    check("exited clears it", state.apply(s, {"type": "dm_status", "status": "exited"})["activity"] == [])
+
+
+def test_party() -> None:
+    print("the party comes with @scene")
+    import io, sys as _sys
+    from dnd_cli.commands import show_cmd
+
+    def show(c: Path, text: str) -> list[dict]:
+        time.sleep(0.01)  # a beat id is the millisecond: two beats in one tick would merge
+        _sys.stdin = io.StringIO(text)
+        try:
+            show_cmd.execute_beat(str(c), None)
+        finally:
+            _sys.stdin = _sys.__stdin__
+        return [json.loads(l) for l in beat.log_path(c).read_text().splitlines()]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp)
+        (c / "characters").mkdir()
+        for n in ("zed", "amy", "bob", "cat", "dan", "eve"):
+            (c / "characters" / f"{n}.json").write_text("{}")
+        lines = show(c, "@scene inn\n@narrate Hi.")
+        check("no party_members: the sheets, sorted, max 4", lines[0]["party"] == ["amy", "bob", "cat", "dan"])
+        (c / "state.json").write_text('{"party_members": ["zed", "amy"]}')
+        lines = show(c, "@scene road")
+        check("party_members wins", lines[-1]["party"] == ["zed", "amy"])
+        n = len(show(c, "@scene road"))
+        check("a resent beat is still caught", n == len(lines))
+    with tempfile.TemporaryDirectory() as tmp:
+        check("no party, no key", "party" not in show(Path(tmp), "@scene inn")[0])
+
+    s = state.apply(state.empty(), {"type": "scene", "location": "inn", "party": ["zed", "amy"]})
+    check("the state seeds the actors", s["actors"]["zed"]["position"] == "left" and s["actors"]["amy"]["position"] == "right")
+    s2 = state.apply(s, {"type": "enter", "actor": "gareth"})
+    check("an NPC takes the next free slot", s2["actors"]["gareth"]["position"] == "center")
+    check("same room keeps who is there", state.apply(s2, {"type": "scene", "location": "inn", "party": ["zed", "amy"]})["actors"] == s2["actors"])
+    check("@exit removes a PC", "zed" not in state.apply(s, {"type": "exit", "actor": "zed"})["actors"])
+    check("@enter center moves a PC", state.apply(s, {"type": "enter", "actor": "zed", "position": "center"})["actors"]["zed"]["position"] == "center")
+    check("an old event has no party", state.apply(state.empty(), {"type": "scene", "location": "inn"})["actors"] == {})
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -442,11 +773,14 @@ if __name__ == "__main__":
     test_actors()
     test_scenes()
     test_rolls()
+    test_activity()
+    test_party()
     test_local_only()
     test_crawl()
     test_maps()
     test_explore_beat()
     test_session_brief()
     test_cli_defaults_and_races()
+    test_creator()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

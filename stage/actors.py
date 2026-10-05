@@ -24,6 +24,7 @@ from stage.assets import ensure_dcss
 from stage.files import read_json, write_json
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
+CLASS_LOOKS_PATH = Path(__file__).resolve().parent / "data" / "class_looks.json"
 RACES_PATH = Path(__file__).resolve().parent / "data" / "races.json"
 SPEC_KEYS = ("body", "skin", "eyes")
 # Everyday words for skin, mapped to LPC palette names.
@@ -101,6 +102,20 @@ def race_of(text: str) -> str | None:
     return next((r for r in sorted(races(), key=len, reverse=True) if r in t), None)
 
 
+def creator_tokens(look: dict, cls: str = "", name: str = "") -> list[str]:
+    """`actor set` tokens for a look chosen in the creator: the player's picks, then the class outfit."""
+    tokens = [f"name={name.replace(' ', '_')}"] if name.strip() else []
+    for key in ("race", "body", "skin", "eyes"):
+        if look.get(key):
+            tokens.append(f"{key}={look[key]}")
+    hair = [str(look["hair"])] if look.get("hair") else []
+    outfit = json.loads(CLASS_LOOKS_PATH.read_text()).get(cls.lower().strip(), [])
+    items = [*hair, *outfit]
+    if any("=" in i for i in items):
+        raise lpc.ActorError("an item has no '=' in it.")
+    return tokens + items
+
+
 def _apply_race(spec: dict, race: str, given: set[str], notes: list[str], fill: bool = True) -> None:
     """Add the race's features (`fill`: a new look) and keep the skin within the race's colors."""
     kit = races()[race]
@@ -176,6 +191,49 @@ def build(actor_id: str, tokens: list[str], current: dict | None = None, race: s
         _apply_race(spec, race, given, notes if notes is not None else [], fill=current is None or "race" in given)
     spec.setdefault("body", "male")
     return spec
+
+
+def look_spec(actor_id: str, tokens: list[str], current: dict | None = None, race: str | None = None,
+              notes: list[str] | None = None) -> tuple[dict, list[str]]:
+    """A look from tokens, ready to save, and its warnings. Saves nothing.
+
+    `race` is the default race (a player character's, from its sheet); a `race=` token wins.
+    """
+    notes = [] if notes is None else notes
+    spec = build(actor_id, tokens, current, race, notes)
+    if "tile" in spec:
+        return spec, []
+    spec["items"] = lpc.normalize_items(spec["items"])
+    warnings = notes + lpc.validate(spec)
+    spec["items"] = lpc.sex_fixed(spec["items"], spec["body"])
+    return spec, warnings
+
+
+class LookExists(lpc.ActorError):
+    def __init__(self, actor_id: str, current: dict):
+        super().__init__(f"{actor_id!r} already has a look")
+        self.current = current
+
+
+def set_look(campaign_dir: Path, actor_id: str, tokens: list[str], change: bool = False,
+             notify: bool = True) -> tuple[dict, list[str], Path]:
+    """Build, save and announce a look: (spec, warnings, path). The one path of `actor set` and the creator.
+
+    A saved look is kept unless `change`: LookExists. A player character's race comes from its sheet.
+    """
+    if not tokens:
+        raise lpc.ActorError("give at least one setting, for example name=Sireth body=female.")
+    if not beat.ID_RE.match(actor_id):
+        raise lpc.ActorError(f"actor id {actor_id!r}: {beat.ID_RULE}.")
+    current = read_json(actors_dir(campaign_dir) / f"{actor_id}.json")
+    if current is not None and not change:
+        raise LookExists(actor_id, current)
+    sheet = read_json(campaign_dir / "characters" / f"{actor_id}.json")
+    spec, warnings = look_spec(actor_id, tokens, current, race_of(str(sheet.get("race", ""))) if sheet else None)
+    saved = save(campaign_dir, actor_id, spec)
+    if notify:
+        beat.append(campaign_dir, [{"type": "actor_updated", "actor": actor_id}])
+    return spec, warnings, saved
 
 
 def _tile_frame(spec: dict, flip: bool) -> Image.Image:

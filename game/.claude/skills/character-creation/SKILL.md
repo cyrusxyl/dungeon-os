@@ -5,6 +5,18 @@ description: Create a level 1 D&D 5e character. Talk the choices through with th
 
 # Character Creation
 
+## On the visual stage
+
+Never run the question workflow below on the stage. The player makes characters on the creation screen (the **New character** button in the party panel). The server builds the sheet.
+
+- A player asks for a new character: send one short beat that points to the **New character** button. Do nothing else.
+- A prompt says characters were made on the creation screen: for each id, run `uv run dnd-cli character show <id>`. Read `hooks` and `backstory`. Do not change the sheet or the look. Use the hooks with the `worldbuilding` skill.
+- The pitch names existing characters (for example a Baldur's Gate 3 epilogue): for each one, run `character new` at level 1 (flags below). Then run `uv run dnd-cli character level-up <id> --asi <asi>` once per level, up to the target level. Pass `--asi` on an ASI level (the command refuses without it and says so). Use `str+2` or `str+1,dex+1`, or `none` for a feat. `--hp avg` (default) or `--hp roll` sets the HP. Then set the look (`stage` skill).
+
+## In the classic terminal view (`--classic`)
+
+The workflow below is for this view only.
+
 You talk through the choices. The program does the arithmetic. Do not write the sheet JSON by hand. Do not edit `state.json` or the player file for a new character.
 
 ## Lookups

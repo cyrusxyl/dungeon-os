@@ -160,8 +160,9 @@ If the player action is a claim about a past event ("you told us the gate was op
 1. Run `uv run dnd-cli session brief` (one call). It prints the active campaign's `state.json` (with `session_players_present`), the party and players, `canon.json`, `dm_story.md`, and the end of `session_log.md`. Do not read those files one by one.
 2. **Story bible** (`dm_story.md`): read it silently — players do not see it. If the brief says it is missing, this is a new campaign: load the `worldbuilding` skill and follow its "Campaign Story Bible" instructions to draft and save one before proceeding.
 3. **Canon** (`canon.json`): read it silently — players do not see it. If the brief says it is missing, load the `dm-canon-procedures` skill and create one before proceeding. This file is the only source of campaign facts. See "Canon File & Anti-Drift Rules" below.
-4. Greet players and recap last session (from the session log in the brief)
-5. Ask "What do you do?"
+4. **If the brief shows no characters** (and the session prompt does not tell you to make the characters from the pitch): do not greet. Show no beat. Do not ask for a player name. Do not run character creation. On the visual stage, the player makes characters on the creation screen. The server sends you a prompt that names them when they are ready. Until then, build the world only.
+5. Otherwise, greet players and recap last session (from the session log in the brief)
+6. Ask "What do you do?"
 
 ### During Play
 - **For each round of interaction within a campaign, ask each player what they plan to do.** On the visual stage, offer options with an `@choices` line (the `stage` skill); the AskUserQuestion tool is blocked there. In the classic terminal view, use the AskUserQuestion tool if available to gather all player actions simultaneously

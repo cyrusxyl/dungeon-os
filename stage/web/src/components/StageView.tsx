@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { DiceOverlay } from '@/components/DiceOverlay'
+import { DmTable } from '@/components/DmTable'
 import { type Position, type StageState, titleCase, useIntegerScale, useJson } from '@/lib/stage'
 
 // Logical stage size in source pixels: a 10 x 6 room of 32 px LPC tiles.
@@ -88,11 +89,12 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
             </div>
           )
         })}
-        {!scene && Object.keys(state.actors).length === 0 && (
-          <div className="absolute inset-0 grid place-items-center text-[8px] text-[var(--dim)] pixel-font">
-            {state.dm.status === 'starting' ? 'The DM sets the table…' : 'No scene yet'}
-          </div>
-        )}
+        {!scene && Object.keys(state.actors).length === 0 &&
+          (state.dm.status === 'starting' || state.dm.status === 'busy' ? (
+            <DmTable activity={state.activity} />
+          ) : (
+            <div className="absolute inset-0 grid place-items-center text-[8px] text-[var(--dim)] pixel-font">No scene yet</div>
+          ))}
       </div>
     </div>
   )

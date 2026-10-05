@@ -92,8 +92,17 @@ def campaign_display_name(campaign_dir: Path) -> str:
     return name or campaign_dir.name
 
 
-def create_campaign(name: str) -> str:
-    """Scaffold a new campaign directory from the template. Returns its slug."""
+def create_campaign(name: str, pitch: str = "", party: str = "create") -> str:
+    """Scaffold a new campaign directory from the template. Returns its slug.
+
+    `pitch` is the player's free text; `party` says who makes the characters:
+    "create" (the player) or "premade" (the DM, from the pitch).
+    """
+    pitch = pitch.strip()
+    if party not in ("create", "premade"):
+        raise CampaignError("party is 'create' or 'premade'.")
+    if party == "premade" and not pitch:
+        raise CampaignError("The DM needs a pitch to make the characters from.")
     slug = slugify(name)
     if not slug:
         raise CampaignError("The name needs at least one letter or digit.")
@@ -111,6 +120,8 @@ def create_campaign(name: str) -> str:
     config = json.loads(config_path.read_text())
     config["campaign_name"] = name
     config["created"] = date.today().isoformat()
+    config["pitch"] = pitch
+    config["party"] = party
     config_path.write_text(json.dumps(config, indent=2) + "\n")
 
     canon_path = dest / "canon.json"

@@ -8,6 +8,9 @@ A beat is a few lines of markup, sent in one `dnd-cli show beat` call:
     @say sister-gareth happy What brings a drow monk to this chapel?
     @choices Ask about the Fist | Show Cassara's note | Leave
 
+The party is on stage in every new room: the player characters come with
+`@scene`, so the DM does not `@enter` them. `@enter` is for NPCs.
+
 A line without an `@` continues the text of the line before it. Each line
 becomes one event; events are appended as JSON lines to the campaign's
 `stage/events.ndjson`. The stage server numbers them by line position.
@@ -19,6 +22,8 @@ import json
 import re
 import time
 from pathlib import Path
+
+from stage.files import read_json
 
 EMOTIONS = ("neutral", "happy", "angry", "sad", "shock", "blush", "shame", "eyeroll", "closed")
 POSITIONS = ("left", "center", "right", "far-left", "far-right")
@@ -32,7 +37,7 @@ def title(slug: str) -> str:
     return " ".join(w.capitalize() for w in re.split(r"[-_]", slug.split("#")[0]) if w)
 
 USAGE = (
-    "Beat lines: @scene <location-id> | @enter <actor-id> [position] | "
+    "Beat lines: @scene <location-id> (the party comes with it) | @enter <actor-id> [position] | "
     "@exit <actor-id> | @narrate <text> | @say <actor-id> [emotion] <text> | "
     "@choices <a> | <b> | ... | @clear | @explore <site-id> [<poi-id>|entrance]"
 )
@@ -126,6 +131,14 @@ def parse(text: str) -> list[dict]:
     if not events:
         raise BeatError(f"The beat is empty. {USAGE}")
     return events
+
+
+def party(campaign_dir: Path) -> list[str]:
+    """Actor ids of the player characters: state.json party_members, else the character sheets. Max 4."""
+    members = (read_json(campaign_dir / "state.json") or {}).get("party_members")
+    if not members:
+        members = [p.stem for p in sorted((campaign_dir / "characters").glob("*.json"))]
+    return [str(m) for m in members if ID_RE.match(str(m))][:4]
 
 
 def log_path(campaign_dir: Path) -> Path:

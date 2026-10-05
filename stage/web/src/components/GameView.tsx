@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { CharacterCreator } from '@/components/CharacterCreator'
 import { ConsoleDrawer } from '@/components/Console'
 import { CrawlView } from '@/components/CrawlView'
 import { DialogueBox } from '@/components/DialogueBox'
@@ -62,6 +63,10 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const choices = caughtUp ? state.choices?.options : undefined
   // Walking and travel wait until the player has read the story so far.
   const canAct = canType && caughtUp
+  const waitingWorld = state.party_mode === 'premade' && log.length === 0 && ['starting', 'busy'].includes(state.dm.status)
+  const activity = state.activity?.at(-1)
+  const baseStatus = waitingWorld ? 'The DM is preparing the world and your party…' : STATUS_TEXT[state.dm.status]
+  const statusText = activity && state.dm.status === 'busy' ? `${baseStatus.replace(/…$/, '')} — ${activity}…` : baseStatus
 
   const advance = () => setReadSeq(unread[0]?.seq ?? readSeq)
   const submit = async (text: string) => {
@@ -82,11 +87,16 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
             className={`size-2 ${!connected ? 'bg-red-500' : state.dm.status === 'idle' ? 'bg-emerald-400' : 'animate-pulse bg-[var(--ember)]'}`}
             aria-hidden="true"
           />
-          {connected ? STATUS_TEXT[state.dm.status] : 'Reconnecting…'}
+          {connected ? statusText : 'Reconnecting…'}
         </span>
         <Button size="sm" variant="outline" onClick={() => setShowParty((v) => !v)} className="hidden text-[10px] lg:inline-flex">
           Party
         </Button>
+        {!state.creating && (
+          <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/open')} className="text-[10px]">
+            New character
+          </Button>
+        )}
         <Button size="sm" variant="outline" onClick={() => setMapOpen(true)} className="text-[10px]">
           Map
         </Button>
@@ -135,6 +145,11 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       </header>
 
       <main className={`grid min-h-0 flex-1 gap-4 ${showParty ? 'lg:grid-cols-[1fr_20rem]' : ''}`}>
+        {state.creating ? (
+          <section className="flex min-h-0 flex-col">
+            <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} />
+          </section>
+        ) : (
         <section className="flex min-h-0 flex-col gap-3">
           <div className="min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
             {state.explore ? (
@@ -175,7 +190,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
                   id="player-input"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder={canType ? 'What do you do?' : STATUS_TEXT[state.dm.status]}
+                  placeholder={canType ? 'What do you do?' : statusText}
                   disabled={!canType}
                   className="text-lg"
                   font="normal"
@@ -188,6 +203,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
             </>
           )}
         </section>
+        )}
         {showParty && (
           <div className="hidden min-h-0 lg:flex">
             <PartyPanel dmStatus={state.dm.status} />

@@ -29,6 +29,14 @@ generated floor plan with the arrow keys, WASD, or a click. Sight, fog, and
 wandering-monster checks run in the stage; the DM is called only when the
 party finds something. Design: `dungeon-crawl.md`.
 
+**New Game** asks for a name, an optional pitch, and who makes the party:
+the player (default) or the DM, from the pitch (for example, the characters
+of a known story). While the DM builds the world in the background, the game
+view shows the character creation screen. The player makes one or more
+characters there, then clicks **Begin adventure**. The DM then opens the first
+scene with the new party. The **New character** button in the party panel
+opens the same screen for a new player who joins a running campaign.
+
 The first launch builds the web UI with npm (Node 22+) and downloads the
 pixel art (~130 MB, Universal LPC and CC0 Dungeon Crawl tiles) into the
 git-ignored `assets/` folder. The art is not redistributed; credits files are

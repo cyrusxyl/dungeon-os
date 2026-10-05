@@ -7,6 +7,18 @@
     ]
   },
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || python3 \"$DUNGEON_STAGE_HOOK\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

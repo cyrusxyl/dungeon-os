@@ -8,6 +8,7 @@ Plain asserts and stub 5e API data: no network.
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -71,6 +72,26 @@ DATA = {
     "equipment/shield": {"index": "shield", "name": "Shield", "equipment_category": {"index": "armor"},
                          "armor_category": "Shield", "armor_class": {"base": 2, "dex_bonus": False}},
 }
+
+
+def opt(items: list[tuple[str, int]], choose: int = 1) -> dict:
+    return {"desc": "(a) x or (b) y", "choose": choose, "type": "equipment", "from": {"option_set_type": "options_array", "options": [
+        {"option_type": "counted_reference", "count": n, "of": {**ref(i), "url": ""}} for i, n in items]}}
+
+
+DATA.update({
+    "races": {"results": [ref("elf"), ref("half-elf"), ref("dwarf")]},
+    "classes": {"results": [ref("fighter"), ref("wizard")]},
+    "backgrounds": {"results": [ref("acolyte")]},
+    "races/elf": {**DATA["races/elf"], "subraces": [ref("high-elf")]},
+    "backgrounds/acolyte": {**DATA["backgrounds/acolyte"], "name": "Acolyte"},
+    "classes/fighter": {**DATA["classes/fighter"], "starting_equipment": [{"equipment": ref("shield"), "quantity": 1}],
+                        "starting_equipment_options": [opt([("longsword", 1), ("chain-mail", 1)]),
+                                                       opt([("shield", 1), ("longsword", 2)]),
+                                                       {"desc": "a martial weapon", "choose": 1, "from": {"option_set_type": "equipment_category"}}]},
+    "classes/wizard/spells": {"results": [{**ref("fire-bolt"), "level": 0}, {**ref("magic-missile"), "level": 1}, {**ref("fireball"), "level": 3}]},
+    "equipment/explorers-pack": {"index": "explorers-pack", "name": "Explorer's Pack", "equipment_category": {"index": "adventuring-gear"}},
+})
 
 
 def fetch(endpoint: str) -> dict:
@@ -151,6 +172,68 @@ def test_classes() -> None:
     check("barbarian AC is 10 + DEX + CON", b["armor_class"] == 10 + 2 + 2 and b["hp"]["max"] == 12 + 2)
 
 
+def test_equipment_quantity() -> None:
+    d = build(equipment="longsword,longsword,shield,explorers-pack")
+    inv = {i["name"]: i["quantity"] for i in d["inventory"]}
+    check("a repeated index is a quantity", inv == {"Longsword": 2, "Shield": 1, "Explorer's Pack": 1})
+    check("a pack does not change weapons or AC", len(d["weapons"]) == 1 and d["armor_class"] == 10 + 3 + 2)
+
+
+def test_options() -> None:
+    o = creation.options(fetch)
+    check("lists come from the index endpoints", [r["index"] for r in o["races"]] == ["elf", "half-elf", "dwarf"]
+          and [c["index"] for c in o["classes"]] == ["fighter", "wizard"])
+    elf, half = o["races"][0], o["races"][1]
+    check("race: bonuses, subraces, look race", elf["ability_bonuses"] == {"dexterity": 2} and elf["look_race"] == "elf"
+          and elf["subraces"] == [{"index": "high-elf", "name": "High Elf", "ability_bonuses": {"intelligence": 1}}]
+          and elf["bonus_choice"] is None and elf["speed"] == 30)
+    check("half-elf bonus choice uses full names", half["bonus_choice"]["count"] == 2
+          and half["bonus_choice"]["options"][0] == "strength" and half["look_race"] == "half-elf")
+    f, w = o["classes"]
+    check("class: die, saves, skills", f["hit_die"] == 10 and f["saves"] == ["strength", "constitution"]
+          and f["skill_count"] == 2 and "athletics" in f["skill_options"])
+    check("no spellcasting at level 1 is null", f["spellcasting"] is None)
+    check("only plain single-item choices; fixed gear",
+          [c["options"][0]["index"] for c in f["equipment"]["choices"]] == ["longsword"]
+          and f["equipment"]["fixed"] == [{"index": "shield", "name": "Shield", "quantity": 1}])
+    sp = w["spellcasting"]
+    check("wizard spells: ability, counts, level 0 and 1 options", sp["ability"] == "intelligence" and sp["cantrips"] == 3
+          and sp["spells"] == 6 and [x["index"] for x in sp["cantrip_options"]] == ["fire-bolt"]
+          and [x["index"] for x in sp["spell_options"]] == ["magic-missile"])
+    check("background skills are SKILLS keys", o["backgrounds"] == [{"index": "acolyte", "name": "Acolyte", "skills": ["insight", "religion"]}])
+    look = o["look"]
+    check("look block", look["bodies"] == ["male", "female", "muscular"] and "green" in look["eyes"]
+          and look["races"]["drow"] == {"skins": ["blue", "black", "lavender"], "default_skin": "blue"}
+          and len(look["hair"]) == 10 and look["hair"][1] == {"id": "hair_long", "name": "Long"}
+          and 5 <= len(look["hair_colors"]) <= 10 and list(o["skills"]) == list(combat.SKILLS) and len(o["abilities"]) == 6)
+
+
+def test_campaign_config() -> None:
+    from dnd_cli import campaign
+
+    original = campaign.CAMPAIGNS_DIR
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        shutil.copytree(original / "template", root / "template")
+        campaign.CAMPAIGNS_DIR = root
+        try:
+            slug = campaign.create_campaign("Plain")
+            cfg = json.loads((root / slug / "config.json").read_text())
+            check("defaults: no pitch, the player makes the party", cfg["pitch"] == "" and cfg["party"] == "create")
+            slug = campaign.create_campaign("Epilogue", " Karlach lives. ", "premade")
+            cfg = json.loads((root / slug / "config.json").read_text())
+            check("pitch and party are saved", cfg["pitch"] == "Karlach lives." and cfg["party"] == "premade")
+            for args in (("Empty", "", "premade"), ("Bad", "x", "other")):
+                try:
+                    campaign.create_campaign(*args)
+                    refused = False
+                except campaign.CampaignError:
+                    refused = True
+                check(f"refused: {args}", refused and not (root / campaign.slugify(args[0])).exists())
+        finally:
+            campaign.CAMPAIGNS_DIR = original
+
+
 def test_create() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         c = campaign(Path(tmp))
@@ -178,6 +261,9 @@ if __name__ == "__main__":
     test_build()
     test_errors()
     test_classes()
+    test_equipment_quantity()
+    test_options()
+    test_campaign_config()
     test_create()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

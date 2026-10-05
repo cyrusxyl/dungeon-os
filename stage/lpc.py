@@ -19,6 +19,7 @@ variant.
 from __future__ import annotations
 
 import json
+import difflib
 from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
@@ -179,19 +180,39 @@ def _match_color(item: Item, color: str | None) -> str | None:
     """The item's own spelling of a color; '_' matches ' ' ('dark_brown' → 'dark brown')."""
     if not color:
         return None
-    wanted = color.lower().replace("_", " ")
+    wanted = COLOR_ALIASES.get(color.lower(), color.lower()).replace("_", " ")
     for c in item.colors():
         if c.lower().replace("_", " ") == wanted:
             return c
     return color
 
 
+# Common wrong words. Each target is a real item id or color name.
+ITEM_ALIASES = {"crown": "formal_crown", "tiara": "formal_tiara", "circlet": "formal_tiara"}
+COLOR_ALIASES = {"silver": "platinum", "grey": "gray", "brown": "dark_brown", "golden": "gold"}
+
+
 def _item(entry: str) -> tuple[Item, str | None]:
     name, color = _split(entry)
-    item = catalog().get(name)
+    cat = catalog()
+    item = cat.get(name) or cat.get(ITEM_ALIASES.get(name, ""))
     if not item:
-        raise ActorError(f"no LPC item {name!r}. List them with: uv run dnd-cli actor options")
+        near = difflib.get_close_matches(name, list(cat), 4, 0.5)
+        hint = f" Close: {', '.join(near)}." if near else ""
+        types = ", ".join(dict.fromkeys(cat[n].type for n in near))
+        where = f"List one type, for example: uv run dnd-cli actor options {types.split(', ')[0] if types else 'hat'}"
+        raise ActorError(f"no LPC item {name!r}.{hint} {where}")
     return item, color
+
+
+def _bad_color(item: Item, color: str) -> ActorError:
+    have = item.colors()
+    key = lambda c: c.replace(" ", "_")
+    alias = COLOR_ALIASES.get(color)
+    near = ([alias] if alias and alias in map(key, have) else []) + \
+        [c for c in difflib.get_close_matches(color, [key(c) for c in have], 3, 0.4) if c != alias]
+    first = f"{color}: use {', '.join(near)}. " if near else ""
+    return ActorError(f"{item.id}: color {color!r} is not valid. {first}All: {', '.join(key(c) for c in have) or '(no colors)'}.")
 
 
 def normalize_items(items: list[str]) -> list[str]:
@@ -261,7 +282,7 @@ def validate(spec: dict) -> list[str]:
             warnings.append(f"{item.id} has no sprite for body {body!r}; it will not show. "
                             f"It fits: {', '.join(sorted(item.bodies())) or 'none'}.")
         if color and color not in item.colors():
-            raise ActorError(f"{item.id}: color {color!r} is not one of {', '.join(item.colors()) or '(no colors)'}.")
+            raise _bad_color(item, color)
     return warnings
 
 

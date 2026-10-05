@@ -89,7 +89,8 @@ def place(campaign_dir: Path, map_id: str, place_id: str, tokens: list[str]) -> 
     if "in" in opts:
         parent = found.get(_check_id(opts["in"], "in="))
         if parent is None or map_id not in parent["places"]:
-            raise MapError(f"in={opts['in']}: first put the place {map_id!r} on the map {opts['in']!r}.")
+            raise MapError(f"in={opts['in']} is the id of the parent map that holds the place {map_id!r}. "
+                           f"First run: map place {opts['in']} {map_id}. Then: map place {map_id} <place-id> in={opts['in']}.")
         m["in"] = opts["in"]
         m["name"] = parent["places"][map_id]["name"]
     if m["places"]:

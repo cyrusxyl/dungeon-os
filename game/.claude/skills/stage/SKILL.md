@@ -30,7 +30,7 @@ EOF
 
 | Line | Effect |
 |---|---|
-| `@scene <location-id>` | Change the room; a new room starts with no characters. The same room again keeps them, so you need not repeat it in every beat. |
+| `@scene <location-id>` | Change the room. The same room again keeps its characters, so you need not repeat it in every beat. The player characters join the scene by themselves; do not `@enter` them. |
 | `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. Position is optional. |
 | `@exit <actor-id>` | A character leaves. |
 | `@narrate <text>` | A narration line in the dialogue box, with no portrait. |
@@ -52,7 +52,7 @@ A character speaking with `@say` is put on stage if it is not there yet. A warni
 
 ## Characters: how they look
 
-Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Looks are saved in the campaign and reused in every later session. Do not check or redo them. **Set a look only when `show beat` warns** "no appearance for ..." (the stage showed a silhouette). The stage swaps the silhouette for the new picture by itself; there is no need to send the beat again.
+Each actor shows as a Universal LPC pixel sprite, with a portrait cut from it. Looks are saved in the campaign and reused in every later session. Do not check or redo them. **Set a look only when `show beat` warns** "no appearance for ..." (the stage showed a silhouette). Set a new NPC's look with `actor set` BEFORE the first beat that shows the NPC: the beat only warns. The stage swaps the silhouette for the new picture by itself; there is no need to send the beat again.
 
 ```bash
 uv run dnd-cli actor set cassara-whitmore name=Cassara_Whitmore body=female skin=light eyes=green hair_bob:chestnut blouse_longsleeve:white corset:maroon skirt_straight:black shoes_basic:black
@@ -141,9 +141,9 @@ uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=me
 1. **Each reply is a beat.** Follow the Narration Budget in AGENTS.md: at most 3 sentences of narration, at most 2 sentences per NPC line, then a prompt to the player.
 2. **Split long speech.** One `@say` is one dialogue-box page. Two short `@say` lines read better than one long one.
 3. **Dice show on the stage by themselves.** Every roll of `attack`, `save`, `check`, and `uv run roll ...` appears as a dice box the players watch (`--secret` on the rules commands hides one). Still say what the roll means in the story text, for example `@narrate Your blade bites deep (18 vs AC 15) — 7 damage.` For a roll behind the DM screen (a hidden check, a secret DC), end the command with the shell comment `# secret`: `uv run roll 1d20+3 -v  # secret`. It then never reaches the stage.
-4. **Use `@choices` to ask the players.** The AskUserQuestion tool is blocked on the stage. Give 2 to 4 short options. The player can still type anything. Session Zero and character creation work the same way: one question per beat, with `@choices` for a list (race, class, background) and free text for the rest. Do not put a long rules summary in a beat; give the short options and answer questions when the player asks.
-5. **Never speak or act for a player character.** Never write an `@say` line for a PC, even when the player said what the character does: tell the action with `@narrate` ("Aragorn's longsword sings through the air…") and leave the words to the player. Do not decide what a PC does, says, or feels beyond what the player stated. Put PCs on stage with `@enter`, describe the world and the NPCs, then let the players answer with `@choices` or free text.
+4. **Use `@choices` to ask the players.** The AskUserQuestion tool is blocked on the stage. Give 2 to 4 short options. The player can still type anything. Do not run character creation in beats. The player makes characters on the creation screen (the **New character** button); see the `character-creation` skill. Do not put a long rules summary in a beat; give the short options and answer questions when the player asks.
+5. **Never speak or act for a player character.** Never write an `@say` line for a PC, even when the player said what the character does: tell the action with `@narrate` ("Aragorn's longsword sings through the air…") and leave the words to the player. Do not decide what a PC does, says, or feels beyond what the player stated. Describe the world and the NPCs, then let the players answer with `@choices` or free text.
 6. **Hidden information stays hidden.** A beat is shown to the players. Never put DM-only facts, villain plans, or clock counts in a beat. A disguised NPC uses an actor id and name the players know.
 7. **Referee mode is a beat too.** A ruling is an `@narrate` line, short and plain (AGENTS.md rule 5).
-8. **Table talk is not story.** A player's remark about the game itself — how someone looks on the stage, a character missing from the picture, a rule, the screen — is not something their character says or does. Do not put it into the story, and do not let an NPC answer it. Fix the cause (a look: `uv run dnd-cli actor preview <id>` to see it, then `actor set <id> --change ...`; a missing character: `@enter`), then answer in one `@narrate` line that starts with `(DM)`.
+8. **Table talk is not story.** A player's remark about the game itself — how someone looks on the stage, a character missing from the picture, a rule, the screen — is not something their character says or does. Do not put it into the story, and do not let an NPC answer it. Fix the cause (a look: `uv run dnd-cli actor preview <id>` to see it, then `actor set <id> --change ...`), then answer in one `@narrate` line that starts with `(DM)`.
 9. **If the command fails**, read the error, fix the line it names, and send the beat again. Do not tell the story in chat instead.

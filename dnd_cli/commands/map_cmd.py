@@ -16,7 +16,8 @@ def _summary(map_id: str, m: dict) -> str:
         state = "visited" if p["visited"] else "known" if p["known"] else "hidden"
         lines.append(f"  {pid} {p['icon']} at {p['at']} {state}")
     for r in m["routes"]:
-        lines.append(f"  {r['a']} - {r['b']} {r['travel'] or ''}{'' if r['known'] else ' hidden'}")
+        both = m["places"][r["a"]]["known"] and m["places"][r["b"]]["known"]
+        lines.append(f"  {r['a']} - {r['b']} {r['travel'] or ''}{'' if both else ' hidden'}")
     return "\n".join(lines)
 
 
@@ -66,6 +67,8 @@ def execute_show(campaign, map_id: str | None) -> int:
 def execute_options() -> int:
     print("Usage: uv run dnd-cli map place <map-id> <place-id> [name=<Name_With_Underscores>] [icon=<icon>] "
           "[from=<place-id> dir=<n|ne|e|se|s|sw|w|nw> travel=<2_days>] [in=<parent-map-id>] [hidden=yes]")
+    print("  in= is the id of the parent map. That map must already hold a place with the same id as this map.")
+    print("  Example: map place the-grove old-oak from=gate dir=n   (map the-grove is the place the-grove on map region)")
     print("       uv run dnd-cli map route <map-id> <place-a> <place-b> [travel=<3_days>]")
     print("       uv run dnd-cli map reveal <map-id> <place-id>")
     print("Icons: " + ", ".join(crawl.data()["icons"]))

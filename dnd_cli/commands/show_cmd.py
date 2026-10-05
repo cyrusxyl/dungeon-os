@@ -88,7 +88,10 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
     # A scene or site that is a place on a map moves the party marker there.
     found = maps.all_maps(campaign_dir)
     out = []
+    members = beat.party(campaign_dir)
     for e in events:
+        if e["type"] == "scene" and members:
+            e["party"] = members
         out.append(e)
         place = e.get("location") if e["type"] == "scene" else e.get("site") if e["type"] == "explore" else None
         map_id = maps.visit(campaign_dir, found, place) if place else None

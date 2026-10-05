@@ -1,40 +1,25 @@
 """actor command - set and check how a character looks on the visual stage"""
 
 import json
+import os
 import sys
 
-from dnd_cli.commands.show_cmd import notify_stage, preview_path, run_stage
-from stage import actors, beat, lpc
+from dnd_cli.commands.show_cmd import preview_path, run_stage
+from stage import actors, lpc
 from stage.assets import AssetError
-from stage.files import read_json
 
 
 def execute_set(campaign, actor_id: str, tokens: list[str], change: bool = False) -> int:
     def go(campaign_dir):
-        if not tokens:
-            raise lpc.ActorError("give at least one setting, for example name=Sireth body=female.")
-        if not beat.ID_RE.match(actor_id):
-            raise lpc.ActorError(f"actor id {actor_id!r}: {beat.ID_RULE}.")
-        current = read_json(actors.actors_dir(campaign_dir) / f"{actor_id}.json")
-        if current is not None and not change:
+        try:
+            spec, warnings, saved = actors.set_look(
+                campaign_dir, actor_id, tokens, change, notify=bool(os.environ.get("DUNGEON_STAGE_LOG")))
+        except actors.LookExists as e:
             # A saved look is reused as is; a new DM session must not quietly redo it.
-            print(f"{actor_id!r} already has a look; the stage uses it as saved:\n{json.dumps(current)}\n"
+            print(f"{actor_id!r} already has a look; the stage uses it as saved:\n{json.dumps(e.current)}\n"
                   "Nothing changed. Add --change only if the story changes the look "
                   "(never for a player character unless that player asks).", file=sys.stderr)
             return 1
-        # A player character's race comes from its sheet: its features on a new look, its skin colors always.
-        sheet = read_json(campaign_dir / "characters" / f"{actor_id}.json")
-        race = actors.race_of(str(sheet.get("race", ""))) if sheet else None
-        notes: list[str] = []
-        spec = actors.build(actor_id, tokens, current, race, notes)
-        if "tile" in spec:
-            warnings = []
-        else:
-            spec["items"] = lpc.normalize_items(spec["items"])
-            warnings = notes + lpc.validate(spec)
-            spec["items"] = lpc.sex_fixed(spec["items"], spec["body"])
-        saved = actors.save(campaign_dir, actor_id, spec)
-        notify_stage(campaign_dir, {"type": "actor_updated", "actor": actor_id})
         for w in warnings:
             print(f"Warning: {w}", file=sys.stderr)
         kind = f"tile {spec['tile']}" if "tile" in spec else f"{spec['body']}, {len(spec['items'])} items"

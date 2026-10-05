@@ -9,6 +9,8 @@ in, and raises RulesError when the endpoint does not exist, so tests can stub it
 from __future__ import annotations
 
 import re
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -152,8 +154,11 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
     if not alignment:
         del data["alignment"]
 
-    for idx in _names(equipment):
-        sheet.equip(data, _lookup(fetch, f"equipment/{slug(idx)}", "equipment"))
+    for idx, n in Counter(slug(i) for i in _names(equipment)).items():  # a repeated index is a quantity
+        item = _lookup(fetch, f"equipment/{idx}", "equipment")
+        sheet.equip(data, item)
+        if n > 1:
+            sheet.add_item(data, item["name"], n - 1)
 
     traits = [(t["name"], f"traits/{t['index']}") for t in r.get("traits", []) + sub.get("racial_traits", [])]
     feats = [(f["name"], f"features/{f['index']}") for f in lvl.get("features", [])]
@@ -224,3 +229,102 @@ def create(campaign_dir: Path, fetch, char_id: str, player_name: str | None = No
     character.save(campaign_dir, char_id, data)
     register(campaign_dir, char_id, choices["player"], player_name)
     return describe(data)
+
+
+# -- options for the web creator ----------------------------------------------
+
+HAIR_STYLES = ("hair_plain", "hair_long", "hair_curly_short", "hair_spiked", "hair_shorthawk",
+               "hair_ponytail", "hair_bob", "hair_braid", "hair_pixie", "hair_buzzcut")
+HAIR_COLORS = ("platinum", "blonde", "ginger", "red", "light_brown", "chestnut", "dark_brown", "black", "gray", "white")
+
+
+def _bonuses(data: dict) -> dict[str, int]:
+    return {ability(b["ability_score"]["index"]): b["bonus"] for b in data.get("ability_bonuses", [])}
+
+
+def _simple_choices(cls: dict) -> list[dict]:
+    """Starting-gear choices of one plain item each (the rest the DM can hand out later)."""
+    out = []
+    for ch in cls.get("starting_equipment_options", []):
+        opts = ch.get("from", {}).get("options", [])
+        if ch.get("choose") == 1 and len(opts) > 1 and all(
+                o.get("option_type") == "counted_reference" and o.get("count") == 1 for o in opts):
+            out.append({"label": re.sub(r"\([a-z]\)\s*", "", ch["desc"]),
+                        "options": [{"index": o["of"]["index"], "name": o["of"]["name"]} for o in opts]})
+    return out
+
+
+def _spell_options(fetch, cls: str, level: int) -> list[dict]:
+    spells = fetch(f"classes/{cls}/spells")["results"]
+    return [{"index": x["index"], "name": x["name"]} for x in spells if x.get("level") == level]
+
+
+def _class_options(fetch, index: str) -> dict:
+    c = fetch(f"classes/{index}")
+    sc = fetch(f"classes/{index}/levels/1").get("spellcasting") or {}
+    n, skills = _class_skill_options(c)
+    out = {
+        "index": index, "name": c["name"], "hit_die": c["hit_die"],
+        "saves": [ability(s["index"]) for s in c.get("saving_throws", [])],
+        "skill_count": n, "skill_options": skills, "spellcasting": None,
+        "equipment": {"fixed": [{"index": e["equipment"]["index"], "name": e["equipment"]["name"], "quantity": e["quantity"]}
+                                for e in c.get("starting_equipment", [])],
+                      "choices": _simple_choices(c)},
+    }
+    if sc.get("cantrips_known") or any(sc.get(f"spell_slots_level_{i}") for i in range(1, 10)):
+        out["spellcasting"] = {
+            "ability": ability(c["spellcasting"]["spellcasting_ability"]["index"]),
+            "cantrips": sc.get("cantrips_known", 0),
+            # A prepared caster (cleric, druid) picks none here; the wizard's spellbook holds six.
+            "spells": sc.get("spells_known", 6 if index == "wizard" else 0),
+            "cantrip_options": _spell_options(fetch, index, 0),
+            "spell_options": _spell_options(fetch, index, 1),
+        }
+    return out
+
+
+def _race_options(fetch, index: str) -> dict:
+    from stage import actors
+
+    r = fetch(f"races/{index}")
+    opt = r.get("ability_bonus_options")
+    return {
+        "index": index, "name": r["name"], "speed": r.get("speed", 30), "ability_bonuses": _bonuses(r),
+        "bonus_choice": opt and {"count": opt["choose"],
+                                 "options": [ability(o["ability_score"]["index"]) for o in opt["from"]["options"]]},
+        "subraces": [{"index": s["index"], "name": sub["name"], "ability_bonuses": _bonuses(sub)}
+                     for s in r.get("subraces", []) for sub in [fetch(f"subraces/{s['index']}")]],
+        "look_race": actors.race_of(r["name"]) or "human",
+    }
+
+
+def _background_options(fetch, index: str) -> dict:
+    b = fetch(f"backgrounds/{index}")
+    return {"index": index, "name": b["name"],
+            "skills": [_skill(p["index"]) for p in b.get("starting_proficiencies", []) if p["index"].startswith("skill-")]}
+
+
+def _look_options() -> dict:
+    from stage import actors, lpc
+
+    colors = lpc.catalog()["hair_long"].colors()
+    return {
+        "bodies": ["male", "female", "muscular"],
+        "eyes": lpc.palette_names("eye"),
+        "races": {k: {"skins": v["skins"], "default_skin": v.get("skin", v["skins"][0])} for k, v in actors.races().items()},
+        "hair": [{"id": h, "name": h.removeprefix("hair_").replace("_", " ").title()} for h in HAIR_STYLES],
+        "hair_colors": [c for c in HAIR_COLORS if c in colors],
+    }
+
+
+def options(fetch) -> dict:
+    """The document behind the web creator: every choice `build` accepts at level 1. Raises RulesError."""
+    def indexes(resource: str) -> list[str]:
+        return [x["index"] for x in fetch(resource)["results"]]
+
+    with ThreadPoolExecutor(8) as pool:  # a cold cache is about fifty small requests
+        races = pool.map(lambda i: _race_options(fetch, i), indexes("races"))
+        classes = pool.map(lambda i: _class_options(fetch, i), indexes("classes"))
+        backgrounds = pool.map(lambda i: _background_options(fetch, i), indexes("backgrounds"))
+        return {"races": list(races), "classes": list(classes), "backgrounds": list(backgrounds),
+                "skills": list(SKILLS), "abilities": list(ABILITIES), "look": _look_options()}

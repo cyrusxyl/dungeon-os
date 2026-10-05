@@ -11,6 +11,7 @@ from __future__ import annotations
 
 LOG_LIMIT = 60
 DM_LOG_LIMIT = 30
+ACTIVITY_LIMIT = 12
 AUTO_POSITIONS = ("left", "right", "center", "far-left", "far-right")
 
 
@@ -27,6 +28,7 @@ def empty() -> dict:
         "last_roll": None,
         "explore": None,
         "place": None,
+        "activity": [],
     }
 
 
@@ -58,6 +60,8 @@ def apply(state: dict, event: dict) -> dict:
         # same room) keeps who is there.
         if event["location"] != s["scene"] or s["explore"]:
             s["actors"] = {}
+            for member in event.get("party", []):
+                s["actors"][member] = {"position": _free_position(s["actors"]), "emotion": "neutral"}
         s["scene"] = event["location"]
         s["choices"] = None
         s["explore"] = None
@@ -90,7 +94,12 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = {"options": event["options"], "seq": s["seq"]}
     elif kind == "roll":
         s["last_roll"] = {k: event.get(k) for k in ("expr", "total", "dice")} | {"seq": s["seq"]}
+    elif kind == "dm_activity":
+        if not s["activity"] or s["activity"][-1] != event["text"]:
+            s["activity"] = (s["activity"] + [event["text"]])[-ACTIVITY_LIMIT:]
     elif kind == "dm_status":
+        if event.get("status") in ("idle", "exited"):
+            s["activity"] = []
         s["dm"] = {k: v for k, v in event.items() if k in ("status", "reason", "message")}
         if event.get("dm_text"):
             s["dm_log"] = (s["dm_log"] + [event["dm_text"]])[-DM_LOG_LIMIT:]

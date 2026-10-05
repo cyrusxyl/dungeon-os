@@ -9,7 +9,7 @@ Create engaging content procedurally: NPCs with personality, locations with atmo
 
 ## Campaign Story Bible
 
-When starting a **new campaign** (no `dm_story.md` exists in the campaign folder), create one before play begins. Also create `{campaign}/canon.json` alongside it with `uv run dnd-cli canon init {campaign}` — do not create it by hand, so it starts schema-valid. `dm_story.md` is the narrative spine — the story you intend to tell. `canon.json` is the mechanical record the `dm-canon-procedures` skill reads and writes during play — the facts that have actually happened. Both files keep the story from drifting into incoherence across sessions.
+When starting a **new campaign** (no `dm_story.md` exists in the campaign folder), create one before play begins. `{campaign}/canon.json` already exists (copied from the template): do not run `canon init`. `dm_story.md` is the narrative spine — the story you intend to tell. `canon.json` is the mechanical record the `dm-canon-procedures` skill reads and writes during play — the facts that have actually happened. Both files keep the story from drifting into incoherence across sessions.
 
 Once `dm_story.md` names the campaign's villains and their quests (item 6, below), enter them into `canon.json` the same way — do not write the villain/clock JSON by hand:
 ```bash
@@ -17,6 +17,8 @@ uv run dnd-cli canon add-villain "{name}" "{goal}" "{trait}" --escape-plan "{how
 uv run dnd-cli canon add-clock "{villain name}" "{clock name}" {4|6|8} --description "{what it tracks}"
 ```
 A clock that starts only on a trigger gets `--waiting`; `canon clock-status ... active` starts it later. `add-clock` refuses any segment count other than 4, 6, or 8 (Operating Guide 2.2) — the command enforces this, so there is no need to double check it yourself.
+
+**New campaign, no characters yet**: build the bible, canon, scene and map, and show no beat. The party is not known, so keep the opening open: write no per-PC hooks. When the prompt that names the party arrives, add item 7 from the sheets, then open the first scene. If the session prompt tells you to make the characters from the pitch, make them after the world (`character-creation` skill), then open the first scene.
 
 ### What to write
 
@@ -50,7 +52,7 @@ Save to `{campaign}/dm_story.md` with these sections:
    - **A way to escape capture** — do not let the players kill a main villain in an early encounter
    - **Three quests toward their goal** — these become the villain's clocks in `canon.json` Part A
 
-7. **Player-Specific Hooks** — At least one hook per PC that ties their background/race/class into the main story.
+7. **Player-Specific Hooks** — At least one hook per PC that ties their background/race/class into the main story. A sheet made on the creation screen has `hooks` (`past`, `problem`) and `backstory`. Use them: the `past` people and places return in the story, the `problem` becomes a thread. Do not invent a hook for that PC.
 
 8. **World State Tracking** — A table of variables the DM tracks silently (who knows what, who's alerted, what's been discovered).
 

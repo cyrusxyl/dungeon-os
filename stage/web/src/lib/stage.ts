@@ -78,6 +78,9 @@ export interface StageState {
   last_roll: Roll | null
   explore: string | null
   place: { map: string; place: string } | null
+  creating: boolean
+  party_mode: 'create' | 'premade'
+  activity?: string[]
 }
 
 export interface Roll {

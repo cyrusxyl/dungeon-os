@@ -1,0 +1,15 @@
+{
+  "_comment": "The default outfit of a player character's look, by class (LPC item ids; see `dnd-cli actor options <type>`). The creator adds body, skin, eyes, hair and the race's features.",
+  "barbarian": ["leather", "pants:brown", "boots_basic:brown", "weapon_blunt_waraxe"],
+  "bard": ["longsleeve:maroon", "pants:brown", "boots_fold:brown", "weapon_sword_dagger"],
+  "cleric": ["longsleeve:white", "skirts_plain:white", "belt_robe:white", "slippers", "weapon_blunt_mace"],
+  "druid": ["longsleeve:green", "skirts_plain:green", "sandals", "weapon_magic_gnarled"],
+  "fighter": ["chainmail", "pants:gray", "boots_basic:black", "weapon_sword_longsword", "shield_kite"],
+  "monk": ["longsleeve:orange", "pants:brown", "sandals"],
+  "paladin": ["plate", "legs_armour", "feet_armour", "arms_armour", "weapon_sword_longsword", "shield_kite"],
+  "ranger": ["leather", "pants:brown", "boots_fold:brown", "weapon_polearm_longspear"],
+  "rogue": ["leather", "pants:black", "boots_fold:black", "weapon_sword_dagger"],
+  "sorcerer": ["longsleeve:red", "skirts_plain:red", "slippers", "weapon_magic_simple"],
+  "warlock": ["longsleeve:purple", "skirts_plain:black", "slippers", "weapon_magic_wand"],
+  "wizard": ["longsleeve:blue", "skirts_plain:blue", "magic_wizard", "weapon_magic_gnarled", "slippers"]
+}
