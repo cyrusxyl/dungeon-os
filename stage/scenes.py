@@ -43,9 +43,15 @@ FILLER = {
     "template": "house", "wall": "timber", "floor": "planks_dark", "mood": "torchlit",
     "slots": {"wall_left": "window_arched", "wall_center": "fireplace", "wall_right": "tapestry",
               "wall_left2": "cabinet", "wall_right2": "dresser", "back_left": "chests", "back_center": None,
-              "back_right": "barrel_pile", "mid_center": "table_long", "mid_left": None, "mid_right": None,
+              "back_right": "barrel_pile", "mid_center": "table_desk", "mid_left": None, "mid_right": None,
               "front_left": "plant", "front_right": "brazier"},
 }
+# DCSS item icons on the desk: (path under assets/dcss/item, x, y of the icon's bottom centre), pasted 1:1.
+FILLER_STUFF = [
+    ("book/dark_brown_old.png", 124, 128), ("book/parchment.png", 125, 121), ("misc/misc_lamp.png", 202, 122),
+    ("food/bread_ration.png", 160, 122), ("scroll/blank_paper.png", 144, 134), ("misc/misc_deck.png", 170, 126),
+    ("potion/golden.png", 182, 134), ("potion/brown.png", 195, 136),
+]
 
 
 class SceneError(ValueError):
@@ -213,7 +219,8 @@ def _mood(img: Image.Image, mood: str) -> Image.Image:
     return rgb.convert("RGBA")
 
 
-def render(spec: dict) -> Image.Image:
+def render(spec: dict, stuff: list | tuple = ()) -> Image.Image:
+    """The scene image. `stuff`: item icons pasted over the props, before the mood tint."""
     r = resolve(spec)
     cat = catalog()
     img = Image.new("RGBA", (W, H), (20, 18, 24, 255))
@@ -255,6 +262,10 @@ def render(spec: dict) -> Image.Image:
         pimg = prop_image(name)
         x, y = _place(pimg, name, slot, nudge)
         img.alpha_composite(pimg, (max(-pimg.width // 2, min(W - pimg.width // 2, x)), y))
+    for path, x, y in stuff:
+        icon = Image.open(ensure_dcss() / "item" / path).convert("RGBA")
+        icon = icon.crop(icon.getchannel("A").getbbox())
+        img.alpha_composite(icon, (x - icon.width // 2, y - icon.height))
     return _mood(img, r["mood"])
 
 
@@ -310,3 +321,11 @@ def _png(spec_json: str) -> bytes:
 
 def png(spec: dict) -> bytes:
     return _png(json.dumps(spec, sort_keys=True))
+
+
+@cache
+def filler_png() -> bytes:
+    """The DM's study with its desk clutter: the stage's loading screen."""
+    buf = io.BytesIO()
+    render(FILLER, FILLER_STUFF).save(buf, "PNG")
+    return buf.getvalue()

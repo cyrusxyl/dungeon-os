@@ -754,6 +754,10 @@ def test_party() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         check("no party, no key", "party" not in show(Path(tmp), "@scene inn")[0])
 
+    from stage import scenes as _scenes
+    check("the loading room renders with every desk icon", _scenes.filler_png()[:4] == b"\x89PNG"
+          and all((Path(__import__("stage.assets", fromlist=["x"]).ensure_dcss()) / "item" / p).exists()
+                  for p, _, _ in _scenes.FILLER_STUFF))
     s = state.apply(state.empty(), {"type": "scene", "location": "inn", "party": ["zed", "amy"]})
     check("the state seeds the actors", s["actors"]["zed"]["position"] == "left" and s["actors"]["amy"]["position"] == "right")
     s2 = state.apply(s, {"type": "enter", "actor": "gareth"})

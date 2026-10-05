@@ -732,7 +732,7 @@ def create_app(
         return await png_response(scenes.png, spec, static=True)
 
     async def asset_filler(request: Request):
-        return await png_response(scenes.png, scenes.FILLER, static=True)
+        return await png_response(scenes.filler_png, static=True)
 
     async def api_scene(request: Request):
         spec = scenes.load(need().campaign_dir, request.path_params["location"])

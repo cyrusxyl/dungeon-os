@@ -917,6 +917,34 @@
         1,
         2
       ]
+    },
+    "table_desk": {
+      "parts": [
+        {
+          "sheet": "city",
+          "rect": [
+            8,
+            0,
+            3,
+            1
+          ],
+          "dy": 0
+        },
+        {
+          "sheet": "city",
+          "rect": [
+            8,
+            2,
+            3,
+            1
+          ],
+          "dy": 1
+        }
+      ],
+      "size": [
+        3,
+        2
+      ]
     }
   },
   "templates": {

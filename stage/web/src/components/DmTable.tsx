@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 const FLAVOUR = ['Shuffling the notes', 'Sharpening quills', 'Consulting the dice', 'Warming up the voices']
 const SHOWN = 2
-// The DM paces the floor in front of the table; x is the left edge of its 64 px frame.
+// The DM paces the floor in front of the desk; x is the left edge of its 64 px frame.
 const PACE = [16, 64, 112, 168, 224, 168, 112, 64]
 
 function useTick(ms: number): number {
@@ -18,7 +18,7 @@ function Dm({ x, facing }: { x: number; facing: 'left' | 'right' }) {
   const [failed, setFailed] = useState(false)
   return (
     <div
-      className="absolute top-[92px] h-[64px] w-[64px] transition-[left] duration-[2200ms] ease-linear motion-reduce:transition-none"
+      className="absolute top-[100px] h-[64px] w-[64px] transition-[left] duration-[2200ms] ease-linear motion-reduce:transition-none"
       style={{ left: x, filter: 'brightness(0.85) sepia(0.2)', transitionTimingFunction: 'steps(14)' }}
     >
       <div className="dm-bob h-full w-full">
@@ -35,13 +35,6 @@ function Dm({ x, facing }: { x: number; facing: 'left' | 'right' }) {
   )
 }
 
-const SPARKS = [
-  { x: 128, d: '0s' },
-  { x: 152, d: '0.9s' },
-  { x: 176, d: '1.8s' },
-  { x: 196, d: '0.4s' },
-]
-
 // The DM at work in its study: shown in place of the stage while there is no scene yet.
 export function DmTable({ activity }: { activity?: string[] }) {
   const list = activity ?? []
@@ -54,18 +47,12 @@ export function DmTable({ activity }: { activity?: string[] }) {
 
   return (
     <div className="absolute inset-0 overflow-hidden" role="status" aria-live="polite">
-      <img src="/asset/filler.png" alt="" draggable={false} className="pixelated absolute inset-0 h-full w-full" />
-      {SPARKS.map((s) => (
-        <span key={s.x} className="dm-scribble absolute top-[70px] h-[2px] w-[6px] bg-[var(--gold)] opacity-0" style={{ left: s.x, animationDelay: s.d }} />
-      ))}
-      <div className="dm-flutter absolute left-[124px] top-[78px] h-[6px] w-[12px] bg-[var(--parchment)]" style={{ ['--r' as string]: '-8deg' }} />
-      <div className="dm-flutter absolute left-[140px] top-[84px] h-[5px] w-[10px] bg-[#d8c9a0]" style={{ ['--r' as string]: '6deg', animationDelay: '0.4s' }} />
-      <div className="dm-roll absolute left-[172px] top-[88px] size-[4px] bg-white" />
-      <div className="dm-roll absolute left-[182px] top-[90px] size-[3px] bg-[var(--ember)]" style={{ animationDelay: '0.7s' }} />
-      <div className="absolute left-[196px] top-[80px] h-[8px] w-[4px] bg-[var(--parchment)]" />
-      <div className="dm-flame absolute left-[197px] top-[75px] h-[5px] w-[2px] bg-[var(--ember)]" />
+      <img src="/asset/filler.png?v=2" alt="" draggable={false} className="pixelated absolute inset-0 h-full w-full" />
+      {/* Light only: the objects are baked into the room image. */}
+      <div className="dm-glow absolute left-[126px] top-[2px] h-[52px] w-[68px]" />
+      <div className="dm-glow absolute left-[178px] top-[92px] h-[44px] w-[44px]" style={{ animationDelay: '0.3s' }} />
       <Dm x={x} facing={facing} />
-      <div className="pixel-font absolute inset-x-0 bottom-0 flex h-[40px] flex-col justify-end gap-[2px] border-t-2 border-[var(--border)] bg-[var(--panel)]/90 px-3 pb-[5px]">
+      <div className="pixel-font absolute inset-x-0 bottom-0 flex h-[38px] flex-col justify-end gap-[2px] border-t-2 border-[var(--border)] bg-[var(--panel)]/90 px-3 pb-[5px]">
         {done.map((label, i) => (
           <div key={`${label}-${i}`} className="truncate text-[6px] text-[var(--dim)] opacity-70">
             <span className="text-emerald-400">✓ </span>
