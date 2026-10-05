@@ -204,6 +204,9 @@ def pc_record(sheet: dict, cid: str) -> dict:
          "damage": [[w["damage"], w.get("damage_type", "")]] if w.get("damage") else []}
         for w in sheet.get("weapons", [])
     ]
+    # Bare fists, as in Baldur's Gate 3: 1 + Strength modifier, bludgeoning.
+    attacks.append({"name": "Unarmed Strike", "bonus": mods["strength"] + sheet.get("proficiency_bonus", 2),
+                    "damage": [[f"1{dice.signed(mods['strength'])}", "bludgeoning"]]})
     spell = sheet.get("spellcasting") or {}
     if "spell_attack_bonus" in spell:
         attacks.append({"name": "spell", "bonus": spell["spell_attack_bonus"], "damage": []})
@@ -492,14 +495,55 @@ def _catch_up(campaign_dir: Path, state: dict, cid: str) -> list[str]:
 
 
 TURN_KINDS = ("action", "bonus", "reaction")
+# What a creature does on its turn and what it leaves behind. `rounds=1` ends when its next turn starts.
+STANCES = {"dodging": "Dodge", "dashing": "Dash", "disengaged": "Disengage", "helping": "Help", "hidden": "Hide"}
 
 
-def spend_turn(state: dict, cid: str, kind: str, used: bool = True) -> None:
-    """Mark an action, bonus action or reaction as used (or free) for a combatant of the running combat."""
+def spend_turn(state: dict, cid: str, kind: str, used: bool = True, quiet: bool = False) -> None:
+    """Mark an action, bonus action or reaction as used (or free) for a combatant of the running combat.
+
+    `quiet` ignores a creature outside the combat (a DM attack with no tracker running).
+    """
+    if quiet and not in_combat(state, cid):
+        return
     enc = encounter(state)
     if kind not in TURN_KINDS or cid not in enc["participants"]:
         raise RulesError(f"use one of {', '.join(TURN_KINDS)} for a creature in this combat.")
     enc.setdefault("resources", {}).setdefault(cid, {})[kind] = bool(used)
+
+
+def in_combat(state: dict, cid: str) -> bool:
+    enc = state.get("active_encounter") or {}
+    return enc.get("type") == "combat" and cid in enc.get("participants", [])
+
+
+def turn_used(state: dict, cid: str) -> dict:
+    spent = ((state.get("active_encounter") or {}).get("resources") or {}).get(cid, {}) if in_combat(state, cid) else {}
+    return {k: bool(spent.get(k)) for k in TURN_KINDS}
+
+
+def has_condition(state: dict, cid: str, name: str) -> bool:
+    return any(c["condition"] == name for c in _conditions(state, cid))
+
+
+def end_turn(campaign_dir: Path, state: dict, cid: str) -> list[str]:
+    """A creature ends its own turn: refuse if it is not its turn, then move on like `encounter next`."""
+    enc = encounter(state)
+    if enc.get("current_turn") != cid:
+        raise RulesError(f"it is {enc.get('current_turn')}'s turn, not {cid}'s.")
+    return next_turn(campaign_dir, state)
+
+
+def health_band(rec: dict) -> str:
+    """How hurt a creature looks to the players: no numbers (the DM keeps those behind the screen)."""
+    cur, top = rec["hp"]["current"], max(rec["hp"]["max"], 1)
+    if cur <= 0:
+        return "down"
+    if cur * 4 <= top:
+        return "near death"
+    if cur * 2 <= top:
+        return "bloodied"
+    return "unhurt" if cur >= top else "injured"
 
 
 def condition(state: dict, cid: str, op: str, name: str, rounds: int | None = None,
@@ -585,8 +629,13 @@ def _find_attack(rec: dict, name: str) -> dict:
 
 def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: str, adv: bool = False,
            dis: bool = False, damage_expr: str | None = None, damage_type: str = "", bonus: int = 0,
-           secret: bool = False, rng=None, skip=()) -> list[str]:
-    """One attack roll against AC; on a hit, roll and apply the damage. Crits double the dice."""
+           secret: bool = False, rng=None, skip=(), cost: str | None = "action") -> list[str]:
+    """One attack roll against AC; on a hit, roll and apply the damage. Crits double the dice.
+
+    The attack uses the attacker's `cost` (action, bonus or reaction; None for a free attack). A multiattack
+    is several attacks for one action. A dodging target gives disadvantage; a hidden attacker gets
+    advantage and is seen afterwards.
+    """
     rng = rng or random
     a_rec = combatant(campaign_dir, state, attacker)
     t_rec = combatant(campaign_dir, state, target)
@@ -599,6 +648,13 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     if not parts:
         raise RulesError(f"{act['name']} has no damage on record; give it with --damage 1d10 --type fire.")
     turn_lines = _catch_up(campaign_dir, state, attacker)
+    if cost:
+        spend_turn(state, attacker, cost, quiet=True)
+    if has_condition(state, target, "dodging"):
+        dis = True
+    if has_condition(state, attacker, "hidden"):
+        adv = True
+        condition(state, attacker, "remove", "hidden")
     r = _d20(campaign_dir, attacker, "attack", adv, dis, rng, skip)
     kept = r["kept"]
     tiles = [{"label": "Attack Bonus", "value": act["bonus"]}] + ([{"label": "Bonus", "value": bonus}] if bonus else [])

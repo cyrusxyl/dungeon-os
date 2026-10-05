@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { D20 } from '@/components/D20'
 import { Shell, Tile } from '@/components/DiceOverlay'
-import { AddBonus } from '@/components/PartyPanel'
+import { GiveBonus } from '@/components/PartyPanel'
 import { act, type Party, signed, TONE } from '@/lib/party'
 import { postJson, type RollRequest as Request } from '@/lib/stage'
 
@@ -52,6 +52,7 @@ export function RollRequest({ request, party, refresh, canRoll }: { request: Req
         <div className="flex w-full flex-col items-center gap-1 border-t-2 border-[var(--border)] pt-2">
           <span className="text-[11px] tracking-widest text-[var(--dim)] uppercase">Bonuses</span>
           <div className="flex flex-wrap justify-center gap-2">
+            {applies.length === 0 && <span className="text-sm text-[var(--dim)]">None</span>}
             {applies.map((e) =>
               e ? (
                 <button
@@ -71,11 +72,11 @@ export function RollRequest({ request, party, refresh, canRoll }: { request: Req
                 </button>
               ) : null,
             )}
-            <AddBonus
+            <GiveBonus
+              offers={char?.offers ?? []}
               catalogue={catalogue}
-              have={char?.effects ?? []}
               kind={request.kind}
-              onAdd={(id) => act('/api/effects', { who: request.who, op: 'add', effect: id }, refresh)}
+              onGive={(o) => act('/api/effects', { who: request.who, from: o.from, effect: o.effect }, refresh)}
             />
           </div>
         </div>

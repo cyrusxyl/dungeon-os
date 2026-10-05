@@ -44,9 +44,45 @@ export interface PartyChar {
   features: { name: string; description?: string }[]
   death_saves?: { successes: number; failures: number } | null
   effects: string[]
-  conditions: string[]
-  /** What the character has used this turn (true = used); null outside a combat. */
-  turn: { action: boolean; bonus: boolean; reaction: boolean } | null
+  /** A `stance` is something the character chose to do (Dodge, Hide); the rest are done to it. */
+  conditions: { name: string; stance: boolean }[]
+  in_combat: boolean
+  /** What the character has used this turn (true = used). Always false outside a combat. */
+  turn: { action: boolean; bonus: boolean; reaction: boolean }
+  /** The common actions and class features; `why` says why one is greyed out. */
+  actions: CardAction[]
+  attacks: { name: string; bonus: number; damage: string }[]
+  /** Bonuses a party member can really give this character right now. */
+  offers: Offer[]
+}
+
+export interface CardAction {
+  id: string
+  label: string
+  cost: 'action' | 'bonus' | null
+  info: string
+  target: 'enemy' | null
+  why: string | null
+}
+
+export interface Offer {
+  effect: string
+  from: string
+  from_name: string
+  cost: 'action' | 'bonus'
+  slot: number | null
+  why: string | null
+}
+
+export type Health = 'unhurt' | 'injured' | 'bloodied' | 'near death' | 'down'
+
+export interface Entrant {
+  id: string
+  name: string
+  initiative: number
+  pc: boolean
+  health: Health
+  conditions: { name: string; stance: boolean }[]
 }
 
 export interface Party {
@@ -55,7 +91,7 @@ export interface Party {
   game_time: string | null
   quests: { title: string; status: string }[]
   effects: EffectPreset[]
-  combat: { round: number; current: string | null; order: { id: string; name: string; initiative: number; pc: boolean }[] } | null
+  combat: { round: number; current: string | null; order: Entrant[] } | null
 }
 
 /** The party, read again each time the DM status changes (the DM writes the files during a turn) or after `refresh`. */
@@ -72,6 +108,9 @@ export async function act(path: string, body: Record<string, unknown>, refresh: 
   refresh()
   return ok
 }
+
+/** How full a health bar is for a creature the players only see as a band, not as numbers. */
+export const BAND_FILL: Record<Health, number> = { unhurt: 100, injured: 75, bloodied: 45, 'near death': 15, down: 0 }
 
 export const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`)
 

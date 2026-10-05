@@ -441,6 +441,11 @@ def create_parser():
     p.add_argument("--rounds", type=int, default=None)
     p.add_argument("--save", default=None)
     p.add_argument("--campaign", default=None)
+    p = enc_sub.add_parser("use", help="Mark an action, bonus action or reaction used (or --free to give it back)")
+    p.add_argument("target")
+    p.add_argument("kind", choices=["action", "bonus", "reaction"])
+    p.add_argument("--free", action="store_true")
+    p.add_argument("--campaign", default=None)
     p = enc_sub.add_parser("end", help="End combat: split XP of defeated foes, clear the tracker")
     p.add_argument("--no-xp", action="store_true")
     p.add_argument("--campaign", default=None)
@@ -452,6 +457,8 @@ def create_parser():
     p.add_argument("--damage", default=None, help="Damage dice, e.g. 1d10 (spells, improvised)")
     p.add_argument("--type", default=None, help="Damage type for --damage")
     p.add_argument("--bonus", type=int, default=0, help="Extra to-hit bonus (bless, cover as negative)")
+    p.add_argument("--cost", default="action", choices=["action", "bonus", "reaction", "free"],
+                   help="What the attack uses on the turn tracker (default action; free for an extra attack of one action)")
     rolls(p)
 
     p = subparsers.add_parser("save", help="Saving throws: <targets...> <ability> --dc N [--damage 8d6 --half] or --from creature:action")

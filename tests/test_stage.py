@@ -864,7 +864,7 @@ def test_player_actions() -> None:
     import subprocess
     import sys
 
-    from dnd_cli import combat, effects
+    from dnd_cli import character, combat, effects
     from stage import party
     from stage.server import create_app
 
@@ -893,7 +893,15 @@ def test_player_actions() -> None:
 
         view = party.view(c)
         legolas = next(x for x in view["characters"] if x["id"] == "legolas")
-        check("no combat: no turn and no order", view["combat"] is None and legolas["turn"] is None)
+        check("no combat: nothing used, no order", view["combat"] is None and not legolas["in_combat"]
+              and legolas["turn"] == {"action": False, "bonus": False, "reaction": False})
+        check("the card lists the common actions, with the reason one is off",
+              {a["id"] for a in legolas["actions"]} >= {"attack", "dash", "disengage", "dodge", "help", "hide", "shove"}
+              and next(a for a in legolas["actions"] if a["id"] == "attack")["why"] == "Only in a combat"
+              and next(a for a in legolas["actions"] if a["id"] == "hide")["why"] is None)
+        check("every character can punch, and the weapons come with their damage",
+              [a["name"] for a in legolas["attacks"]][-1] == "Unarmed Strike")
+        check("nobody in the party can give a bonus, so none is on offer", legolas["offers"] == [])
         check("the sheet's abilities, skills and slots reach the view",
               legolas["abilities"]["dexterity"]["mod"] == 3 and legolas["spell"]["slots"]["1"]["max"] == 3
               and next(k for k in legolas["skills"] if k["name"] == "Survival")["prof"] == 1)
@@ -902,8 +910,9 @@ def test_player_actions() -> None:
         check("the effect presets come with the view", {e["id"] for e in view["effects"]} >= {"guidance", "bless", "advantage"})
 
         st = combat.load_state(c)
-        st["active_encounter"] = {"type": "combat", "round": 2, "participants": ["aragorn", "goblin#1"], "current_turn": "aragorn",
-                                  "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "goblin#1", "initiative": 9, "bonus": 2}],
+        st["active_encounter"] = {"type": "combat", "round": 2, "participants": ["aragorn", "goblin#1", "legolas"], "current_turn": "aragorn",
+                                  "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "goblin#1", "initiative": 9, "bonus": 2},
+                                                       {"name": "legolas", "initiative": 5, "bonus": 3}],
                                   "conditions": {"aragorn": [{"condition": "poisoned"}]}, "monsters": {"goblin#1": {"id": "goblin#1", "kind": "monster", "name": "Goblin", "hp": {"current": 7, "max": 7}, "ac": 15,
                                                                                          "mods": {}, "attacks": []}}}
         combat.spend_turn(st, "aragorn", "bonus")
@@ -911,9 +920,20 @@ def test_player_actions() -> None:
         view = party.view(c)
         aragorn = next(x for x in view["characters"] if x["id"] == "aragorn")
         check("combat: the order, the turn and what is used", view["combat"]["current"] == "aragorn"
-              and view["combat"]["order"][1] == {"id": "goblin#1", "name": "Goblin", "initiative": 9, "pc": False}
-              and aragorn["turn"] == {"action": False, "bonus": True, "reaction": False} and aragorn["conditions"] == ["poisoned"])
-        check("a monster's HP and AC never reach the view", "7" not in json.dumps(view["combat"]) and "monsters" not in json.dumps(view))
+              and view["combat"]["order"][1] == {"id": "goblin#1", "name": "Goblin 1", "initiative": 9, "pc": False,
+                                                   "health": "unhurt", "conditions": []}
+              and aragorn["turn"] == {"action": False, "bonus": True, "reaction": False} and aragorn["in_combat"]
+              and aragorn["conditions"] == [{"name": "poisoned", "stance": False}])
+        check("a monster's HP and AC never reach the view", "7" not in json.dumps(view["combat"]) and "\"ac\"" not in json.dumps(view["combat"])
+              and "monsters" not in json.dumps(view))
+        st["active_encounter"]["monsters"]["goblin#1"]["hp"]["current"] = 3
+        combat.save_state(c, st)
+        check("how hurt a creature is shows as a band: bloodied at half, near death at a quarter, down at 0",
+              [party.view(c)["combat"]["order"][1]["health"]] == ["bloodied"] and all(
+                  combat.health_band({"hp": {"current": cur, "max": 8}}) == band
+                  for cur, band in ((8, "unhurt"), (7, "injured"), (4, "bloodied"), (2, "near death"), (0, "down"))))
+        st["active_encounter"]["monsters"]["goblin#1"]["hp"]["current"] = 7
+        combat.save_state(c, st)
         check("a new turn gives the actions back", combat.next_turn(c, st) and st["active_encounter"]["resources"]["goblin#1"] == {})
 
         async def routes():
@@ -924,14 +944,74 @@ def test_player_actions() -> None:
             status, r = await post("/api/effects", {"who": "aragorn", "op": "add", "effect": "bless"})
             check("a busy DM refuses a change", status == 409)
             stage.state["dm"] = {"status": "idle"}
-            status, r = await post("/api/effects", {"who": "aragorn", "op": "add", "effect": "bless"})
-            check("an effect is added", status == 200 and effects.active(c, "aragorn") == ["bless"])
-            status, r = await post("/api/effects", {"who": "aragorn", "op": "add", "effect": "haste"})
-            check("an unknown effect is refused", status == 400)
-            status, r = await post("/api/effects", {"who": "../x", "op": "add", "effect": "bless"})
+            status, r = await post("/api/effects", {"who": "aragorn", "effect": "bless"})
+            check("a bonus nobody can give is refused", status == 400 and effects.active(c, "aragorn") == [])
+            status, r = await post("/api/effects", {"who": "../x", "effect": "bless"})
             check("an unknown character is refused", status == 404)
+            ranger = character.load(c, "legolas")
+            ranger["spellcasting"]["spells_known"].append("Guidance")
+            character.save(c, "legolas", ranger)
+            status, r = await post("/api/effects", {"who": "aragorn", "from": "legolas", "effect": "guidance"})
+            check("a caster cannot cast out of turn", status == 400 and effects.active(c, "aragorn") == [])
+            sent = []
+
+            async def fake(text):
+                sent.append(text)
+            stage.submit = fake
             status, r = await post("/api/turn", {"who": "aragorn", "kind": "action"})
-            check("an action is marked used", status == 200 and combat.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True)
+            check("the used-or-free toggle is gone", status == 404)
+            status, r = await post("/api/action", {"who": "aragorn", "action": "dash"})
+            check("Dash is a condition for a round, spends the action, and the DM is told",
+                  status == 200 and combat.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True
+                  and any(x["condition"] == "dashing" for x in combat.load_state(c)["active_encounter"]["conditions"]["aragorn"])
+                  and sent and "aragorn takes the Dash action" in sent[-1])
+            status, r = await post("/api/action", {"who": "aragorn", "action": "dodge"})
+            check("a spent action is refused", status == 400 and "used" in r["error"])
+            status, r = await post("/api/action", {"who": "legolas", "action": "dash"})
+            check("out of turn is refused", status == 400 and "not your turn" in r["error"])
+            status, r = await post("/api/action", {"who": "aragorn", "action": "fly"})
+            check("an unknown action is refused", status == 400)
+            n = len(sent)
+            st = combat.load_state(c)
+            combat.spend_turn(st, "aragorn", "bonus", False)
+            combat.save_state(c, st)
+            stage.state["dm"] = {"status": "busy"}
+            status, r = await post("/api/action", {"who": "aragorn", "action": "shove", "target": "goblin#1"})
+            check("a busy DM refuses an action", status == 409)
+            stage.state["dm"] = {"status": "idle"}
+            status, r = await post("/api/action", {"who": "aragorn", "action": "shove", "target": "goblin#1"})
+            req = stage.state["roll_request"] or {}
+            check("Shove asks the player for an Athletics roll, and nothing goes to the DM yet",
+                  status == 200 and req["what"] == "athletics" and req["title"] == "Shove" and req["hide"] and "goblin#1" in req["note"]
+                  and "dc" not in stage.snapshot()["state"]["roll_request"] and len(sent) == n)
+            status, r = await post("/api/roll", {})
+            check("the roll tells the DM what it was for", status == 200 and "goblin#1" in sent[-1] and "Athletics" in sent[-1])
+            status, r = await post("/api/end-turn", {"who": "legolas"})
+            check("only the creature whose turn it is can end it", status == 400)
+            status, r = await post("/api/end-turn", {"who": "aragorn"})
+            check("End Turn moves the tracker and tells the DM to run the creature",
+                  status == 200 and combat.load_state(c)["active_encounter"]["current_turn"] == "goblin#1"
+                  and "ends their turn" in sent[-1] and "goblin#1's turn: run it" in sent[-1])
+            check("a new turn has all three free", combat.load_state(c)["active_encounter"]["resources"]["goblin#1"] == {})
+            st = combat.load_state(c)
+            st["active_encounter"]["current_turn"] = "legolas"
+            combat.save_state(c, st)
+            status, r = await post("/api/effects", {"who": "aragorn", "from": "legolas", "effect": "guidance"})
+            check("a caster on their turn gives a bonus and spends the action", status == 200 and effects.active(c, "aragorn") == ["guidance"]
+                  and combat.load_state(c)["active_encounter"]["resources"]["legolas"]["action"] is True)
+            effects.remove(c, "aragorn", "guidance")
+            st["active_encounter"]["current_turn"] = "aragorn"
+            combat.save_state(c, st)
+            from test_rules import GOBLIN
+            st = combat.load_state(c)
+            st["active_encounter"]["monsters"]["goblin#1"] = combat.monster_record(GOBLIN, "goblin#1")
+            combat.spend_turn(st, "aragorn", "action", False)
+            combat.save_state(c, st)
+            status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "goblin#1", "weapon": "Longsword"})
+            check("an attack from the card tells the DM to describe the wound, with no numbers",
+                  status == 200 and "goblin#1 now looks" in sent[-1] and "no numbers" in sent[-1]
+                  and combat.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True)
+            effects.add(c, "aragorn", "bless")  # the DM's own `effect add`
             status, r = await post("/api/resource", {"who": "aragorn", "name": "Second Wind"})
             check("a class resource is spent", status == 200 and json.loads((c / "characters" / "aragorn.json").read_text())["resources_used"] == {"Second Wind": 1})
             status, r = await post("/api/resource", {"who": "aragorn", "name": "Rage"})
@@ -942,18 +1022,13 @@ def test_player_actions() -> None:
             events = [{"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 14, "name": "Aragorn"}]
             beat.append(c, events)
             stage.fold(stage.read_new_events())
-            sent = []
-
-            async def fake(text):
-                sent.append(text)
-            stage.submit = fake
             status, r = await post("/api/roll", {"skip": ["bless"]})
             hidden = {"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 17, "hide": True, "name": "Aragorn"}
             stage.fold([hidden])
             check("a hidden DC is not in the snapshot, but the server still has it",
                   "dc" not in stage.snapshot()["state"]["roll_request"] and stage.state["roll_request"]["dc"] == 17)
             stage.fold([events[0]])
-            check("the roll is made and the DM is told", status == 200 and sent and "Aragorn rolled" in sent[0] and "Athletics" in sent[0] and "vs DC 14" in sent[0])
+            check("the roll is made and the DM is told", status == 200 and sent and "Aragorn rolled" in sent[-1] and "Athletics" in sent[-1] and "vs DC 14" in sent[-1])
             stage.fold(stage.read_new_events())
             check("the stage shows the roll with its breakdown", stage.state["roll_request"] is None
                   and stage.state["rolls"][-1]["detail"]["rolls"][0]["who"] == "aragorn")

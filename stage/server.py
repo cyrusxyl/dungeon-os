@@ -43,7 +43,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from dnd_cli import character, combat, effects, resources
+from dnd_cli import actions, character, combat, effects, resources
 from stage import actors, beat, crawl, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
@@ -748,34 +748,83 @@ def create_app(
             raise HTTPException(404, "No such character.")
         return who
 
+    rolling = threading.Lock()
+
+    def with_rules(stage: Stage, fn):
+        """Run rules code on the campaign's state with the stage log set (so rolls show), and save the state."""
+        with rolling:
+            os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
+            try:
+                state = combat.load_state(stage.campaign_dir)
+                out = fn(state)
+                combat.save_state(stage.campaign_dir, state)
+                return out
+            finally:
+                del os.environ["DUNGEON_STAGE_LOG"]
+
     async def api_effects(request: Request):
+        """A party member gives a bonus (a spell they know, Bardic Inspiration). The cost is spent; nothing else is on offer."""
         stage = idle_stage()
         body = await request.json()
         who = pc_or_404(stage, body.get("who"))
-        op = effects.add if body.get("op") == "add" else effects.remove if body.get("op") == "remove" else None
-        if op is None:
-            return error("op is add or remove.", 400)
+        src = pc_or_404(stage, body.get("from") or who)
         try:
-            await run_in_threadpool(op, stage.campaign_dir, who, str(body.get("effect")))
-        except ValueError as e:
+            await run_in_threadpool(with_rules, stage, lambda st: actions.grant(stage.campaign_dir, st, src, who, str(body.get("effect"))))
+        except (combat.RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         return JSONResponse({"ok": True})
 
-    async def api_turn(request: Request):
-        """Mark an action, bonus action or reaction used or free."""
+    async def api_action(request: Request):
+        """A common action or class feature from the character card. An attack or a feature goes to the DM to narrate."""
         stage = idle_stage()
         body = await request.json()
         who = pc_or_404(stage, body.get("who"))
-
-        def go():
-            state = combat.load_state(stage.campaign_dir)
-            combat.spend_turn(state, who, str(body.get("kind")), bool(body.get("used", True)))
-            combat.save_state(stage.campaign_dir, state)
+        target = body.get("target")
+        weapon = body.get("weapon")
         try:
-            await run_in_threadpool(go)
+            done = await run_in_threadpool(with_rules, stage, lambda st: actions.perform(
+                stage.campaign_dir, st, who, str(body.get("action")), str(target) if target else None,
+                str(weapon) if weapon else None))
+        except (combat.RulesError, character.CharacterError) as e:
+            return error(str(e), 400)
+        name = character.load(stage.campaign_dir, who).get("name", who)
+        if roll := done.get("roll"):
+            # Hide and Shove: the player rolls in the roll window like for any check the DM asks for.
+            state = combat.load_state(stage.campaign_dir)
+            preview = combat.roll_preview(stage.campaign_dir, state, who, roll["what"])
+            await stage._local_event({"type": "roll_request", "who": who, "what": roll["what"], "hide": True,
+                                      "note": roll["note"], **preview, "title": roll["title"]})
+            return JSONResponse({"roll": True})
+        look = ""
+        if target and str(body.get("action")) == "attack":
+            # The player sees no numbers: the story must show how hard the blow was and how the creature looks now.
+            state = combat.load_state(stage.campaign_dir)
+            band = combat.health_band(combat.combatant(stage.campaign_dir, state, str(target)))
+            look = (f" {target} now looks {band}: describe the blow and its wound so the player can tell how much damage "
+                    "it did and how much the creature may have left, with no numbers.")
+        await stage.submit(f"[{name} acts from the character card] " + " ".join(done["lines"]) + look
+                           + " Narrate it. It is still their turn: wait for what they do next.")
+        return JSONResponse({"lines": done["lines"]})
+
+    async def api_end_turn(request: Request):
+        """The player ends their turn: the tracker moves on, and the DM runs the creatures until a player character is up."""
+        stage = idle_stage()
+        body = await request.json()
+        who = pc_or_404(stage, body.get("who"))
+        try:
+            lines = await run_in_threadpool(with_rules, stage, lambda st: combat.end_turn(stage.campaign_dir, st, who))
         except combat.RulesError as e:
             return error(str(e), 400)
-        return JSONResponse({"ok": True})
+        state = combat.load_state(stage.campaign_dir)
+        now = state["active_encounter"]["current_turn"]
+        name = character.load(stage.campaign_dir, who).get("name", who)
+        if character.character_path(stage.campaign_dir, now).exists():
+            todo = "It is a player character's turn now: narrate the change in one beat, then wait for the player."
+        else:
+            todo = (f"It is {now}'s turn: run it with the rules commands (attack, save), narrate it, then `encounter next`. "
+                    "Repeat for each creature until a player character is up, then wait for the player.")
+        await stage.submit(f"[{name} ends their turn] " + " ".join(lines) + " " + todo)
+        return JSONResponse({"lines": lines})
 
     async def api_resource(request: Request):
         """Spend (or give back) one use of a class resource."""
@@ -793,18 +842,10 @@ def create_app(
             return error("No such resource.", 400)
         return JSONResponse({"ok": True})
 
-    rolling = threading.Lock()
-
     def roll_for(stage: Stage, req: dict, skip: list[str]) -> list[str]:
         """The roll the DM asked for, made with the same rules code as `dnd-cli check`; the stage shows it."""
-        with rolling:
-            os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
-            try:
-                state = combat.load_state(stage.campaign_dir)
-                return combat.check(stage.campaign_dir, state, [req["who"]], req["what"], dc=req.get("dc"),
-                                    hide_dc=bool(req.get("hide")), skip=skip)
-            finally:
-                del os.environ["DUNGEON_STAGE_LOG"]
+        return with_rules(stage, lambda st: combat.check(stage.campaign_dir, st, [req["who"]], req["what"], dc=req.get("dc"),
+                                                    hide_dc=bool(req.get("hide")), skip=skip))
 
     async def api_roll(request: Request):
         """The player clicks Roll in the roll window: roll it, show it, and tell the DM the result."""
@@ -821,7 +862,7 @@ def create_app(
         except (combat.RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         await stage.submit(f"[{req.get('name', req['who'])} rolled in the roll window] " + " ".join(lines)
-                           + " Narrate the outcome.")
+                           + (f" {req['note']}" if req.get("note") else "") + " Narrate the outcome.")
         return JSONResponse({"lines": lines})
 
     async def api_spell_levels(request: Request):
@@ -996,7 +1037,8 @@ def create_app(
         Route("/api/restart", api_restart, methods=["POST"]),
         Route("/api/party", api_party),
         Route("/api/effects", api_effects, methods=["POST"]),
-        Route("/api/turn", api_turn, methods=["POST"]),
+        Route("/api/action", api_action, methods=["POST"]),
+        Route("/api/end-turn", api_end_turn, methods=["POST"]),
         Route("/api/resource", api_resource, methods=["POST"]),
         Route("/api/roll", api_roll, methods=["POST"]),
         Route("/api/spells", api_spell_levels),

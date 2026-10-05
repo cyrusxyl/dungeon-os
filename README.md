@@ -112,3 +112,12 @@ uv run dnd-cli info conditions paralyzed
 - **DM Utilities**: Random selection, quick reference formatting
 
 See `dnd_cli/README.md` for full documentation.
+## Development
+
+- `.venv/bin/python tests/run_all.py` runs every test suite (about 15 seconds). Add `--visual` to also run the browser check of the roll window (needs Google Chrome, and `npm run build` in `stage/web`).
+- `tests/test_rolls_fuzz.py` audits 400 random rolls: the total, the dice, the effects, the outcome, and that no hidden number reaches the stage.
+- `tests/visual_roll_window.py [dir]` drives headless Chrome through the roll window. It checks what unit tests cannot: the window closes on time while the DM keeps sending events, the Roll button waits for unread story, and a hidden DC is not in the page. Give it a directory to keep screenshots.
+- A test that cannot fail proves nothing. After you add a check, break the code on purpose and see the check fail.
+- Stop a dev server with `fuser -k <port>/tcp`. Do not use `pkill -f`: it can kill your own shell.
+- The DM's rules are in `game/AGENTS.md`. `CLAUDE.md`, `GEMINI.md` and `WARP.md` in `game/` are links to it. The DM runs in `game/`, so it also loads any `CLAUDE.md` above that folder. Keep developer notes here in the README, not in a `CLAUDE.md`.
+- The web UI is the default view. `--classic` is the older Textual view.

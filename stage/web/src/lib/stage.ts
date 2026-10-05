@@ -117,6 +117,8 @@ export interface RollRequest {
   subtitle: string
   dc?: number
   hide?: boolean
+  /** What the roll is for (Hide, Shove): the DM reads it with the result. */
+  note?: string
   mods: { label: string; value: number }[]
   seq: number
 }

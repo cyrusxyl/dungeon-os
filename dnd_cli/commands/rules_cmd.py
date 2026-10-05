@@ -50,9 +50,12 @@ def execute_encounter(campaign, action: str, args) -> int:
             return [rolled + line] if rolled else [line]
         if action == "condition":
             return [combat.condition(state, args.target, args.op, args.name, args.rounds, args.save)]
+        if action == "use":
+            combat.spend_turn(state, args.target, args.kind, not args.free)
+            return [f"{args.target}: {args.kind} {'free' if args.free else 'used'}."]
         if action == "end":
             return combat.end(campaign_dir, state, award_xp=not args.no_xp)
-        raise combat.RulesError("encounter start|add|next|status|damage|heal|condition|end")
+        raise combat.RulesError("encounter start|add|next|status|damage|heal|condition|use|end")
     return _with_state(campaign, fn)
 
 
@@ -73,7 +76,8 @@ def _amount(text: str, label: str) -> tuple[int, str]:
 def execute_attack(campaign, args) -> int:
     return _with_state(campaign, lambda c, s: combat.attack(
         c, s, args.attacker, args.weapon, args.target, adv=args.adv, dis=args.dis,
-        damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret))
+        damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret,
+        cost=None if args.cost == "free" else args.cost))
 
 
 def execute_save(campaign, args) -> int:

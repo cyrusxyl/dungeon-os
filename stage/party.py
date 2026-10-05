@@ -1,14 +1,14 @@
 """What the party panel and the character sheet show, from the character files and the combat tracker.
 
-An allowlist, like the rest of the stage server: a player character's own sheet, the names and
-initiative of everyone in a combat, and the PC's own conditions. Never a monster's HP, AC or stats.
+An allowlist, like the rest of the stage server: a player character's own sheet, the names, initiative,
+conditions and how hurt (a band, never a number) everyone in a combat is. Never a monster's HP, AC or stats.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from dnd_cli import combat, dice, effects, resources
+from dnd_cli import actions, combat, dice, effects, resources
 from stage import beat
 from stage.files import read_json
 
@@ -24,7 +24,7 @@ def _skills(sheet: dict, mods: dict, prof: int) -> list[dict]:
     return out
 
 
-def _character(campaign_dir: Path, cid: str, sheet: dict, enc: dict) -> dict:
+def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict) -> dict:
     scores = sheet.get("ability_scores", {})
     mods = {a: dice.mod(scores.get(a, 10)) for a in combat.ABILITIES}
     prof = sheet.get("proficiency_bonus", 2)
@@ -33,8 +33,6 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, enc: dict) -> dict:
                   "equipped": bool(i.get("equipped")), "description": i.get("description", ""), "rarity": i.get("rarity")}
                  for i in sheet.get("inventory", [])]
     spell = sheet.get("spellcasting") or {}
-    spent = (enc.get("resources") or {}).get(cid, {})
-    in_combat = cid in (enc.get("participants") or [])
     return {
         "id": cid,
         "name": sheet.get("name"),
@@ -60,10 +58,21 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, enc: dict) -> dict:
         "features": sheet.get("features_and_traits", []),
         "death_saves": sheet.get("death_saves"),
         "effects": effects.active(campaign_dir, cid),
-        "conditions": [c["condition"] for c in (enc.get("conditions") or {}).get(cid, [])],
-        # Only in a combat: what the character has used this turn.
-        "turn": {k: bool(spent.get(k)) for k in combat.TURN_KINDS} if in_combat else None,
+        "conditions": _conditions(st, cid),
+        # What the character has used this turn (all false, and not counted, outside a combat).
+        "in_combat": combat.in_combat(st, cid),
+        "turn": combat.turn_used(st, cid),
+        "actions": actions.listing(campaign_dir, st, cid, sheet),
+        "attacks": actions.attacks(sheet),
+        # Bonuses the party can really give this character: a spell someone knows, Bardic Inspiration.
+        "offers": actions.offers(campaign_dir, st, cid),
     }
+
+
+def _conditions(st: dict, cid: str) -> list[dict]:
+    """A creature's conditions; a `stance` is something it chose to do (Dodge, Hide), not something done to it."""
+    names = [c["condition"] for c in ((st.get("active_encounter") or {}).get("conditions") or {}).get(cid, [])]
+    return [{"name": n, "stance": n in combat.STANCES} for n in names]
 
 
 def view(campaign_dir: Path) -> dict:
@@ -83,12 +92,20 @@ def view(campaign_dir: Path) -> dict:
         if (sheet := read_json(path)) is None:
             continue
         pcs[path.stem] = sheet.get("name") or beat.title(path.stem)
-        out["characters"].append(_character(campaign_dir, path.stem, sheet, fight))
+        out["characters"].append(_character(campaign_dir, path.stem, sheet, st))
     if fight:
         out["combat"] = {
             "round": fight.get("round", 1),
             "current": fight.get("current_turn"),
-            "order": [{"id": o["name"], "name": pcs.get(o["name"]) or beat.title(o["name"]), "initiative": o["initiative"], "pc": o["name"] in pcs}
-                      for o in fight.get("initiative_order", [])],
+            "order": [_entrant(campaign_dir, st, o, pcs) for o in fight.get("initiative_order", [])],
         }
     return out
+
+
+def _entrant(campaign_dir: Path, st: dict, entry: dict, pcs: dict[str, str]) -> dict:
+    """One place in the turn order. How hurt it is comes as a band; a creature's numbers stay behind the screen."""
+    cid = entry["name"]
+    rec = combat.combatant(campaign_dir, st, cid)
+    name = pcs.get(cid) or rec["name"] + (f" {cid.split('#')[1]}" if "#" in cid else "")
+    return {"id": cid, "name": name, "initiative": entry["initiative"], "pc": cid in pcs,
+            "health": combat.health_band(rec), "conditions": _conditions(st, cid)}

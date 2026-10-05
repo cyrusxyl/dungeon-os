@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from dnd_cli import canon, character, combat, dice, effects, resources, sheet
+from dnd_cli import actions, canon, character, combat, dice, effects, resources, sheet
 from dnd_cli.commands import session_cmd
 
 REPO = Path(__file__).resolve().parents[1]
@@ -250,6 +250,109 @@ def test_resources(c: Path) -> None:
     check("the next combatant starts with all three free", state["active_encounter"]["resources"][state["active_encounter"]["current_turn"]] == {})
 
 
+def test_actions(c: Path) -> None:
+    print("turn economy, common actions, bonuses from the party")
+    sheet_ = character.load(c, "aragorn")
+    unarmed = next(a for a in combat.pc_record({**sheet_, "weapons": []}, "aragorn")["attacks"] if a["name"] == "Unarmed Strike")
+    check("a character with no weapon still has Unarmed Strike: 1 + Strength, bludgeoning",
+          unarmed["damage"] == [["1+3", "bludgeoning"]] and unarmed["bonus"] == 3 + sheet_["proficiency_bonus"])
+
+    state = fight(c)
+    combat.attack(c, state, "aragorn", "longsword", "goblin#1", rng=Fixed(15, 6))
+    check("an attack spends the action", combat.turn_used(state, "aragorn") == {"action": True, "bonus": False, "reaction": False})
+    state = fight(c)
+    combat.attack(c, state, "aragorn", "longsword", "goblin#1", rng=Fixed(15, 6), cost=None)
+    check("a free attack (a second one of the same action) spends nothing", combat.turn_used(state, "aragorn")["action"] is False)
+    combat.attack(c, state, "aragorn", "longsword", "goblin#2", rng=Fixed(15, 6), cost="reaction")
+    check("an opportunity attack spends the reaction", combat.turn_used(state, "aragorn") == {"action": False, "bonus": False, "reaction": True})
+
+    # Dodging gives disadvantage: two d20 are rolled and the lower one counts.
+    state = fight(c)
+    combat.condition(state, "goblin#1", "add", "dodging", rounds=1)
+    line = combat.attack(c, state, "aragorn", "longsword", "goblin#1", rng=Fixed(18, 4))[0]
+    check("attacking a dodging creature has disadvantage", "disadvantage 18,4" in line and "4+5 = 9" in line)
+    combat.condition(state, "aragorn", "add", "hidden")
+    line = combat.attack(c, state, "aragorn", "longsword", "goblin#2", rng=Fixed(4, 17))[0]
+    check("a hidden attacker has advantage and is seen afterwards", "advantage 4,17" in line and not combat.has_condition(state, "aragorn", "hidden"))
+
+    # The actions on the card.
+    state = fight(c)
+    rng = Fixed(15, 6)
+    done = actions.perform(c, state, "aragorn", "attack", "goblin#1", "Longsword", rng)
+    check("Attack from the card rolls, applies damage and spends the action",
+          "hit" in done["lines"][0] and combat.turn_used(state, "aragorn")["action"])
+    check("a spent action cannot be spent again", raises(lambda: actions.perform(c, state, "aragorn", "dash")))
+    check("a bonus action is still free for Shove", actions.perform(c, state, "aragorn", "shove", "goblin#2")["roll"]["what"] == "athletics"
+          and combat.turn_used(state, "aragorn")["bonus"])
+    check("Shove needs a standing enemy", raises(lambda: actions.perform(c, fight(c), "aragorn", "shove", "legolas")))
+    check("only the character whose turn it is can act", raises(lambda: actions.perform(c, fight(c), "legolas", "dash")))
+    state = fight(c)
+    actions.perform(c, state, "aragorn", "dodge")
+    check("Dodge is a condition for one round, and spends the action",
+          combat.has_condition(state, "aragorn", "dodging") and combat.turn_used(state, "aragorn")["action"])
+    state = fight(c)
+    check("Hide asks for a Stealth roll", actions.perform(c, state, "aragorn", "hide")["roll"]["what"] == "stealth")
+    check("a creature that is not in a combat cannot Dash", raises(lambda: actions.perform(c, combat.load_state(c), "aragorn", "dash")))
+    check("Hide works outside a combat and spends nothing", bool(actions.perform(c, combat.load_state(c), "aragorn", "hide")["roll"]))
+    why = {a["id"]: a["why"] for a in actions.listing(c, fight(c), "legolas", character.load(c, "legolas"))}
+    check("the card says why an action is greyed out", why["dash"] == "Not your turn" and why["attack"] == "Not your turn")
+    why = {a["id"]: a["why"] for a in actions.listing(c, combat.load_state(c), "aragorn", character.load(c, "aragorn"))}
+    check("outside a combat only the combat-free ones are on",
+          why["attack"] == "Only in a combat" and why["hide"] is None and why["feature:Second Wind"] is None)
+
+    # Second Wind and Action Surge.
+    state = fight(c)
+    character.apply_damage(sheet_ := character.load(c, "aragorn"), 8)
+    character.save(c, "aragorn", sheet_)
+    hp = character.load(c, "aragorn")["hp"]["current"]
+    actions.perform(c, state, "aragorn", "feature:Second Wind", rng=Fixed(6))
+    after = character.load(c, "aragorn")
+    check("Second Wind heals 1d10 + level, spends a use and the bonus action",
+          after["hp"]["current"] == min(after["hp"]["max"], hp + 6 + after["level"])
+          and after["resources_used"] == {"Second Wind": 1} and combat.turn_used(state, "aragorn")["bonus"])
+    check("a spent feature is refused", raises(lambda: actions.perform(c, state, "aragorn", "feature:Second Wind")))
+    combat.spend_turn(state, "aragorn", "action")
+    actions.perform(c, state, "aragorn", "feature:Action Surge")
+    check("Action Surge gives the action back", combat.turn_used(state, "aragorn")["action"] is False)
+
+    # End turn.
+    state = fight(c)
+    check("only the creature whose turn it is can end it", raises(lambda: combat.end_turn(c, state, "legolas")))
+    lines = combat.end_turn(c, state, "aragorn")
+    check("ending the turn moves to the next creature", state["active_encounter"]["current_turn"] == "legolas" and "legolas" in lines[0])
+
+    # Bonuses: only what a party member can give.
+    state = combat.load_state(c)
+    check("a party with no caster of them has nothing to offer",
+          [o["effect"] for o in actions.offers(c, state, "aragorn")] == [])
+    ranger = character.load(c, "legolas")
+    ranger["spellcasting"]["spells_known"].append("Guidance")
+    character.save(c, "legolas", ranger)
+    offered = actions.offers(c, state, "aragorn")
+    check("a known spell (any spelling) is on offer from its caster", [(o["effect"], o["from"]) for o in offered] == [("guidance", "legolas")])
+    check("an unknown effect is refused", raises(lambda: actions.grant(c, state, "legolas", "aragorn", "advantage")))
+    check("a character who cannot cast it is refused", raises(lambda: actions.grant(c, state, "aragorn", "legolas", "guidance")))
+    actions.grant(c, state, "legolas", "aragorn", "guidance")
+    check("a cantrip is given for free outside a combat", effects.active(c, "aragorn") == ["guidance"])
+    check("an effect already held is not offered again", actions.offers(c, state, "aragorn") == [])
+    effects.remove(c, "aragorn", "guidance")
+    state = fight(c)
+    state["active_encounter"]["current_turn"] = "legolas"
+    actions.grant(c, state, "legolas", "aragorn", "guidance")
+    check("in a combat the caster spends the action", combat.turn_used(state, "legolas")["action"] and effects.active(c, "aragorn") == ["guidance"])
+    effects.remove(c, "aragorn", "guidance")
+    check("a spent action blocks the next spell", raises(lambda: actions.grant(c, state, "legolas", "aragorn", "guidance")))
+    ranger = character.load(c, "legolas")
+    ranger["class"], ranger["resources_used"] = "Bard", {}
+    character.save(c, "legolas", ranger)
+    check("a bard offers Bardic Inspiration to others, not to themselves",
+          ("bardic-inspiration", "legolas") in [(o["effect"], o["from"]) for o in actions.offers(c, combat.load_state(c), "aragorn")]
+          and "bardic-inspiration" not in [o["effect"] for o in actions.offers(c, combat.load_state(c), "legolas")])
+    ranger["spellcasting"]["spells_known"].remove("Guidance")
+    ranger["class"] = "Ranger"
+    character.save(c, "legolas", ranger)
+
+
 def test_death(c: Path) -> None:
     print("death saves")
     state = combat.load_state(c)
@@ -340,6 +443,7 @@ if __name__ == "__main__":
         test_combat(c)
         test_effects(c)
         test_resources(c)
+        test_actions(c)
         test_death(c)
         test_sheet(c)
         test_session_end(c)

@@ -41,6 +41,20 @@ uv run dnd-cli encounter next                                # next living comba
 - `uv run dnd-cli encounter status` prints the order, HP, AC and conditions — use it instead of reading files.
 - A PC at 0 HP: on its turn, `uv run dnd-cli check <name> death`. Damage to a PC at 0 adds death-save failures by itself; any healing resets them.
 
+## The player's turn on the stage
+
+The stage gives a player character a turn like Baldur's Gate 3: the turn bar shows the order, and the character card has the action, bonus action and reaction icons, the common actions (Attack, Shove, Dash, Disengage, Dodge, Help, Hide), class features and an End turn button. The game spends the icons. You do not toggle them.
+
+- On a player character's turn, **wait**. The player acts from the card, or types a line. Do not play their turn in prose and do not call `encounter next` for them.
+- A card action reaches you as a line like `[Aragorn acts from the character card] aragorn Longsword → goblin#1: ... hit, 7 damage. Narrate it. It is still their turn.` Narrate it in a beat and stop. The attack is already rolled and applied.
+- Hide and Shove are rolled in the roll window. The result reaches you as `[Aragorn rolled in the roll window] ...` with a note. Decide with the rules: Hide against the enemies' passive Perception (`uv run dnd-cli check <enemy> perception --passive`); if it works, `uv run dnd-cli encounter condition <pc> add hidden`. Shove against the target's Athletics or Acrobatics (`uv run dnd-cli check <enemy> athletics --dc <the player's total>`, or the better of the two). A hidden attacker rolls with advantage on its next attack; `attack` does that and removes `hidden`.
+- Dash, Disengage, Dodge and Help are conditions that last one round (`dashing`, `disengaged`, `dodging`, `helping`). `attack` gives disadvantage against a `dodging` creature by itself. A creature that moves away without `disengaged` gives an opportunity attack: use `attack ... --cost reaction`.
+- When the player ends the turn you get `[Aragorn ends their turn] Round 1: goblin#1's turn ... ` and the tracker is already on the next creature. Run each creature's turn with `attack` or `save`, narrate it, then `uv run dnd-cli encounter next`. Stop when a player character is up and ask nothing: the stage shows "Your turn".
+- Free-text turns still work. `attack` spends the action by itself (`--cost bonus`, `--cost reaction`, or `--cost free` for an extra attack of the same action). For anything else, `uv run dnd-cli encounter use <id> action|bonus|reaction` marks it used (`--free` gives it back).
+- **Every hit and miss gets a wound description.** The player sees no HP, so the text is how they judge the fight. After each attack (yours for a creature, or the player's from the card) narrate what the blow did and how the target looks now. Scale it to the damage against the creature's max HP: a graze or a shrug (under a quarter), a solid wound (about a third), a crippling hit (half or more), then limping, bloodied, staggering, barely standing, down. Show what changed since the last blow. A miss says how it missed (parried, dodged, glanced off armour). Never give HP, AC or damage numbers; keep the words in line with the band the stage shows (unhurt, injured, bloodied at half, near death at a quarter).
+- Players see a creature's name, its place in the order, its conditions and how hurt it looks (unhurt, injured, bloodied, near death, down). They never see its HP or AC. Describe wounds in the story to match.
+- Bonuses (Guidance, Bless, Bardic Inspiration) are on the card only when a party member can give them: a known spell or a Bardic Inspiration use. You may still grant one the story earns with `uv run dnd-cli effect add <who> <effect>`.
+
 ## End
 
 ```bash

@@ -10,6 +10,7 @@ import { PartyPanel } from '@/components/PartyPanel'
 import { RollRequest } from '@/components/RollRequest'
 import { SheetDrawer } from '@/components/SheetDrawer'
 import { StageView } from '@/components/StageView'
+import { TurnBar } from '@/components/TurnBar'
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
 import { useParty } from '@/lib/party'
@@ -156,6 +157,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           </section>
         ) : (
         <section className="flex min-h-0 flex-col gap-3">
+          {party && <TurnBar party={party} dmStatus={state.dm.status} />}
           <div className="min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
             {state.explore ? (
               <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
@@ -211,7 +213,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         )}
         {showParty && (
           <div className="hidden min-h-0 lg:flex">
-            <PartyPanel party={party} refresh={refresh} onSheet={setSheet} />
+            <PartyPanel party={party} refresh={refresh} onSheet={setSheet} canAct={canAct && !state.roll_request} />
           </div>
         )}
       </main>
