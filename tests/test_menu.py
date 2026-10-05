@@ -19,7 +19,7 @@ import shutil
 import dnd_cli.campaign as campaign
 import view.settings as settings
 from dnd_cli.campaign import GAME_DIR, create_campaign, list_campaigns, slugify
-from view.menu import LoadGameScreen, MenuApp, NewGameScreen, SettingsScreen
+from view.menu import CUSTOM, LoadGameScreen, MenuApp, NewGameScreen, SettingsScreen
 
 PASS = 0
 FAIL = 0
@@ -64,10 +64,12 @@ def test_build_dm_command() -> None:
     )
     check("empty model omits --model", "--model" not in no_model[2])
 
-    gem = settings.build_dm_command(
-        {"agent_framework": "gemini", "model": "gemini-2.5-pro"}, GAME_DIR, "s"
+    agy = settings.build_dm_command(
+        {"agent_framework": "agy", "model": "gemini-3.1-pro-high"}, GAME_DIR, "s"
     )
-    check("gemini builds -m", "exec gemini -m gemini-2.5-pro" in gem[2])
+    check("agy builds --model", "--model gemini-3.1-pro-high" in agy[2])
+    check("agy skips permission prompts", "exec agy --dangerously-skip-permissions" in agy[2])
+    check("claude runs in auto mode", "--permission-mode auto" in fresh[2])
 
     try:
         settings.build_dm_command({"agent_framework": "bogus"}, GAME_DIR, "s")
@@ -85,10 +87,10 @@ def test_settings_roundtrip() -> None:
             defaults = settings.load_settings()
             check("defaults when no file", defaults["agent_framework"] == "claude")
 
-            settings.save_settings({"agent_framework": "gemini", "model": "x"})
+            settings.save_settings({"agent_framework": "agy", "model": "x"})
             settings.set_last_session_id("example-campaign", "abc-123")
             reloaded = settings.load_settings()
-            check("framework persisted", reloaded["agent_framework"] == "gemini")
+            check("framework persisted", reloaded["agent_framework"] == "agy")
             check("model persisted", reloaded["model"] == "x")
             check(
                 "session id persisted",
@@ -178,25 +180,41 @@ async def _drive_menu() -> None:
                 await pilot.pause()
                 from textual.widgets import Select
 
-                app.screen.query_one("#framework", Select).value = "gemini"
+                app.screen.query_one("#framework", Select).value = "agy"
                 await pilot.pause()
                 check(
                     "switching framework resets the model",
-                    app.screen.query_one("#model").value
-                    == settings.FRAMEWORKS["gemini"]["models"][0],
+                    app.screen.query_one("#model", Select).value
+                    == settings.FRAMEWORKS["agy"]["models"][0],
                 )
-                app.screen.query_one("#model").value = "opus"
+                second = settings.FRAMEWORKS["agy"]["models"][1]
+                app.screen.query_one("#model", Select).value = second
                 await pilot.click("#save")
                 await pilot.pause()
                 check(
                     "Settings closes on save",
                     not isinstance(app.screen, SettingsScreen),
                 )
-                check("save wrote the model", settings.load_settings()["model"] == "opus")
+                check("save wrote the preset model", settings.load_settings()["model"] == second)
                 check(
                     "save wrote the framework",
-                    settings.load_settings()["agent_framework"] == "gemini",
+                    settings.load_settings()["agent_framework"] == "agy",
                 )
+
+                # Custom entry: the text box appears and its text is what gets saved.
+                await pilot.press("s")
+                await pilot.pause()
+                from textual.widgets import Input
+
+                box = app.screen.query_one("#model-custom", Input)
+                check("custom box hidden for a preset", not box.display)
+                app.screen.query_one("#model", Select).value = CUSTOM
+                await pilot.pause()
+                check("custom box shown for Custom", box.display)
+                box.value = " my-own-model "
+                await pilot.click("#save")
+                await pilot.pause()
+                check("custom model saved, trimmed", settings.load_settings()["model"] == "my-own-model")
 
                 await pilot.press("n")
                 await pilot.pause()

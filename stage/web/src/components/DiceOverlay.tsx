@@ -35,7 +35,9 @@ export function DiceOverlay({ roll }: { roll: Roll | null }) {
       cancelAnimationFrame(frame)
       window.clearTimeout(hide)
     }
-  }, [roll])
+    // Keyed on the seq: every state snapshot hands over a new `roll` object, which must not replay the animation.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [roll?.seq])
 
   if (!shown) return null
   const d20 = shown.dice.find((d) => d.die.endsWith('d20') && d.faces.length === 1)?.faces[0]
@@ -55,7 +57,7 @@ export function DiceOverlay({ roll }: { roll: Roll | null }) {
         </span>
         <span className="text-sm text-[var(--dim)]">
           {shown.expr}
-          {settled && shown.dice.length > 0 && ` · ${shown.dice.map((d) => `[${d.faces.join(', ')}]`).join(' ')}`}
+          {settled && shown.dice.length > 0 && ` · ${shown.dice.map((d) => (d.die.endsWith('dropped') ? `dropped [${d.faces.join(', ')}]` : `[${d.faces.join(', ')}]`)).join(' ')}`}
           {crit && ' · critical!'}
           {fumble && ' · fumble'}
         </span>

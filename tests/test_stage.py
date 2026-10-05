@@ -110,8 +110,8 @@ def test_initial_prompt() -> None:
     print("build_dm_command initial_prompt")
     cmd = build_dm_command({"agent_framework": "claude", "model": "haiku"}, Path("/g"), "sid", initial_prompt="Start it's on")
     check("claude takes the prompt as a quoted positional argument", cmd[2].endswith("'Start it'\"'\"'s on'"))
-    cmd = build_dm_command({"agent_framework": "gemini", "model": ""}, Path("/g"), "sid", initial_prompt="Go")
-    check("gemini takes the prompt with -i", "-i Go" in cmd[2])
+    cmd = build_dm_command({"agent_framework": "agy", "model": ""}, Path("/g"), "sid", initial_prompt="Go")
+    check("agy takes the prompt with -i", "-i Go" in cmd[2])
 
 
 def _raises_actor(fn) -> bool:
@@ -287,6 +287,14 @@ def test_rolls() -> None:
           hook.roll_event({"tool_input": {"command": "uv run roll 1d20 -v"}, "tool_output": "Rolled: 1d20: [20]\n20"})["total"] == 20)
     s = state.apply(state.empty(), e)
     check("the state keeps the last roll", s["last_roll"]["total"] == 13 and s["last_roll"]["seq"] == 1)
+
+    print("agy hook payloads")
+    check("agy PreInvocation means busy", hook.from_agy("PreInvocation", {})[0] == "UserPromptSubmit")
+    check("agy Stop stays Stop when idle", hook.from_agy("Stop", {"fullyIdle": True})[0] == "Stop")
+    check("agy Stop is ignored while not idle", hook.from_agy("Stop", {"fullyIdle": False})[0] == "")
+    name, data = hook.from_agy("PreToolUse", {"toolCall": {"name": "run_command", "args": {"CommandLine": "uv run dnd-cli scene set x"}}})
+    check("agy run_command reads as a Bash command",
+          name == "PreToolUse" and hook.activity_label(data["tool_name"], data["tool_input"]) == "Painting the scene")
 
 
 def test_local_only() -> None:

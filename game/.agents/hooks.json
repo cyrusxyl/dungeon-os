@@ -1,0 +1,30 @@
+{
+  "dungeon-stage": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || python3 \"$DUNGEON_STAGE_HOOK\" PreInvocation",
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || python3 \"$DUNGEON_STAGE_HOOK\" Stop",
+        "timeout": 5
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -z \"$DUNGEON_STAGE_LOG\" ] || python3 \"$DUNGEON_STAGE_HOOK\" PreToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

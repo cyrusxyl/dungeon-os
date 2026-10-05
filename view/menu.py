@@ -109,6 +109,9 @@ def _safe_active_slug() -> str | None:
         return None
 
 
+CUSTOM = "__custom__"  # the model dropdown's "type your own" entry
+
+
 class SettingsScreen(ModalScreen):
     """Choose the agent framework that runs the DM, and the model it uses.
 
@@ -120,24 +123,26 @@ class SettingsScreen(ModalScreen):
     CSS = """
     SettingsScreen { align: center middle; }
     #settings-box {
-        width: 80; height: auto; padding: 1 2;
+        width: 80; height: auto; padding: 0 2;
         border: round $accent; background: $panel;
     }
-    .block-heading { color: $accent; margin-bottom: 1; }
+    .block-heading { color: $accent; }
     #settings-box Label { margin-top: 1; color: $text-muted; }
-    #settings-box Select, #settings-box Input { margin-bottom: 1; }
-    #model-hint { color: $text-muted; margin-bottom: 1; }
-    #settings-buttons { height: auto; align-horizontal: right; }
+    #settings-buttons { height: auto; margin-top: 1; align-horizontal: right; }
     #settings-buttons Button { margin-left: 2; }
     """
 
     def compose(self) -> ComposeResult:
         saved = load_settings()
-        # Track the framework the model field currently belongs to. The Select
-        # emits a Changed on mount carrying this same value, which the handler
-        # then ignores; only a real switch to a different framework resets the
-        # model to that framework's first preset.
-        self._model_framework = saved["agent_framework"]
+        # Track the framework the model dropdown currently belongs to. The
+        # framework Select emits a Changed on mount carrying this same value,
+        # which the handler then ignores; only a real switch to a different
+        # framework resets the model to that framework's first preset.
+        framework = saved["agent_framework"]
+        self._model_framework = framework
+        model = saved.get("model", "")
+        presets = FRAMEWORKS[framework]["models"]
+        custom = model not in presets  # a saved model outside the presets is edited as Custom
         yield Header()
         with Vertical(id="settings-box"):
             yield Static(HEADING_SETTINGS, classes="block-heading")
@@ -148,13 +153,20 @@ class SettingsScreen(ModalScreen):
                 allow_blank=False,
                 id="framework",
             )
-            yield Label("Model  (alias or full id)")
-            yield Input(
-                value=saved.get("model", ""),
-                placeholder="sonnet",
+            yield Label("Model")
+            yield Select(
+                self._model_options(framework),
+                value=CUSTOM if custom else model,
+                allow_blank=False,
                 id="model",
             )
-            yield Static(self._model_hint(saved["agent_framework"]), id="model-hint")
+            custom_input = Input(
+                value=model if custom else "",
+                placeholder="alias or full model id (empty = the CLI default)",
+                id="model-custom",
+            )
+            custom_input.display = custom
+            yield custom_input
             with Horizontal(id="settings-buttons"):
                 yield Button("Cancel", id="cancel")
                 yield Button("Save", variant="success", id="save")
@@ -171,25 +183,34 @@ class SettingsScreen(ModalScreen):
         return options
 
     @staticmethod
-    def _model_hint(framework: str) -> str:
-        presets = ", ".join(FRAMEWORKS[framework]["models"])
-        return f"presets: {presets}"
+    def _model_options(framework: str) -> list[tuple[str, str]]:
+        options = [(m, m) for m in FRAMEWORKS[framework]["models"]]
+        options.append(("Custom…", CUSTOM))
+        return options
 
     def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "model":
+            self.query_one("#model-custom", Input).display = event.value == CUSTOM
+            return
         if event.select.id != "framework" or event.value not in FRAMEWORKS:
             return
-        self.query_one("#model-hint", Static).update(self._model_hint(event.value))
         if event.value == self._model_framework:
             return  # mount echo, or a switch back to where the model already fits
         self._model_framework = event.value
-        self.query_one("#model", Input).value = FRAMEWORKS[event.value]["models"][0]
+        model = self.query_one("#model", Select)
+        model.set_options(self._model_options(event.value))
+        model.value = FRAMEWORKS[event.value]["models"][0]
+        self.query_one("#model-custom", Input).value = ""
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "save":
+            model = self.query_one("#model", Select).value
+            if model == CUSTOM:
+                model = self.query_one("#model-custom", Input).value.strip()
             save_settings(
                 {
                     "agent_framework": self.query_one("#framework", Select).value,
-                    "model": self.query_one("#model", Input).value,
+                    "model": model,
                 }
             )
             self.notify("Settings saved.")

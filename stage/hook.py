@@ -1,4 +1,8 @@
-"""Claude Code hook: tell the stage what state the DM is in.
+"""Claude Code / Antigravity hook: tell the stage what state the DM is in.
+
+Antigravity (`agy`) registers this in game/.agents/hooks.json for PreInvocation
+(busy), Stop (idle) and PreToolUse (dm_activity). Its payload has no event name,
+so the name comes as argv[1]; it carries no tool output, so it sends no dice rolls.
 
 Registered in game/.claude/settings.json for UserPromptSubmit, Stop,
 Notification, PostToolUse on Bash (dice rolls), and PreToolUse on
@@ -88,6 +92,27 @@ def activity_label(tool_name: str, tool_input: dict) -> str | None:
     return None
 
 
+# agy tool name -> the Claude tool name and input keys that activity_label() reads.
+AGY_TOOLS = {
+    "run_command": ("Bash", {"CommandLine": "command"}),
+    "write_to_file": ("Write", {"TargetFile": "file_path"}),
+    "replace_file_content": ("Edit", {"TargetFile": "file_path"}),
+    "multi_replace_file_content": ("Edit", {"TargetFile": "file_path"}),
+}
+
+
+def from_agy(name: str, data: dict) -> tuple[str, dict]:
+    """An agy hook call as the (event name, payload) the Claude branches below expect."""
+    if name == "PreInvocation":
+        return "UserPromptSubmit", data
+    if name == "Stop" and not data.get("fullyIdle", True):
+        return "", data  # a subagent or an inner loop stopped; the DM is still working
+    call = data.get("toolCall") or {}
+    tool, keys = AGY_TOOLS.get(call.get("name"), (call.get("name", ""), {}))
+    args = call.get("args") or {}
+    return name, {**data, "tool_name": tool, "tool_input": {keys[k]: v for k, v in args.items() if k in keys}}
+
+
 def main() -> None:
     log = os.environ.get("DUNGEON_STAGE_LOG")
     if not log:
@@ -98,6 +123,8 @@ def main() -> None:
         data = {}
 
     name = data.get("hook_event_name")
+    if not name and len(sys.argv) > 1:
+        name, data = from_agy(sys.argv[1], data)
     if name == "UserPromptSubmit":
         event = {"type": "dm_status", "status": "busy"}
     elif name == "Stop":

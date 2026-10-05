@@ -589,8 +589,10 @@ def check(campaign_dir: Path, state: dict, who: list[str], what: str, dc: int | 
         return lines
     if dc is not None and len(who) > 1:
         lines.append(f"Group check: {passed}/{len(who)} succeed — {'SUCCESS' if passed * 2 >= len(who) else 'FAIL'}")
-    stage_roll(what.replace("_", " ").title() + (" check" if what in SKILLS else ""),
-               total if len(who) == 1 else passed, groups, secret)
+    shown = what.replace("_", " ").title() + (" check" if what in SKILLS else "")
+    if len(who) == 1:
+        shown += f" ({dice.signed(bonus)})"  # the dice box shows only the d20; the modifier explains the total
+    stage_roll(shown, total if len(who) == 1 else passed, groups, secret)
     return lines
 
 

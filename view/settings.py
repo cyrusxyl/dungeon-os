@@ -37,10 +37,10 @@ FRAMEWORKS: dict[str, dict] = {
         "binary": "claude",
         "models": ["sonnet", "opus", "haiku", "claude-opus-5", "claude-sonnet-5"],
     },
-    "gemini": {
-        "label": "Gemini CLI",
-        "binary": "gemini",
-        "models": ["gemini-2.5-pro", "gemini-2.5-flash"],
+    "agy": {
+        "label": "Antigravity CLI",
+        "binary": "agy",
+        "models": ["gemini-3.1-pro-high", "gemini-3.8-flash-high"],
     },
     "codex": {
         "label": "Codex CLI",
@@ -127,7 +127,7 @@ def build_dm_command(
         raise ValueError(f"unknown agent_framework: {framework!r}")
 
     if framework == "claude":
-        parts = ["claude", "--no-chrome"]
+        parts = ["claude", "--no-chrome", "--permission-mode", "auto"]
         if stage:
             # Before the other options: the flag takes a list and would swallow the prompt.
             parts += ["--disallowedTools", "AskUserQuestion"]
@@ -138,11 +138,13 @@ def build_dm_command(
         if model:
             parts += ["--model", shlex.quote(model)]
     else:
-        # gemini / codex: both take `-m <model>` and no session concept here.
+        # agy / codex: no session concept here. agy takes `--model`, codex `-m`.
         parts = [FRAMEWORKS[framework]["binary"]]
+        if framework == "agy":
+            parts.append("--dangerously-skip-permissions")  # agy has no auto mode
         if model:
-            parts += ["-m", shlex.quote(model)]
-        if initial_prompt and framework == "gemini":
+            parts += ["--model" if framework == "agy" else "-m", shlex.quote(model)]
+        if initial_prompt and framework == "agy":
             parts += ["-i", shlex.quote(initial_prompt)]
             initial_prompt = None
 

@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
 import { postJson } from '@/lib/stage'
 
+const CUSTOM = '__custom__' // the model dropdown's "type your own" entry
+
 interface Campaign {
   slug: string
   name: string
@@ -52,6 +54,10 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   const [party, setParty] = useState<'create' | 'premade'>('create')
   const [framework, setFramework] = useState(data.settings.agent_framework)
   const [model, setModel] = useState(data.settings.model)
+  // A saved model outside the presets is edited as Custom, so it is never lost.
+  const [custom, setCustom] = useState(
+    () => !data.frameworks.find((f) => f.key === data.settings.agent_framework)?.models.includes(data.settings.model),
+  )
 
   useEffect(() => setError(''), [panel])
 
@@ -65,7 +71,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   }
 
   const saveSettings = async () => {
-    const res = await post('/api/settings', { agent_framework: framework, model })
+    const res = await post('/api/settings', { agent_framework: framework, model: model.trim() })
     if (res.error) setError(String(res.error))
     else {
       onChanged(res as unknown as MenuData)
@@ -181,6 +187,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
                     onChange={() => {
                       setFramework(f.key)
                       setModel(f.models[0] ?? '')
+                      setCustom(false)
                     }}
                     className="accent-[var(--gold)]"
                   />
@@ -192,10 +199,38 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
             <label htmlFor="model" className="text-lg">
               Model
             </label>
-            <Input id="model" list="model-presets" value={model} onChange={(e) => setModel(e.target.value)} font="normal" className="text-lg" />
-            <datalist id="model-presets">
-              {fw?.models.map((m) => <option key={m} value={m} />)}
-            </datalist>
+            <div className="relative border-y-6 border-foreground">
+              <select
+                id="model"
+                value={custom ? CUSTOM : model}
+                onChange={(e) => {
+                  if (e.target.value === CUSTOM) setCustom(true)
+                  else {
+                    setCustom(false)
+                    setModel(e.target.value)
+                  }
+                }}
+                className="w-full cursor-pointer bg-[var(--panel)] px-3 py-2 text-lg text-[var(--gold)] outline-none"
+              >
+                {fw?.models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+                <option value={CUSTOM}>Custom…</option>
+              </select>
+              <div className="pointer-events-none absolute inset-0 -mx-1.5 border-x-6 border-foreground" aria-hidden="true" />
+            </div>
+            {custom && (
+              <Input
+                aria-label="Custom model"
+                placeholder="alias or full model id (empty = the CLI default)"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                font="normal"
+                className="text-lg"
+              />
+            )}
             <Button onClick={saveSettings} className="text-[10px]">
               Save
             </Button>
