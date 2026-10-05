@@ -286,7 +286,10 @@ def test_rolls() -> None:
     check("plain-text tool output works too",
           hook.roll_event({"tool_input": {"command": "uv run roll 1d20 -v"}, "tool_output": "Rolled: 1d20: [20]\n20"})["total"] == 20)
     s = state.apply(state.empty(), e)
-    check("the state keeps the last roll", s["last_roll"]["total"] == 13 and s["last_roll"]["seq"] == 1)
+    check("the state keeps the roll", s["rolls"][-1]["total"] == 13 and s["rolls"][-1]["seq"] == 1)
+    for _ in range(8):
+        s = state.apply(s, {**e, "detail": {"kind": "check"}})
+    check("the roll queue is short and keeps the detail", len(s["rolls"]) == state.ROLL_LIMIT and s["rolls"][-1]["detail"] == {"kind": "check"})
 
     print("agy hook payloads")
     check("agy PreInvocation means busy", hook.from_agy("PreInvocation", {})[0] == "UserPromptSubmit")
@@ -538,6 +541,36 @@ def test_cli_defaults_and_races() -> None:
     check("a sheet's race text maps to a race", actors.race_of("Drow (High Elf)") == "drow" and actors.race_of("Half-Elf") == "half-elf")
 
 
+async def call(app, method, target, body=None):
+    """One request straight into the ASGI app (no httpx needed): (status, content type, bytes)."""
+    path, _, query = target.partition("?")
+    data = json.dumps(body).encode() if body is not None else b""
+    scope = {"type": "http", "method": method, "path": path, "query_string": query.encode(), "headers": [
+        (b"host", b"localhost"), (b"content-type", b"application/json")], "scheme": "http", "http_version": "1.1"}
+    out = {"body": b""}
+    sent = False
+
+    async def receive():
+        nonlocal sent
+        if sent:
+            await asyncio.sleep(10)
+        sent = True
+        return {"type": "http.request", "body": data, "more_body": False}
+
+    async def send(msg):
+        if msg["type"] == "http.response.start":
+            out["status"] = msg["status"]
+            out["type"] = dict(msg["headers"]).get(b"content-type", b"").decode()
+        else:
+            out["body"] += msg.get("body", b"")
+    await app(scope, receive, send)
+    return out["status"], out["type"], out["body"]
+
+async def api(app, method, target, body=None):
+    status, _, raw = await call(app, method, target, body)
+    return status, json.loads(raw)
+
+
 def test_creator() -> None:
     print("creator: first prompt, snapshot, queue, routes")
     import asyncio
@@ -645,35 +678,6 @@ def test_creator() -> None:
             task.cancel()
             check("the next prompt follows the next idle", sent == ["one", "two"] and q.pending == [])
         asyncio.run(queue())
-
-        async def call(app, method, target, body=None):
-            """One request straight into the ASGI app (no httpx needed): (status, content type, bytes)."""
-            path, _, query = target.partition("?")
-            data = json.dumps(body).encode() if body is not None else b""
-            scope = {"type": "http", "method": method, "path": path, "query_string": query.encode(), "headers": [
-                (b"host", b"localhost"), (b"content-type", b"application/json")], "scheme": "http", "http_version": "1.1"}
-            out = {"body": b""}
-            sent = False
-
-            async def receive():
-                nonlocal sent
-                if sent:
-                    await asyncio.sleep(10)
-                sent = True
-                return {"type": "http.request", "body": data, "more_body": False}
-
-            async def send(msg):
-                if msg["type"] == "http.response.start":
-                    out["status"] = msg["status"]
-                    out["type"] = dict(msg["headers"]).get(b"content-type", b"").decode()
-                else:
-                    out["body"] += msg.get("body", b"")
-            await app(scope, receive, send)
-            return out["status"], out["type"], out["body"]
-
-        async def api(app, method, target, body=None):
-            status, _, raw = await call(app, method, target, body)
-            return status, json.loads(raw)
 
         async def routes():
             saved = rules_cmd._api
@@ -853,6 +857,115 @@ def test_party() -> None:
     check("an old event has no party", state.apply(state.empty(), {"type": "scene", "location": "inn"})["actors"] == {})
 
 
+def test_player_actions() -> None:
+    print("roll requests, party view, and the player's own actions")
+    import asyncio
+    import shutil
+    import subprocess
+    import sys
+
+    from dnd_cli import combat, effects
+    from stage import party
+    from stage.server import create_app
+
+    check("@roll parses", beat.parse("@roll sireth stealth dc 14") == [{"type": "roll_request", "who": "sireth", "what": "stealth", "dc": 14}])
+    check("@roll can hide the DC", beat.parse("@roll sireth dex-save 13 hide")[0] == {
+        "type": "roll_request", "who": "sireth", "what": "dex-save", "dc": 13, "hide": True})
+    check("@roll needs a check", raises(lambda: beat.parse("@roll sireth")))
+    check("@roll refuses an unknown word", raises(lambda: beat.parse("@roll sireth stealth easy")))
+    s = state.apply(state.empty(), {"type": "roll_request", "who": "sireth", "what": "stealth", "dc": 14, "beat": "1"})
+    check("the state holds the request, without the beat id", s["roll_request"] == {"who": "sireth", "what": "stealth", "dc": 14, "seq": 1})
+    check("a roll, a narration or a new scene ends the request", all(
+        state.apply(s, e)["roll_request"] is None for e in (
+            {"type": "roll", "expr": "x", "total": 1, "dice": []}, {"type": "narrate", "text": "x"}, {"type": "scene", "location": "x"},
+            {"type": "roll_done"})))
+    check("a roll keeps the detail", state.apply(s, {"type": "roll", "expr": "x", "total": 1, "dice": [], "detail": {"kind": "check"}})["rolls"][-1]["detail"] == {"kind": "check"})
+
+    src = Path(__file__).parent / "fixtures" / "example-campaign"
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp) / "camp"
+        shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
+        tracked = subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split()
+        for rel in tracked:
+            got = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=src, capture_output=True)
+            if got.returncode == 0:
+                (c / rel).write_bytes(got.stdout)
+
+        view = party.view(c)
+        legolas = next(x for x in view["characters"] if x["id"] == "legolas")
+        check("no combat: no turn and no order", view["combat"] is None and legolas["turn"] is None)
+        check("the sheet's abilities, skills and slots reach the view",
+              legolas["abilities"]["dexterity"]["mod"] == 3 and legolas["spell"]["slots"]["1"]["max"] == 3
+              and next(k for k in legolas["skills"] if k["name"] == "Survival")["prof"] == 1)
+        check("a ranger has no class resource at level 3; a fighter has", legolas["resources"] == [] and
+              [r["name"] for r in next(x for x in view["characters"] if x["id"] == "aragorn")["resources"]] == ["Second Wind", "Action Surge"])
+        check("the effect presets come with the view", {e["id"] for e in view["effects"]} >= {"guidance", "bless", "advantage"})
+
+        st = combat.load_state(c)
+        st["active_encounter"] = {"type": "combat", "round": 2, "participants": ["aragorn", "goblin#1"], "current_turn": "aragorn",
+                                  "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "goblin#1", "initiative": 9, "bonus": 2}],
+                                  "conditions": {"aragorn": [{"condition": "poisoned"}]}, "monsters": {"goblin#1": {"id": "goblin#1", "kind": "monster", "name": "Goblin", "hp": {"current": 7, "max": 7}, "ac": 15,
+                                                                                         "mods": {}, "attacks": []}}}
+        combat.spend_turn(st, "aragorn", "bonus")
+        combat.save_state(c, st)
+        view = party.view(c)
+        aragorn = next(x for x in view["characters"] if x["id"] == "aragorn")
+        check("combat: the order, the turn and what is used", view["combat"]["current"] == "aragorn"
+              and view["combat"]["order"][1] == {"id": "goblin#1", "name": "Goblin", "initiative": 9, "pc": False}
+              and aragorn["turn"] == {"action": False, "bonus": True, "reaction": False} and aragorn["conditions"] == ["poisoned"])
+        check("a monster's HP and AC never reach the view", "7" not in json.dumps(view["combat"]) and "monsters" not in json.dumps(view))
+        check("a new turn gives the actions back", combat.next_turn(c, st) and st["active_encounter"]["resources"]["goblin#1"] == {})
+
+        async def routes():
+            app = create_app(None)
+            stage = await app.state.table.start(c, ["cat"])
+            post = lambda path, b: api(app, "POST", path, b)
+            stage.state["dm"] = {"status": "busy"}
+            status, r = await post("/api/effects", {"who": "aragorn", "op": "add", "effect": "bless"})
+            check("a busy DM refuses a change", status == 409)
+            stage.state["dm"] = {"status": "idle"}
+            status, r = await post("/api/effects", {"who": "aragorn", "op": "add", "effect": "bless"})
+            check("an effect is added", status == 200 and effects.active(c, "aragorn") == ["bless"])
+            status, r = await post("/api/effects", {"who": "aragorn", "op": "add", "effect": "haste"})
+            check("an unknown effect is refused", status == 400)
+            status, r = await post("/api/effects", {"who": "../x", "op": "add", "effect": "bless"})
+            check("an unknown character is refused", status == 404)
+            status, r = await post("/api/turn", {"who": "aragorn", "kind": "action"})
+            check("an action is marked used", status == 200 and combat.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True)
+            status, r = await post("/api/resource", {"who": "aragorn", "name": "Second Wind"})
+            check("a class resource is spent", status == 200 and json.loads((c / "characters" / "aragorn.json").read_text())["resources_used"] == {"Second Wind": 1})
+            status, r = await post("/api/resource", {"who": "aragorn", "name": "Rage"})
+            check("an unknown resource is refused", status == 400)
+
+            status, r = await post("/api/roll", {})
+            check("no request: no roll", status == 409)
+            events = [{"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 14, "name": "Aragorn"}]
+            beat.append(c, events)
+            stage.fold(stage.read_new_events())
+            sent = []
+
+            async def fake(text):
+                sent.append(text)
+            stage.submit = fake
+            status, r = await post("/api/roll", {"skip": ["bless"]})
+            hidden = {"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 17, "hide": True, "name": "Aragorn"}
+            stage.fold([hidden])
+            check("a hidden DC is not in the snapshot, but the server still has it",
+                  "dc" not in stage.snapshot()["state"]["roll_request"] and stage.state["roll_request"]["dc"] == 17)
+            stage.fold([events[0]])
+            check("the roll is made and the DM is told", status == 200 and sent and "Aragorn rolled" in sent[0] and "Athletics" in sent[0] and "vs DC 14" in sent[0])
+            stage.fold(stage.read_new_events())
+            check("the stage shows the roll with its breakdown", stage.state["roll_request"] is None
+                  and stage.state["rolls"][-1]["detail"]["rolls"][0]["who"] == "aragorn")
+            check("an effect left off the roll is still there", effects.active(c, "aragorn") == ["bless"])
+            status, r = await post("/api/roll", {})
+            check("a second click rolls nothing", status == 409)
+            status, r = await api(app, "GET", "/api/spell/..%2Fx")
+            check("a bad spell index is refused", status == 404)
+            await app.state.table.stop()
+        asyncio.run(routes())
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -864,6 +977,7 @@ if __name__ == "__main__":
     test_rolls()
     test_activity()
     test_party()
+    test_player_actions()
     test_local_only()
     test_crawl()
     test_maps()

@@ -22,6 +22,18 @@ saved per campaign and reused. A browser reload reconnects to the same DM
 session; the Menu button ends it. The DM's raw terminal is in the Console
 drawer.
 
+Rolls play in a window modelled on Baldur's Gate 3: the title and the DC, a
+d20 that tumbles, one tile for every number that adds to it (ability,
+proficiency, expertise, a Guidance die), and the result. With advantage or
+disadvantage two dice roll and the lower or higher one drops away. A fireball
+shows one row per creature. When the DM asks a player character for a check
+(`@roll`), the window waits for the player: add a bonus (Guidance, Bless,
+Bardic Inspiration, advantage...), leave one off, and click **Roll**. The
+party panel shows the turn order, each character's action, bonus action and
+reaction, spell slots, class resources (Rage, Ki, Second Wind...),
+concentration and conditions. **Sheet** opens the abilities and skills, the
+inventory and the spellbook. The DM adds bonuses with `dnd-cli effect add`.
+
 The **Map** button shows the current level of the world (a dungeon, a city,
 a region) and the levels above it; pick a known place to travel there. In a
 dungeon or building (`dnd-cli site set`, `@explore`), the party walks a

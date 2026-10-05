@@ -90,6 +90,7 @@ uv run dnd-cli encounter heal sireth 1d8+3                                      
 ### Step 5: Concentration
 
 - A caster holds one concentration spell at a time; a new one ends the old one.
+- A spell that gives a bonus (Bless, Bane, Guidance, Resistance): `uv run dnd-cli effect add <target> bless`. Rolls of that character use it by themselves. Bardic Inspiration, advantage and disadvantage use the same command.
 - Mark it: `uv run dnd-cli encounter condition legolas add concentrating --rounds 10`. Damage to a concentrating creature prints the save DC (10 or half the damage); roll it with `uv run dnd-cli save legolas con --dc <DC>`. On a failure, remove `concentrating` and the spell's conditions.
 
 ### Step 6: Duration

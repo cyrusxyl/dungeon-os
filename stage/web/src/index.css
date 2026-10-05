@@ -51,6 +51,12 @@
     --gold: #c9a96e;
     --parchment: #ece6d6;
     --ember: #e07a3f;
+    --good: #6fcf6f;
+    --bad: #e05050;
+    --action: #4cc360;
+    --bonus-action: #f08a24;
+    --reaction: #b36bff;
+    --slot: #4aa3ff;
     --dim: #8a8299;
     --background: var(--ink);
     --foreground: var(--parchment);
@@ -91,6 +97,25 @@ body {
 .scene-in { animation: scene-in 600ms steps(6) both; }
 @keyframes dice-pop { from { transform: translateY(-8px); opacity: 0; } to { transform: none; opacity: 1; } }
 .dice-pop { animation: dice-pop 200ms steps(4) both; }
+
+/* Roll window (BG3-style): the dice tumble, settle, then the tiles and the result land one by one. */
+@keyframes die-tumble { 0% { transform: translateY(-18px) rotate(0deg); } 50% { transform: translateY(4px) rotate(180deg); } 100% { transform: translateY(0) rotate(360deg); } }
+.die-tumble { animation: die-tumble 450ms steps(8) infinite; }
+@keyframes die-kept { 0% { transform: scale(1); } 100% { transform: scale(1.18) translateY(-4px); } }
+.die-kept { animation: die-kept 300ms steps(4) both; filter: drop-shadow(0 0 8px var(--glow, var(--gold))); }
+@keyframes die-dropped { 0% { transform: none; opacity: 1; } 100% { transform: translateY(14px) scale(0.78) rotate(-14deg); opacity: 0.35; filter: grayscale(1); } }
+.die-dropped { animation: die-dropped 400ms steps(5) both; }
+@keyframes tile-in { 0% { transform: translateY(10px) scale(0.8); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.tile-in { animation: tile-in 220ms steps(4) both; }
+@keyframes result-in { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+.result-in { animation: result-in 320ms steps(5) both; }
+@keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+.badge-pulse { animation: badge-pulse 500ms steps(2) infinite; }
+@keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.shake { animation: shake 360ms steps(6) 1; }
+@keyframes burst { 0% { transform: scale(0.3); opacity: 1; } 100% { transform: scale(2.4); opacity: 0; } }
+.burst::before { content: ''; position: absolute; inset: 0; border: 4px solid var(--gold); animation: burst 700ms steps(7) 1 both; pointer-events: none; }
+.burst::after { content: ''; position: absolute; inset: 0; border: 4px dashed var(--gold); animation: burst 900ms steps(9) 120ms 1 both; pointer-events: none; }
 
 /* DM at the table: idle filler while the DM works. */
 @keyframes dm-glow { 0%, 100% { opacity: 0.45; } 33% { opacity: 0.8; } 66% { opacity: 0.6; } }

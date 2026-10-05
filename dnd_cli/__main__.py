@@ -232,6 +232,12 @@ def create_parser():
     p.add_argument("name")
     p.add_argument("level", type=int, choices=range(1, 10))
 
+    p = character_sub.add_parser("use", help="Spend one use of a class resource (Rage, Ki, Second Wind...): use <campaign> <name> \"<resource>\" [--back]")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("resource")
+    p.add_argument("--back", action="store_true", help="Give a use back instead")
+
     p = character_sub.add_parser("item", help="add|remove an inventory item: item <campaign> <name> add|remove \"<item>\" [--qty N] [--canon]")
     p.add_argument("campaign")
     p.add_argument("name")
@@ -456,13 +462,21 @@ def create_parser():
     p.add_argument("--type", default=None)
     p.add_argument("--half", action="store_true", help="Half damage on a success")
     p.add_argument("--from", dest="source", default=None, help="creature:action with a DC, e.g. dragon:fire-breath")
+    p.add_argument("--hide-dc", action="store_true", help="Do not show the DC on the stage")
     rolls(p)
 
     p = subparsers.add_parser("check", help="Skill/ability check or death save: <who...|all> <skill|ability|death> [--dc N]")
     p.add_argument("who", nargs="+")
     p.add_argument("--dc", type=int, default=None)
     p.add_argument("--passive", action="store_true")
+    p.add_argument("--hide-dc", action="store_true", help="Do not show the DC on the stage")
     rolls(p)
+
+    p = subparsers.add_parser("effect", help="Bonuses and advantage on a character: add|remove <who> <effect>, list [<who>]")
+    p.add_argument("op", choices=["add", "remove", "list"])
+    p.add_argument("who", nargs="?")
+    p.add_argument("name", nargs="?", help="guidance, bless, bane, bardic-inspiration, resistance, advantage, disadvantage")
+    p.add_argument("--campaign", default=None)
 
     p = subparsers.add_parser("rest", help="long|short rest for the party or named characters")
     p.add_argument("kind", choices=["long", "short"])
@@ -677,6 +691,8 @@ def main():
                 return character_cmd.execute_add_temp_hp(args.campaign, args.name, args.amount)
             elif cc == "cast":
                 return character_cmd.execute_cast(args.campaign, args.name, args.level)
+            elif cc == "use":
+                return character_cmd.execute_use(args.campaign, args.name, args.resource, -1 if args.back else 1)
             elif cc == "restore-slots":
                 return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
             if cc == "item":
@@ -777,6 +793,9 @@ def main():
                 return 1
             args.what = args.who.pop()
             return rules_cmd.execute_check(args.campaign, args)
+
+        elif args.command == "effect":
+            return rules_cmd.execute_effect(args.campaign, args.op, args.who, args.name)
 
         elif args.command == "rest":
             return rules_cmd.execute_rest(args.campaign, args.kind, args.who, args.hit_dice)

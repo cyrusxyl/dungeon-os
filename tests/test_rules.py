@@ -8,13 +8,14 @@ Plain asserts, a seeded RNG, and stub monster data: no network.
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-from dnd_cli import canon, character, combat, dice, sheet
+from dnd_cli import canon, character, combat, dice, effects, resources, sheet
 from dnd_cli.commands import session_cmd
 
 REPO = Path(__file__).resolve().parents[1]
@@ -141,6 +142,114 @@ def test_combat(c: Path) -> None:
     check("end clears the encounter", state["active_encounter"] is None)
 
 
+def staged(c: Path, fn) -> list[dict]:
+    """The roll events a rules call sends to the stage."""
+    log = c / "stage" / "events.ndjson"
+    log.parent.mkdir(exist_ok=True)
+    log.unlink(missing_ok=True)
+    os.environ["DUNGEON_STAGE_LOG"] = str(log)
+    try:
+        fn()
+    finally:
+        del os.environ["DUNGEON_STAGE_LOG"]
+    return [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
+
+
+def test_effects(c: Path) -> None:
+    print("effects and the roll window")
+    state = fight(c)
+    skill = combat.skill_bonus(combat.combatant(c, state, "aragorn"), "athletics")
+    effects.add(c, "aragorn", "guidance")
+    # The bonus die is rolled first (3), then the d20 (10).
+    check_line: list = []
+    ev = staged(c, lambda: check_line.append(combat.check(c, state, ["aragorn"], "athletics", dc=12, rng=Fixed(3, 10))))
+    d = ev[0]["detail"]
+    r = d["rolls"][0]
+    check("guidance adds its die to the total", r["total"] == 10 + skill + 3 and r["bonus"] == [
+        {"label": "Guidance", "die": "1d4", "faces": [3], "value": 3}])
+    check("the output line names the effect", "guidance +3" in check_line[-1][0])
+    check("a check shows its DC and title", d["target"] == {"label": "Difficulty Class", "value": 12}
+          and d["title"] == "Athletics" and d["subtitle"] == "Strength Check" and ev[0]["total"] == r["total"])
+    check("the tiles add up to the skill bonus", sum(t["value"] for t in r["mods"]) == skill)
+    check("guidance is spent by the check", effects.active(c, "aragorn") == [])
+    ev = staged(c, lambda: combat.check(c, state, ["aragorn"], "athletics", dc=12, hide_dc=True, rng=Fixed(10)))
+    check("--hide-dc keeps the DC off the stage", "target" not in ev[0]["detail"] and ev[0]["detail"]["rolls"][0]["bonus"] == [])
+    check("a check with no DC has no outcome", staged(c, lambda: combat.check(
+        c, state, ["aragorn"], "athletics", rng=Fixed(10)))[0]["detail"]["rolls"][0]["outcome"] is None)
+
+    effects.add(c, "aragorn", "advantage")
+    r = staged(c, lambda: combat.check(c, state, ["aragorn"], "athletics", dc=30, rng=Fixed(4, 18)))[0]["detail"]["rolls"][0]
+    check("advantage rolls two d20 and keeps the higher", r["mode"] == "advantage" and r["d20"] == [4, 18] and r["kept"] == 1)
+    effects.add(c, "aragorn", "advantage")
+    effects.add(c, "aragorn", "disadvantage")
+    r = staged(c, lambda: combat.check(c, state, ["aragorn"], "athletics", rng=Fixed(4)))[0]["detail"]["rolls"][0]
+    check("advantage and disadvantage cancel to one die", r["mode"] == "normal" and len(r["d20"]) == 1)
+
+    effects.add(c, "aragorn", "bless")
+    effects.add(c, "aragorn", "guidance")
+    check("Bless and Guidance can both be on one character", effects.active(c, "aragorn") == ["bless", "guidance"])
+    r = staged(c, lambda: combat.check(c, state, ["aragorn"], "dex-save", dc=12, rng=Fixed(2, 9)))[0]["detail"]
+    check("a save through check uses the save effects (Bless), not the check effects (Guidance)",
+          r["kind"] == "save" and [b["label"] for b in r["rolls"][0]["bonus"]] == ["Bless"] and effects.active(c, "aragorn") == ["bless", "guidance"])
+    effects.remove(c, "aragorn", "guidance")
+    r = staged(c, lambda: combat.save(c, state, ["aragorn", "legolas"], "dex", 12, rng=Fixed(2, 9, 14)))
+    rolls = r[0]["detail"]["rolls"]
+    check("a save for two targets is one event with two rolls; bless stays", len(r) == 1 and len(rolls) == 2
+          and rolls[0]["bonus"][0]["label"] == "Bless" and effects.active(c, "aragorn") == ["bless"])
+    check("an outcome is judged on the total, not the natural d20", rolls[0]["outcome"] == ("success" if rolls[0]["total"] >= 12 else "fail"))
+    r = staged(c, lambda: combat.save(c, state, ["aragorn"], "dex", 12, skip=("bless",), rng=Fixed(9)))[0]["detail"]["rolls"][0]
+    check("the player can leave an effect off a roll", r["bonus"] == [] and effects.active(c, "aragorn") == ["bless"])
+    try:
+        effects.add(c, "aragorn", "haste")
+        refused = False
+    except ValueError:
+        refused = True
+    check("a bad effect name is refused", refused)
+
+    ev = staged(c, lambda: combat.attack(c, state, "aragorn", "longsword", "goblin#2", rng=Fixed(2, 15, 6)))
+    check("a monster's AC stays off the stage", "target" not in ev[0]["detail"] and ev[0]["detail"]["rolls"][0]["outcome"] == "hit")
+    ev = staged(c, lambda: combat.attack(c, state, "goblin#2", "scimitar", "aragorn", rng=Fixed(5)))
+    check("a player character's AC is shown", ev[0]["detail"]["target"]["label"] == "Armor Class")
+    effects.remove(c, "aragorn", "bless")
+
+    rec = {"mods": {"charisma": 2}, "prof": 2}
+    check("expertise splits into two tiles", [t["value"] for t in combat._tiles(rec, "charisma", 6, "Deception")] == [2, 2, 2])
+    check("proficiency is one tile", len(combat._tiles(rec, "charisma", 4, "Deception")) == 2)
+    check("an unknown bonus is Other", combat._tiles(rec, "charisma", 3, "Deception")[1]["label"] == "Other")
+    check("a death save has a window", staged(c, lambda: (combat.damage(c, state, "legolas", 100),
+          combat.death_save(c, state, "legolas", Fixed(12))))[0]["detail"]["kind"] == "death")
+    combat.heal(c, state, "legolas", 100)
+
+
+def test_resources(c: Path) -> None:
+    print("class resources and turn actions")
+    fighter = {"class": "Fighter", "level": 3, "ability_scores": {"charisma": 10}}
+    check("a fighter has Second Wind and Action Surge", [(r["name"], r["max"]) for r in resources.for_sheet(fighter)] == [("Second Wind", 1), ("Action Surge", 1)])
+    check("rage grows with level", resources.for_sheet({"class": "Barbarian", "level": 9, "ability_scores": {}})[0]["max"] == 4)
+    check("a rogue has none", resources.for_sheet({"class": "Rogue", "level": 5, "ability_scores": {}}) == [])
+    check("bardic inspiration follows CHA (at least 1)", resources.for_sheet({"class": "Bard", "level": 1, "ability_scores": {"charisma": 16}})[0]["max"] == 3)
+    resources.spend(fighter, "second wind")
+    check("a spend is counted, and cannot pass the max", resources.spend(fighter, "Second Wind")["used"] == 1)
+    check("a use can be given back", resources.spend(fighter, "Second Wind", -1)["used"] == 0)
+    monk = {"class": "Monk", "level": 5, "ability_scores": {}}
+    resources.spend(monk, "Ki", 3)
+    resources.rest(monk, "short")
+    check("a short rest restores ki", resources.for_sheet(monk)[0]["used"] == 0)
+    sorc = {"class": "Sorcerer", "level": 5, "ability_scores": {}}
+    resources.spend(sorc, "Sorcery Points", 2)
+    resources.rest(sorc, "short")
+    check("a short rest keeps what comes back on a long rest", resources.for_sheet(sorc)[0]["used"] == 2)
+    resources.rest(sorc, "long")
+    check("a long rest restores all", resources.for_sheet(sorc)[0]["used"] == 0)
+    state = fight(c)
+    combat.spend_turn(state, "aragorn", "reaction")
+    check("a reaction is marked used", state["active_encounter"]["resources"]["aragorn"] == {"reaction": True})
+    check("only an action, bonus action or reaction counts", raises(lambda: combat.spend_turn(state, "aragorn", "dance")))
+    check("only a combatant counts", raises(lambda: combat.spend_turn(state, "bilbo", "action")))
+    combat.next_turn(c, state)
+    check("the next combatant starts with all three free", state["active_encounter"]["resources"][state["active_encounter"]["current_turn"]] == {})
+
+
 def test_death(c: Path) -> None:
     print("death saves")
     state = combat.load_state(c)
@@ -229,6 +338,8 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         c = campaign(Path(tmp))
         test_combat(c)
+        test_effects(c)
+        test_resources(c)
         test_death(c)
         test_sheet(c)
         test_session_end(c)

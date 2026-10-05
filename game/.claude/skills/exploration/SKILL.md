@@ -67,7 +67,7 @@ uv run dnd-cli check all perception --passive                 # passive scores, 
 uv run dnd-cli check goblin#1 stealth --secret                # a creature in the encounter; hidden from the stage
 ```
 
-The command reads each character's bonus from the sheet (proficiency and expertise are already in it), rolls, compares with the DC, and shows the dice on the stage. Do not work out modifiers yourself. A natural 20 or 1 on a check is not an automatic success or failure, but make the outcome memorable.
+On the visual stage, a player character rolls their own check with `@roll` (the `stage` skill, rule 4). The commands read each character's bonus from the sheet (proficiency and expertise are already in it), rolls, compares with the DC, and shows the dice on the stage. Do not work out modifiers yourself. A natural 20 or 1 on a check is not an automatic success or failure, but make the outcome memorable.
 
 ### Step 4: Narrate
 

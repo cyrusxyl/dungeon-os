@@ -72,6 +72,22 @@ def execute_cast(campaign: str, name: str, level: int) -> int:
     return _run(campaign, go)
 
 
+def execute_use(campaign: str, name: str, resource: str, delta: int) -> int:
+    from dnd_cli import resources
+
+    def go(campaign_dir):
+        data = character.load(campaign_dir, name)
+        try:
+            res = resources.spend(data, resource, delta)
+        except KeyError:
+            names = ", ".join(r["name"] for r in resources.for_sheet(data)) or "none"
+            raise character.CharacterError(f"{name} has no resource {resource!r}. Resources: {names}.") from None
+        character.save(campaign_dir, name, data)
+        print(f"{name}: {res['name']} {res['max'] - res['used']}/{res['max']} left")
+        return 0
+    return _run(campaign, go)
+
+
 def execute_restore_slots(campaign: str, name: str, level) -> int:
     def go(campaign_dir):
         data = character.load(campaign_dir, name)

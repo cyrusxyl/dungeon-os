@@ -26,6 +26,7 @@ uv run dnd-cli encounter start bandit:2 cassara-whitmore --pcs sireth
 ```bash
 uv run dnd-cli attack aragorn longsword goblin#2            # to hit vs AC, damage on a hit, applied
 uv run dnd-cli attack goblin#1 scimitar sireth --adv         # --adv / --dis from conditions and position
+uv run dnd-cli effect add sireth bless                        # bonus dice and advantage a character carries: the next rolls use them
 uv run dnd-cli attack legolas spell goblin#3 --damage 1d10 --type fire    # spell attack (Fire Bolt)
 uv run dnd-cli save goblin#1 goblin#2 dex --dc 15 --damage 8d6 --type fire --half    # Fireball
 uv run dnd-cli save sireth --from dragon:fire-breath         # a creature's DC action: DC, damage, half from the API

@@ -85,7 +85,7 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
 
   return (
     <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
-      <DiceOverlay roll={state.last_roll ?? null} />
+      <DiceOverlay rolls={state.rolls} />
       <div
         className="relative shrink-0 overflow-hidden"
         style={{ width: STAGE_W, height: STAGE_H, transform: `scale(${scale})`, transformOrigin: 'center' }}

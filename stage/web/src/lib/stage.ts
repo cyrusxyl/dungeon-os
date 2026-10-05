@@ -75,7 +75,9 @@ export interface StageState {
   dm: { status: 'starting' | 'busy' | 'idle' | 'waiting' | 'exited'; reason?: string; message?: string }
   dm_log: string[]
   versions: Record<string, number>
-  last_roll: Roll | null
+  rolls: Roll[]
+  /** The DM asked a player character for a check or a save: the roll window waits for the player. */
+  roll_request: RollRequest | null
   explore: string | null
   place: { map: string; place: string } | null
   creating: boolean
@@ -83,10 +85,48 @@ export interface StageState {
   activity?: string[]
 }
 
+/** One creature's roll in the roll window: the d20s, the tiles that add to it, and how it came out. */
+export interface RollEntry {
+  who: string
+  name: string
+  d20: number[]
+  /** Index in `d20` of the die that counts. */
+  kept: number
+  mode: 'normal' | 'advantage' | 'disadvantage'
+  mods: { label: string; value: number }[]
+  bonus: { label: string; die: string; faces: number[]; value: number }[]
+  total: number
+  outcome: 'success' | 'fail' | 'hit' | 'miss' | 'crit' | 'fumble' | null
+}
+
+export interface RollDetail {
+  kind: 'check' | 'save' | 'attack' | 'death'
+  title: string
+  subtitle: string
+  /** Only when the players may see it (a hidden DC or a monster's AC is left out). */
+  target?: { label: string; value: number }
+  rolls: RollEntry[]
+  damage?: { type: string; expr: string; faces: number[]; total: number }[]
+}
+
+export interface RollRequest {
+  who: string
+  name: string
+  kind: 'check' | 'save'
+  title: string
+  subtitle: string
+  dc?: number
+  hide?: boolean
+  mods: { label: string; value: number }[]
+  seq: number
+}
+
 export interface Roll {
   expr: string
   total: number
   dice: { die: string; faces: number[] }[]
+  /** Absent for a plain `uv run roll`: the window then shows only the dice. */
+  detail?: RollDetail
   seq: number
 }
 

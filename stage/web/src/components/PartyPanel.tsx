@@ -1,31 +1,234 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 
 import { Progress } from '@/components/ui/8bit/progress'
-import { useJson } from '@/lib/stage'
+import { act, type EffectPreset, type Party, type PartyChar, ROMAN, TONE } from '@/lib/party'
 
-interface Party {
-  location: string | null
-  game_time: string | null
-  quests: { title: string; status: string }[]
-  characters: {
-    id: string
-    name: string
-    race: string
-    class: string
-    level: number
-    armor_class: number
-    hp: { current?: number; max?: number; temp?: number }
-    inventory: { name: string; quantity: number }[]
-  }[]
+const TURN_KINDS = [
+  { kind: 'action', label: 'Action', color: 'var(--action)' },
+  { kind: 'bonus', label: 'Bonus Action', color: 'var(--bonus-action)' },
+  { kind: 'reaction', label: 'Reaction', color: 'var(--reaction)' },
+] as const
+
+/** The three turn icons of Baldur's Gate 3: a green circle, an orange triangle, a purple four-point star. */
+export function TurnShape({ kind, color, used }: { kind: 'action' | 'bonus' | 'reaction'; color: string; used: boolean }) {
+  const paint = used ? { fill: 'none', stroke: 'var(--dim)', strokeWidth: 1.5 } : { fill: color, stroke: 'var(--ink)', strokeWidth: 1 }
+  return (
+    <svg viewBox="0 0 16 16" className="size-5" aria-hidden="true" opacity={used ? 0.6 : 1}>
+      {kind === 'action' && <circle cx="8" cy="8" r="6" {...paint} />}
+      {kind === 'bonus' && <polygon points="8,2 14.5,13.5 1.5,13.5" strokeLinejoin="round" {...paint} />}
+      {kind === 'reaction' && <polygon points="8,1 10,6 15,8 10,10 8,15 6,10 1,8 6,6" strokeLinejoin="round" {...paint} />}
+    </svg>
+  )
 }
 
-/** The party sheet; read again each time the DM status changes (the DM writes the files during a turn). */
-export const PartyPanel = memo(function PartyPanel({ dmStatus }: { dmStatus: string }) {
-  const party = useJson<Party>('/api/party', dmStatus)
-  if (!party) return null
-
+/** Spell slots by level, one pip per slot: filled when it is still there, hollow when spent. */
+export function SlotPips({ slots }: { slots: Record<string, { max: number; remaining: number }> }) {
+  const levels = Object.keys(slots).filter((l) => slots[l].max > 0).sort((a, b) => Number(a) - Number(b))
+  if (!levels.length) return null
   return (
-    <aside className="flex flex-col gap-4 overflow-y-auto border-4 border-[var(--border)] bg-[var(--panel)] p-4">
+    <ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Spell slots">
+      {levels.map((l) => {
+        const { max, remaining } = slots[l]
+        return (
+          <li key={l} className="flex items-center gap-1" title={`Level ${l}: ${remaining} of ${max} slots left`}>
+            <span className="pixel-font text-[8px] text-[var(--dim)]">{ROMAN[Number(l)]}</span>
+            {Array.from({ length: max }, (_, i) => (
+              <span
+                key={i}
+                className="size-2.5 border-2"
+                style={{ borderColor: 'var(--slot)', background: i < remaining ? 'var(--slot)' : 'transparent' }}
+              />
+            ))}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function Chip({ tone, onRemove, children, title }: { tone: string; onRemove?: () => void; children: React.ReactNode; title?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 border-2 px-1.5 py-0.5 text-sm leading-none" style={{ borderColor: tone, color: tone }} title={title}>
+      {children}
+      {onRemove && (
+        <button type="button" onClick={onRemove} aria-label="Remove" className="pixel-font text-[8px] text-[var(--dim)] hover:text-[var(--parchment)]">
+          ✕
+        </button>
+      )}
+    </span>
+  )
+}
+
+/** The Add Bonus menu: the effects a player can put on a character (Guidance, Bless, advantage...). */
+export function AddBonus({ catalogue, have, onAdd, kind }: { catalogue: EffectPreset[]; have: string[]; onAdd: (id: string) => void; kind?: string }) {
+  const [open, setOpen] = useState(false)
+  const choices = catalogue.filter((e) => !have.includes(e.id) && (!kind || e.on.includes(kind)))
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="border-2 border-dashed border-[var(--gold)] px-1.5 py-0.5 text-sm leading-none text-[var(--gold)] hover:bg-[var(--panel-2)]"
+      >
+        + Bonus
+      </button>
+      {/* In the flow, not floating: the party panel scrolls, and a floating menu would be cut off. */}
+      {open && (
+        <ul className="flex basis-full flex-col border-2 border-[var(--gold)] bg-[var(--ink)] text-left">
+          {choices.length === 0 && <li className="px-2 py-1 text-sm text-[var(--dim)]">Nothing more to add.</li>}
+          {choices.map((e) => (
+            <li key={e.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  onAdd(e.id)
+                }}
+                className="flex w-full flex-col px-2 py-1 text-left hover:bg-[var(--panel-2)]"
+              >
+                <span style={{ color: TONE[e.tone] }}>{e.label}</span>
+                <span className="text-xs text-[var(--dim)]">{e.info}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+}
+
+function Card({ c, party, active, refresh, onSheet }: { c: PartyChar; party: Party; active: boolean; refresh: () => void; onSheet: () => void }) {
+  const [portraitOk, setPortraitOk] = useState(true)
+  const cur = c.hp.current ?? 0
+  const max = c.hp.max || 1
+  const catalogue = party.effects
+  const held = c.effects.map((id) => catalogue.find((e) => e.id === id)).filter((e): e is EffectPreset => Boolean(e))
+  const edit = (op: 'add' | 'remove', effect: string) => act('/api/effects', { who: c.id, op, effect }, refresh)
+  return (
+    <section className={`flex flex-col gap-2 border-2 p-2 ${active ? 'border-[var(--gold)] bg-[var(--panel-2)]' : 'border-[var(--border)]'}`}>
+      <div className="flex gap-2">
+        {portraitOk && (
+          <img
+            src={`/asset/actor/${encodeURIComponent(c.id)}/portrait/neutral.png`}
+            alt=""
+            className="pixelated size-12 shrink-0 border-2 border-[var(--border)] bg-black"
+            onError={() => setPortraitOk(false)}
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="pixel-font truncate text-[10px] text-[var(--gold)]">{c.name}</h2>
+            <span className="text-sm text-[var(--dim)]">AC {c.armor_class}</span>
+          </div>
+          <p className="truncate text-sm text-[var(--dim)]">
+            {c.race} {c.class} · lvl {c.level}
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <Progress value={(cur / max) * 100} variant="retro" className="h-3 flex-1" progressBg="bg-[var(--ember)]" />
+            <span className="text-sm tabular-nums">
+              {cur}/{max}
+              {c.hp.temp ? ` +${c.hp.temp}` : ''}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {c.turn && (
+        <div className="flex items-center gap-1" role="group" aria-label="This turn">
+          {TURN_KINDS.map(({ kind, label, color }) => {
+            const used = c.turn![kind]
+            return (
+              <button
+                key={kind}
+                type="button"
+                aria-pressed={used}
+                title={`${label}: ${used ? 'used' : 'ready'}`}
+                onClick={() => act('/api/turn', { who: c.id, kind, used: !used }, refresh)}
+                className="flex items-center gap-1 border-2 border-[var(--border)] px-1.5 py-0.5 hover:border-[var(--gold)]"
+              >
+                <TurnShape kind={kind} color={color} used={used} />
+                <span className="text-xs text-[var(--dim)]">{kind === 'bonus' ? 'Bonus' : label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {c.spell && <SlotPips slots={c.spell.slots} />}
+
+      {c.resources.length > 0 && (
+        <ul className="flex flex-col gap-0.5">
+          {c.resources.map((r) => (
+            <li key={r.name} className="flex items-center justify-between gap-2 text-sm" title={`Comes back on a ${r.recharge} rest`}>
+              <span className="truncate text-[var(--parchment)]/80">{r.name}</span>
+              <span className="flex gap-1">
+                {Array.from({ length: r.max }, (_, i) => {
+                  const spent = i >= r.max - r.used
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      aria-label={`${r.name}: ${spent ? 'spent, give back' : 'spend'}`}
+                      onClick={() => act('/api/resource', { who: c.id, name: r.name, back: spent }, refresh)}
+                      className="size-3 border-2 border-[var(--ember)]"
+                      style={{ background: spent ? 'transparent' : 'var(--ember)' }}
+                    />
+                  )
+                })}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {held.map((e) => (
+          <Chip key={e.id} tone={TONE[e.tone]} title={e.concentration ? `${e.info} (a concentration spell)` : e.info} onRemove={() => edit('remove', e.id)}>
+            {e.concentration && '◎ '}
+            {e.label}
+          </Chip>
+        ))}
+        {c.conditions.map((k) => (
+          <Chip key={k} tone="var(--bad)">
+            {k}
+          </Chip>
+        ))}
+        <AddBonus catalogue={catalogue} have={c.effects} onAdd={(id) => edit('add', id)} />
+      </div>
+
+      <button type="button" onClick={onSheet} className="pixel-font self-start text-[9px] text-[var(--dim)] hover:text-[var(--gold)]">
+        Sheet · Items · Spells ▸
+      </button>
+    </section>
+  )
+}
+
+/** The turn order of a combat: round number and who is next. */
+function Initiative({ combat }: { combat: NonNullable<Party['combat']> }) {
+  return (
+    <section aria-label="Turn order">
+      <h2 className="pixel-font text-[10px] text-[var(--gold)]">Round {combat.round}</h2>
+      <ol className="mt-1 flex flex-wrap gap-1">
+        {combat.order.map((o) => (
+          <li
+            key={o.id}
+            className={`border-2 px-1.5 py-0.5 text-sm leading-none ${o.id === combat.current ? 'border-[var(--gold)] bg-[var(--panel-2)] text-[var(--gold)]' : 'border-[var(--border)]'} ${o.pc ? '' : 'text-[var(--bad)]'}`}
+            aria-current={o.id === combat.current ? 'step' : undefined}
+          >
+            {o.name} <span className="text-[var(--dim)]">{o.initiative}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+/** The party: who acts now, each character's HP, turn actions, slots, bonuses, and a way into the sheet. */
+export const PartyPanel = memo(function PartyPanel({ party, refresh, onSheet }: { party: Party | null; refresh: () => void; onSheet: (id: string) => void }) {
+  if (!party) return null
+  return (
+    <aside className="flex w-full flex-col gap-3 overflow-y-auto border-4 border-[var(--border)] bg-[var(--panel)] p-3">
       {party.location && (
         <section>
           <h2 className="pixel-font text-[10px] text-[var(--gold)]">Where</h2>
@@ -33,36 +236,10 @@ export const PartyPanel = memo(function PartyPanel({ dmStatus }: { dmStatus: str
           {party.game_time && <p className="text-[var(--dim)]">{party.game_time}</p>}
         </section>
       )}
-      {party.characters.map((c) => {
-        const cur = c.hp.current ?? 0
-        const max = c.hp.max || 1
-        return (
-          <section key={c.id} className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="pixel-font text-[10px] text-[var(--gold)]">{c.name}</h2>
-              <span className="text-sm text-[var(--dim)]">AC {c.armor_class}</span>
-            </div>
-            <p className="text-[var(--dim)]">
-              {c.race} {c.class} · lvl {c.level}
-            </p>
-            <div className="flex items-center gap-3">
-              <Progress value={(cur / max) * 100} variant="retro" className="h-3 flex-1" progressBg="bg-[var(--ember)]" />
-              <span className="text-sm tabular-nums">
-                {cur}/{max}
-                {c.hp.temp ? ` +${c.hp.temp}` : ''}
-              </span>
-            </div>
-            <ul className="text-sm text-[var(--parchment)]/80">
-              {c.inventory.map((i) => (
-                <li key={i.name}>
-                  • {i.name}
-                  {i.quantity > 1 ? ` ×${i.quantity}` : ''}
-                </li>
-              ))}
-            </ul>
-          </section>
-        )
-      })}
+      {party.combat && <Initiative combat={party.combat} />}
+      {party.characters.map((c) => (
+        <Card key={c.id} c={c} party={party} active={party.combat?.current === c.id} refresh={refresh} onSheet={() => onSheet(c.id)} />
+      ))}
       {party.quests.length > 0 && (
         <section>
           <h2 className="pixel-font text-[10px] text-[var(--gold)]">Quests</h2>

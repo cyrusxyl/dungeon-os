@@ -10,6 +10,7 @@ from __future__ import annotations
 
 
 LOG_LIMIT = 60
+ROLL_LIMIT = 6
 DM_LOG_LIMIT = 30
 ACTIVITY_LIMIT = 12
 AUTO_POSITIONS = ("left", "right", "center", "far-left", "far-right")
@@ -22,10 +23,11 @@ def empty() -> dict:
         "actors": {},
         "log": [],
         "choices": None,
+        "roll_request": None,
         "dm": {"status": "starting"},
         "dm_log": [],
         "versions": {},
-        "last_roll": None,
+        "rolls": [],
         "explore": None,
         "place": None,
         "activity": [],
@@ -64,6 +66,7 @@ def apply(state: dict, event: dict) -> dict:
                 s["actors"][member] = {"position": _free_position(s["actors"]), "emotion": "neutral"}
         s["scene"] = event["location"]
         s["choices"] = None
+        s["roll_request"] = None
         s["explore"] = None
     elif kind == "explore":
         s["explore"] = event["site"]
@@ -90,10 +93,18 @@ def apply(state: dict, event: dict) -> dict:
             s["actors"][event["actor"]] = actor
         s["log"] = (s["log"] + [{**event, "seq": s["seq"]}])[-LOG_LIMIT:]
         s["choices"] = None
+        s["roll_request"] = None
     elif kind == "choices":
         s["choices"] = {"options": event["options"], "seq": s["seq"]}
+    elif kind == "roll_request":
+        s["roll_request"] = {k: v for k, v in event.items() if k not in ("type", "beat")} | {"seq": s["seq"]}
+    elif kind == "roll_done":
+        s["roll_request"] = None  # the server is about to make the roll the DM asked for
     elif kind == "roll":
-        s["last_roll"] = {k: event.get(k) for k in ("expr", "total", "dice")} | {"seq": s["seq"]}
+        s["roll_request"] = None
+        # A short queue: the browser plays each roll it has not shown, in order.
+        roll = {k: event[k] for k in ("expr", "total", "dice", "detail") if k in event} | {"seq": s["seq"]}
+        s["rolls"] = (s["rolls"] + [roll])[-ROLL_LIMIT:]
     elif kind == "dm_activity":
         if not s["activity"] or s["activity"][-1] != event["text"]:
             s["activity"] = (s["activity"] + [event["text"]])[-ACTIVITY_LIMIT:]

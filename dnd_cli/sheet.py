@@ -13,7 +13,7 @@ from __future__ import annotations
 import random
 import re
 
-from dnd_cli import dice
+from dnd_cli import dice, resources
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, level_for_xp
 
 GOLD = "Gold Pieces"
@@ -164,6 +164,7 @@ def long_rest(sheet: dict) -> str:
     slots = (sheet.get("spellcasting") or {}).get("spell_slots") or {}
     for s in slots.values():
         s["remaining"] = s.get("max", s.get("remaining", 0))
+    resources.rest(sheet, "long")
     return (f"{sheet['name']}: HP {hp['max']}/{hp['max']}, hit dice {hd['remaining']}/{total}"
             + (", spell slots full" if slots else ""))
 
@@ -179,6 +180,7 @@ def short_rest(sheet: dict, spend: int, rng=None) -> str:
     hd["remaining"] = hd.get("remaining", 0) - spend
     if healed:
         sheet["death_saves"] = {"successes": 0, "failures": 0}
+    resources.rest(sheet, "short")
     return (f"{sheet['name']}: spends {spend} hit dice (d{die}{dice.signed(con)} each), heals {healed}: "
             f"HP {hp['current']}/{hp['max']}, hit dice {hd['remaining']}/{hd.get('total', sheet['level'])}")
 

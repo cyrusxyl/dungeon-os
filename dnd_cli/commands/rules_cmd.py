@@ -6,7 +6,7 @@ story, not on arithmetic. Logic lives in dnd_cli/combat.py and dnd_cli/sheet.py.
 
 from __future__ import annotations
 
-from dnd_cli import character, combat, sheet
+from dnd_cli import character, combat, effects, sheet
 from dnd_cli.api import api_get
 from dnd_cli.commands.show_cmd import run_stage
 from dnd_cli.dice import DiceError
@@ -79,15 +79,38 @@ def execute_attack(campaign, args) -> int:
 def execute_save(campaign, args) -> int:
     return _with_state(campaign, lambda c, s: combat.save(
         c, s, args.targets, args.ability, args.dc, damage_expr=args.damage, damage_type=args.type or "",
-        half=args.half, source=args.source, adv=args.adv, dis=args.dis, secret=args.secret))
+        half=args.half, source=args.source, adv=args.adv, dis=args.dis, secret=args.secret, hide_dc=args.hide_dc))
 
 
 def execute_check(campaign, args) -> int:
     def fn(campaign_dir, state):
         who = combat.party(campaign_dir, state) if args.who == ["all"] else args.who
         return combat.check(campaign_dir, state, who, args.what, dc=args.dc, adv=args.adv, dis=args.dis,
-                            passive=args.passive, secret=args.secret)
+                            passive=args.passive, secret=args.secret, hide_dc=args.hide_dc)
     return _with_state(campaign, fn)
+
+
+# -- effects -----------------------------------------------------------------
+
+
+def execute_effect(campaign, op: str, who: str | None, name: str | None) -> int:
+    def fn(campaign_dir):
+        if op == "list":
+            held = effects.load(campaign_dir)
+            held = {who: held.get(who, [])} if who else held
+            return _out([f"{cid}: {', '.join(ids)}" for cid, ids in held.items() if ids] or ["No active effects."])
+        if not who or not name:
+            raise combat.RulesError(f"effect {op} <who> <effect>. Effects: {', '.join(effects.PRESETS)}.")
+        if not character.character_path(campaign_dir, who).exists():
+            raise combat.RulesError(f"no character {who!r}.")
+        try:
+            (effects.add if op == "add" else effects.remove)(campaign_dir, who, name)
+        except ValueError as e:
+            raise combat.RulesError(str(e)) from e
+        spec = effects.PRESETS[name]
+        return _out([f"{who}: {spec['label']} {'on' if op == 'add' else 'off'}"
+                     + (f" — {spec['info']}; the next matching roll uses it." if op == "add" else ".")])
+    return run_stage(campaign, fn, *ERRORS)
 
 
 # -- rests -------------------------------------------------------------------

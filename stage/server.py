@@ -11,7 +11,9 @@
 Allowlist: besides `{campaign}/stage/`, this server reads only state.json,
 config.json (pitch and party mode) and characters/*.json (for the party panel
 and the creator). It writes characters/, players/ and state.json (through
-`creation.register`, when the player makes a character) and stage/actors/.
+`creation.register`, when the player makes a character), stage/actors/,
+stage/effects.json (bonuses the player adds), and the combat tracker's
+used actions in state.json; both only while the DM is idle.
 Site and map files under `stage/` hold secrets (the whole layout, hidden
 places): the routes send only what the party has seen or been told. It never
 opens dm_story.md (it only checks that the file exists), canon.json,
@@ -41,7 +43,8 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from stage import actors, beat, crawl, lpc, maps, scenes, state as stage_state
+from dnd_cli import character, combat, effects, resources
+from stage import actors, beat, crawl, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
 
@@ -156,6 +159,10 @@ class Stage:
 
     def snapshot(self) -> dict:
         state = {**self.state, "creating": self.creating(), "party_mode": self.party_mode()}
+        req = state.get("roll_request")
+        if req and req.get("hide"):
+            # A hidden DC stays on the server: the roll uses the copy in self.state.
+            state["roll_request"] = {k: v for k, v in req.items() if k != "dc"}
         return {"kind": "snapshot", "state": state, "campaign": self.campaign_dir.name}
 
     def open_creator(self) -> None:
@@ -283,33 +290,6 @@ class LocalOnly:
                     await send({"type": "http.response.body", "body": b"Forbidden: local browser tab only."})
                 return
         await self.app(scope, receive, send)
-
-
-def _party(campaign_dir: Path) -> dict:
-    """Player-visible party panel: allowlisted files only."""
-    st = read_json(campaign_dir / "state.json") or {}
-    out: dict = {
-        "characters": [],
-        "location": st.get("location"),
-        "game_time": st.get("game_time"),
-        "quests": [{"title": q.get("title"), "status": q.get("status")} for q in st.get("quest_log", [])],
-    }
-    for path in sorted((campaign_dir / "characters").glob("*.json")):
-        if (c := read_json(path)) is None:
-            continue
-        out["characters"].append({
-            "id": path.stem,
-            "name": c.get("name"),
-            "race": c.get("race"),
-            "class": c.get("class"),
-            "level": c.get("level"),
-            "hp": c.get("hp", {}),
-            "armor_class": c.get("armor_class"),
-            "inventory": [
-                {"name": i.get("name"), "quantity": i.get("quantity", 1)} for i in c.get("inventory", [])
-            ],
-        })
-    return out
 
 
 def _lead(campaign_dir: Path) -> str | None:
@@ -752,7 +732,127 @@ def create_app(
         return JSONResponse({"id": actor_id, "name": name, "has_look": bool(spec)})
 
     async def api_party(request: Request):
-        return JSONResponse(await run_in_threadpool(_party, need().campaign_dir))
+        return JSONResponse(await run_in_threadpool(party.view, need().campaign_dir))
+
+    # -- the player's own bonuses, actions and rolls (only while the DM is idle) ----
+
+    def idle_stage() -> Stage:
+        stage = need()
+        if not stage.dm_ready():
+            raise HTTPException(409, "The DM is busy.")
+        return stage
+
+    def pc_or_404(stage: Stage, who: object) -> str:
+        who = str(who)
+        if not beat.ID_RE.match(who) or not character.character_path(stage.campaign_dir, who).exists():
+            raise HTTPException(404, "No such character.")
+        return who
+
+    async def api_effects(request: Request):
+        stage = idle_stage()
+        body = await request.json()
+        who = pc_or_404(stage, body.get("who"))
+        op = effects.add if body.get("op") == "add" else effects.remove if body.get("op") == "remove" else None
+        if op is None:
+            return error("op is add or remove.", 400)
+        try:
+            await run_in_threadpool(op, stage.campaign_dir, who, str(body.get("effect")))
+        except ValueError as e:
+            return error(str(e), 400)
+        return JSONResponse({"ok": True})
+
+    async def api_turn(request: Request):
+        """Mark an action, bonus action or reaction used or free."""
+        stage = idle_stage()
+        body = await request.json()
+        who = pc_or_404(stage, body.get("who"))
+
+        def go():
+            state = combat.load_state(stage.campaign_dir)
+            combat.spend_turn(state, who, str(body.get("kind")), bool(body.get("used", True)))
+            combat.save_state(stage.campaign_dir, state)
+        try:
+            await run_in_threadpool(go)
+        except combat.RulesError as e:
+            return error(str(e), 400)
+        return JSONResponse({"ok": True})
+
+    async def api_resource(request: Request):
+        """Spend (or give back) one use of a class resource."""
+        stage = idle_stage()
+        body = await request.json()
+        who = pc_or_404(stage, body.get("who"))
+
+        def go():
+            sheet = character.load(stage.campaign_dir, who)
+            resources.spend(sheet, str(body.get("name")), -1 if body.get("back") else 1)
+            character.save(stage.campaign_dir, who, sheet)
+        try:
+            await run_in_threadpool(go)
+        except KeyError:
+            return error("No such resource.", 400)
+        return JSONResponse({"ok": True})
+
+    rolling = threading.Lock()
+
+    def roll_for(stage: Stage, req: dict, skip: list[str]) -> list[str]:
+        """The roll the DM asked for, made with the same rules code as `dnd-cli check`; the stage shows it."""
+        with rolling:
+            os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
+            try:
+                state = combat.load_state(stage.campaign_dir)
+                return combat.check(stage.campaign_dir, state, [req["who"]], req["what"], dc=req.get("dc"),
+                                    hide_dc=bool(req.get("hide")), skip=skip)
+            finally:
+                del os.environ["DUNGEON_STAGE_LOG"]
+
+    async def api_roll(request: Request):
+        """The player clicks Roll in the roll window: roll it, show it, and tell the DM the result."""
+        stage = idle_stage()
+        body = await request.json()
+        req = stage.state.get("roll_request")
+        if not req:
+            return error("No roll is waiting.", 409)
+        skip = [str(x) for x in body.get("skip", []) if isinstance(x, str)]
+        # Clear the request at once: a double click must not roll twice.
+        await stage._local_event({"type": "roll_done"})
+        try:
+            lines = await run_in_threadpool(roll_for, stage, req, skip)
+        except (combat.RulesError, character.CharacterError) as e:
+            return error(str(e), 400)
+        await stage.submit(f"[{req.get('name', req['who'])} rolled in the roll window] " + " ".join(lines)
+                           + " Narrate the outcome.")
+        return JSONResponse({"lines": lines})
+
+    async def api_spell_levels(request: Request):
+        """Spell index -> level, to group a spell list by level (the 5e API's spell list, cached on disk)."""
+        from dnd_cli.api import api_get
+
+        data, err, _ = await run_in_threadpool(api_get, "spells")
+        if err or not data:
+            return JSONResponse({})
+        return JSONResponse({s["index"]: s.get("level", 0) for s in data.get("results", [])})
+
+    async def api_spell(request: Request):
+        """One spell for the spell tooltip, from the 5e API (cached on disk)."""
+        index = request.path_params["index"].lower().replace("'", "")
+        if not beat.SLUG_RE.match(index):
+            return error("No such spell.", 404)
+        from dnd_cli.api import api_get
+
+        data, err, _ = await run_in_threadpool(api_get, f"spells/{index}")
+        if err or not data:
+            return error("The spell is not in the 5e API.", 404)
+        return JSONResponse({
+            "index": index, "name": data.get("name"), "level": data.get("level"),
+            "school": (data.get("school") or {}).get("name"), "casting_time": data.get("casting_time"),
+            "range": data.get("range"), "duration": data.get("duration"), "concentration": data.get("concentration"),
+            "ritual": data.get("ritual"), "components": data.get("components"),
+            "desc": " ".join(data.get("desc", []))[:600],
+            "higher_level": " ".join(data.get("higher_level", []))[:300],
+            "damage": ((data.get("damage") or {}).get("damage_type") or {}).get("name"),
+            "save": ((data.get("dc") or {}).get("dc_type") or {}).get("name"),
+        })
 
     def site_or_none(stage: Stage, request: Request) -> tuple[str, dict | None]:
         site_id = request.path_params["site_id"]
@@ -895,6 +995,12 @@ def create_app(
         Route("/api/input", api_input, methods=["POST"]),
         Route("/api/restart", api_restart, methods=["POST"]),
         Route("/api/party", api_party),
+        Route("/api/effects", api_effects, methods=["POST"]),
+        Route("/api/turn", api_turn, methods=["POST"]),
+        Route("/api/resource", api_resource, methods=["POST"]),
+        Route("/api/roll", api_roll, methods=["POST"]),
+        Route("/api/spells", api_spell_levels),
+        Route("/api/spell/{index}", api_spell),
         Route("/api/actor/{actor_id}", api_actor),
         Route("/api/creation/options", api_creation_options),
         Route("/api/creation/character", api_creation_character, methods=["POST"]),

@@ -23,7 +23,7 @@ import random
 import re
 from pathlib import Path
 
-from dnd_cli import character, dice
+from dnd_cli import character, dice, effects
 from dnd_cli.api import api_get
 from stage.files import read_json, write_json
 
@@ -60,19 +60,106 @@ def level_for_xp(xp: int) -> int:
     return sum(1 for t in XP_LEVELS if xp >= t)
 
 
-def stage_roll(expr: str, total: int, groups: list[dict], secret: bool = False) -> None:
-    """Show a roll in the stage's dice box (no-op without a running stage, or when secret)."""
+def stage_roll(expr: str, total: int, groups: list[dict], secret: bool = False, detail: dict | None = None) -> None:
+    """Show a roll in the stage's dice box (no-op without a running stage, or when secret).
+
+    `detail` is the roll window's breakdown (see `roll_detail`). Without it the stage shows `expr` and the dice.
+    """
     log = os.environ.get("DUNGEON_STAGE_LOG")
     if log and not secret:
+        event = {"type": "roll", "expr": expr, "total": total, "dice": groups}
+        if detail:
+            event["detail"] = detail
         with open(log, "a") as f:
-            f.write(json.dumps({"type": "roll", "expr": expr, "total": total, "dice": groups}) + "\n")
+            f.write(json.dumps(event) + "\n")
 
 
 def _d20_groups(faces: list[int], kept: int) -> list[dict]:
-    """The kept d20 first (the dice box colours a natural 20 or 1 from it)."""
+    """The kept d20 first (the legacy dice box colours a natural 20 or 1 from it)."""
     rest = list(faces)
     rest.remove(kept)
     return [{"die": "1d20", "faces": [kept]}] + ([{"die": "1d20 dropped", "faces": rest}] if rest else [])
+
+
+def _d20(campaign_dir: Path, cid: str, kind: str, adv: bool, dis: bool, rng, skip=()) -> dict:
+    """One d20 roll for a creature, with its active effects: advantage, disadvantage and bonus dice."""
+    fx = effects.apply(campaign_dir, cid, kind, rng, skip)
+    adv, dis = adv or fx["adv"], dis or fx["dis"]
+    kept, faces = dice.d20(rng, adv, dis)
+    mode = "normal" if len(faces) == 1 else "advantage" if adv else "disadvantage"
+    return {"kept": kept, "faces": faces, "mode": mode, "bonus": fx["bonus"], "used": fx["used"]}
+
+
+def _fx_note(roll: dict) -> str:
+    """The effects a roll used, for the DM's output line: ` (advantage 17,5; guidance +3)`."""
+    notes = []
+    if roll["mode"] != "normal":
+        notes.append(f"{roll['mode']} {','.join(map(str, roll['faces']))}")
+    notes += [f"{b['label'].lower()} {dice.signed(b['value'])}" for b in roll["bonus"]]
+    return f" ({'; '.join(notes)})" if notes else ""
+
+
+def _tiles(rec: dict, abil: str, bonus: int, what: str) -> list[dict]:
+    """A skill or save bonus split into the roll window's tiles: ability, proficiency, expertise."""
+    base = rec["mods"][abil]
+    tiles = [{"label": abil.capitalize(), "value": base}]
+    rest = bonus - base
+    prof = rec.get("prof") or rest
+    if rest and rest == prof:
+        tiles.append({"label": f"{what} Proficiency", "value": rest})
+    elif rest and rest == 2 * prof:
+        tiles += [{"label": f"{what} Proficiency", "value": prof}, {"label": f"{what} Expertise", "value": prof}]
+    elif rest:
+        tiles.append({"label": "Other", "value": rest})
+    return tiles
+
+
+def check_spec(rec: dict, what: str) -> dict:
+    """What a check or a save is: its ability, bonus, window title and the tiles that make the bonus.
+
+    `what` is a skill (`athletics`), an ability (`str`), or a save (`dex-save`).
+    """
+    what = what.lower().replace(" ", "_")
+    if what.endswith(("-save", "_save")):
+        abil = ability(what[:-5])
+        bonus = save_bonus(rec, abil)
+        return {"kind": "save", "abil": abil, "bonus": bonus, "title": f"{abil.capitalize()} Saving Throw", "subtitle": "",
+                "label": abil[:3].upper(), "tiles": _tiles(rec, abil, bonus, f"{abil.capitalize()} Save")}
+    what = what.replace("-", "_")
+    if what in SKILLS:
+        abil = SKILLS[what]
+        bonus, label = skill_bonus(rec, what), what.replace("_", " ").title()
+        return {"kind": "check", "abil": abil, "bonus": bonus, "title": label, "subtitle": f"{abil.capitalize()} Check",
+                "label": label, "tiles": _tiles(rec, abil, bonus, label)}
+    abil = ability(what)
+    bonus = rec["mods"][abil]
+    return {"kind": "check", "abil": abil, "bonus": bonus, "title": abil.capitalize(), "subtitle": "Ability Check",
+            "label": abil[:3].upper(), "tiles": _tiles(rec, abil, bonus, abil.capitalize())}
+
+
+def roll_preview(campaign_dir: Path, state: dict, cid: str, what: str) -> dict:
+    """The roll window before the roll: who rolls what, and the tiles that will add to the d20."""
+    rec = combatant(campaign_dir, state, cid)
+    spec = check_spec(rec, what)
+    return {"name": rec["name"], "kind": spec["kind"], "title": spec["title"], "subtitle": spec["subtitle"], "mods": spec["tiles"]}
+
+
+def _entry(rec: dict, roll: dict, tiles: list[dict], outcome: str | None = None, total: int | None = None) -> dict:
+    """One creature's roll for the roll window. The total is the d20 plus every tile and bonus die."""
+    total = roll["kept"] + sum(t["value"] for t in tiles) + sum(b["value"] for b in roll["bonus"]) if total is None else total
+    return {"who": rec["id"], "name": rec["name"], "d20": roll["faces"], "kept": roll["faces"].index(roll["kept"]),
+            "mode": roll["mode"], "mods": tiles, "bonus": roll["bonus"], "total": total, "outcome": outcome}
+
+
+def roll_detail(kind: str, title: str, subtitle: str, rolls: list[dict], target: dict | None = None,
+                damage: list[dict] | None = None) -> dict:
+    """The roll window's data: what is rolled, the target number (only when the players may see it), each roll."""
+    detail: dict = {"kind": kind, "title": title, "subtitle": subtitle, "rolls": rolls}
+    if target:
+        detail["target"] = target
+    if damage:
+        detail["damage"] = damage
+    return detail
 
 
 # -- state -------------------------------------------------------------------
@@ -127,6 +214,7 @@ def pc_record(sheet: dict, cid: str) -> dict:
         "skills": {s: sheet.get("skills", {}).get(s, mods[a]) for s, a in SKILLS.items()},
         "attacks": attacks, "init": sheet.get("initiative", mods["dexterity"]),
         "spell_dc": spell.get("spell_save_dc"), "resist": [], "immune": [], "vuln": [],
+        "prof": sheet.get("proficiency_bonus"),
     }
 
 
@@ -370,6 +458,7 @@ def next_turn(campaign_dir: Path, state: dict) -> list[str]:
         if order[i] in alive:
             break
     cid = enc["current_turn"] = order[i]
+    enc.setdefault("resources", {})[cid] = {}  # a new turn: action, bonus action and reaction are back
     kept = []
     for c in enc.get("conditions", {}).get(cid, []):
         if "rounds" in c:
@@ -400,6 +489,17 @@ def _catch_up(campaign_dir: Path, state: dict, cid: str) -> list[str]:
         if enc["current_turn"] == cid:
             return lines + [f"(turn moved to {cid}, round {enc['round']})"]
     return lines
+
+
+TURN_KINDS = ("action", "bonus", "reaction")
+
+
+def spend_turn(state: dict, cid: str, kind: str, used: bool = True) -> None:
+    """Mark an action, bonus action or reaction as used (or free) for a combatant of the running combat."""
+    enc = encounter(state)
+    if kind not in TURN_KINDS or cid not in enc["participants"]:
+        raise RulesError(f"use one of {', '.join(TURN_KINDS)} for a creature in this combat.")
+    enc.setdefault("resources", {}).setdefault(cid, {})[kind] = bool(used)
 
 
 def condition(state: dict, cid: str, op: str, name: str, rounds: int | None = None,
@@ -485,7 +585,7 @@ def _find_attack(rec: dict, name: str) -> dict:
 
 def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: str, adv: bool = False,
            dis: bool = False, damage_expr: str | None = None, damage_type: str = "", bonus: int = 0,
-           secret: bool = False, rng=None) -> list[str]:
+           secret: bool = False, rng=None, skip=()) -> list[str]:
     """One attack roll against AC; on a hit, roll and apply the damage. Crits double the dice."""
     rng = rng or random
     a_rec = combatant(campaign_dir, state, attacker)
@@ -499,28 +599,42 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     if not parts:
         raise RulesError(f"{act['name']} has no damage on record; give it with --damage 1d10 --type fire.")
     turn_lines = _catch_up(campaign_dir, state, attacker)
-    kept, faces = dice.d20(rng, adv, dis)
-    to_hit = kept + act["bonus"] + bonus
+    r = _d20(campaign_dir, attacker, "attack", adv, dis, rng, skip)
+    kept = r["kept"]
+    tiles = [{"label": "Attack Bonus", "value": act["bonus"]}] + ([{"label": "Bonus", "value": bonus}] if bonus else [])
+    entry = _entry(a_rec, r, tiles)
+    to_hit = entry["total"]
     crit, fumble = kept == 20, kept == 1
     hit = crit or (not fumble and to_hit >= t_rec["ac"])
-    groups = _d20_groups(faces, kept)
-    head = f"{attacker} {act['name']} → {target}: {kept}{dice.signed(act['bonus'] + bonus)} = {to_hit} vs AC {t_rec['ac']}"
+    entry["outcome"] = "crit" if crit else "fumble" if fumble else "hit" if hit else "miss"
+    groups = _d20_groups(r["faces"], kept) + [{"die": b["die"], "faces": b["faces"]} for b in r["bonus"]]
+    # A monster's AC stays behind the screen; the AC of a player character is on their sheet.
+    shown_ac = {"label": "Armor Class", "value": t_rec["ac"]} if t_rec["kind"] == "pc" else None
+
+    def detail(dmg=None) -> dict:
+        return roll_detail("attack", act["name"], f"Attack Roll · {a_rec['name']} → {t_rec['name']}", [entry], shown_ac, dmg)
+
+    head = (f"{attacker} {act['name']} → {target}: {kept}{dice.signed(act['bonus'] + bonus)} = {to_hit}"
+            f"{_fx_note(r)} vs AC {t_rec['ac']}")
     if not hit:
-        stage_roll(f"{a_rec['name']}: {act['name']}", to_hit, groups, secret)
+        stage_roll(f"{a_rec['name']}: {act['name']}", to_hit, groups, secret, detail())
         return turn_lines + [head + (" — natural 1, miss" if fumble else " — miss")]
-    lines, total_text = [], []
+    lines, total_text, shown_dmg = [], [], []
     for expr, dtype in parts:
         amount, dmg_groups = dice.roll(expr, rng, crit=crit)
         groups += dmg_groups
         total_text.append(f"{amount} {dtype}".strip())
+        shown_dmg.append({"type": dtype, "expr": expr, "faces": [f for g in dmg_groups for f in g["faces"]], "total": amount})
         lines.append(damage(campaign_dir, state, target, amount, dtype, crit=crit))
-    stage_roll(f"{a_rec['name']}: {act['name']} — {' + '.join(total_text)} damage", to_hit, groups, secret)
+    stage_roll(f"{a_rec['name']}: {act['name']} — {' + '.join(total_text)} damage", to_hit, groups, secret,
+               detail(shown_dmg))
     return turn_lines + [head + (" — CRITICAL HIT" if crit else " — hit") + f", {' + '.join(total_text)} damage"] + lines
 
 
 def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, dc: int | None,
          damage_expr: str | None = None, damage_type: str = "", half: bool = False, source: str | None = None,
-         adv: bool = False, dis: bool = False, secret: bool = False, rng=None) -> list[str]:
+         adv: bool = False, dis: bool = False, secret: bool = False, rng=None, hide_dc: bool = False,
+         skip=()) -> list[str]:
     """A saving throw for each target; optional damage rolled once (half on a success with --half)."""
     rng = rng or random
     if source:
@@ -541,58 +655,70 @@ def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, 
     amount = None
     if damage_expr:
         amount, dmg_groups = dice.roll(damage_expr, rng)
-    lines, groups, successes, total = [], [], 0, 0
+    lines, groups, entries, successes, total = [], [], [], 0, 0
     for t, rec in zip(targets, recs):
-        kept, faces = dice.d20(rng, adv, dis)
-        total = kept + save_bonus(rec, abil)
+        r = _d20(campaign_dir, t, "save", adv, dis, rng, skip)
+        bonus = save_bonus(rec, abil)
+        entry = _entry(rec, r, _tiles(rec, abil, bonus, f"{abil.capitalize()} Save"))
+        total = entry["total"]
         ok = total >= dc
+        entry["outcome"] = "success" if ok else "fail"
+        entries.append(entry)
         successes += ok
-        groups += _d20_groups(faces, kept)
-        line = f"{t} {abil[:3].upper()} save: {kept}{dice.signed(save_bonus(rec, abil))} = {total} vs DC {dc} — {'success' if ok else 'fail'}"
-        lines.append(line)
+        groups += _d20_groups(r["faces"], r["kept"]) + [{"die": b["die"], "faces": b["faces"]} for b in r["bonus"]]
+        lines.append(f"{t} {abil[:3].upper()} save: {r['kept']}{dice.signed(bonus)} = {total}{_fx_note(r)} "
+                     f"vs DC {dc} — {'success' if ok else 'fail'}")
         if amount is not None:
             taken = amount // 2 if ok and half else 0 if ok else amount
             if taken:
                 lines.append(damage(campaign_dir, state, t, taken, damage_type))
     shown = f"{abil[:3].upper()} save" + (f", {amount} {damage_type} damage".rstrip() if amount is not None else "")
-    # One target: its save total. Several: how many succeeded. Never the secret DC.
-    stage_roll(shown, total if len(targets) == 1 else successes, groups + (dmg_groups if amount is not None else []), secret)
+    shown_dmg = ([{"type": damage_type, "expr": damage_expr, "faces": [f for g in dmg_groups for f in g["faces"]],
+                   "total": amount}] if amount is not None else None)
+    detail = roll_detail("save", f"{abil.capitalize()} Saving Throw", "Half damage on a success" if half and amount else "",
+                         entries, None if hide_dc else {"label": "Difficulty Class", "value": dc}, shown_dmg)
+    # One target: its save total. Several: how many succeeded.
+    stage_roll(shown, total if len(targets) == 1 else successes, groups + (dmg_groups if amount is not None else []),
+               secret, detail)
     return lines
 
 
 def check(campaign_dir: Path, state: dict, who: list[str], what: str, dc: int | None = None,
-          adv: bool = False, dis: bool = False, passive: bool = False, secret: bool = False, rng=None) -> list[str]:
+          adv: bool = False, dis: bool = False, passive: bool = False, secret: bool = False, rng=None,
+          hide_dc: bool = False, skip=()) -> list[str]:
     """Skill or ability checks (or death saves). Several characters: a group check, half must pass."""
     rng = rng or random
     what = what.lower().replace("-", "_").replace(" ", "_")
     if what == "death":
         return [death_save(campaign_dir, state, c, rng, secret) for c in who]
-    lines, passed, groups, total = [], 0, [], 0
+    lines, passed, groups, entries, total = [], 0, [], [], 0
     for cid in who:
         rec = combatant(campaign_dir, state, cid)
-        if what in SKILLS:
-            bonus, label = skill_bonus(rec, what), what.replace("_", " ").title()
-        else:
-            a = ability(what)
-            bonus, label = rec["mods"][a], a[:3].upper()
+        spec = check_spec(rec, what)
+        bonus, label = spec["bonus"], spec["label"]
         if passive:
             lines.append(f"{cid} passive {label}: {10 + bonus + (5 if adv else 0) - (5 if dis else 0)}")
             continue
-        kept, faces = dice.d20(rng, adv, dis)
-        total = kept + bonus
-        groups += _d20_groups(faces, kept)
+        r = _d20(campaign_dir, cid, spec["kind"], adv, dis, rng, skip)
+        entry = _entry(rec, r, spec["tiles"])
+        total = entry["total"]
         ok = dc is not None and total >= dc
+        entry["outcome"] = None if dc is None else "success" if ok else "fail"
+        entries.append(entry)
         passed += ok
-        lines.append(f"{cid} {label}: {kept}{dice.signed(bonus)} = {total}"
+        groups += _d20_groups(r["faces"], r["kept"]) + [{"die": b["die"], "faces": b["faces"]} for b in r["bonus"]]
+        lines.append(f"{cid} {label}: {r['kept']}{dice.signed(bonus)} = {total}{_fx_note(r)}"
                      + (f" vs DC {dc} — {'success' if ok else 'fail'}" if dc is not None else ""))
     if passive:
         return lines
     if dc is not None and len(who) > 1:
         lines.append(f"Group check: {passed}/{len(who)} succeed — {'SUCCESS' if passed * 2 >= len(who) else 'FAIL'}")
-    shown = what.replace("_", " ").title() + (" check" if what in SKILLS else "")
+    shown = spec["title"] + (" check" if what in SKILLS else "")
     if len(who) == 1:
-        shown += f" ({dice.signed(bonus)})"  # the dice box shows only the d20; the modifier explains the total
-    stage_roll(shown, total if len(who) == 1 else passed, groups, secret)
+        shown += f" ({dice.signed(bonus)})"  # the legacy dice box shows only the d20; the modifier explains the total
+    title, sub = spec["title"], spec["subtitle"]
+    detail = roll_detail(spec["kind"], title, sub, entries, None if dc is None or hide_dc else {"label": "Difficulty Class", "value": dc})
+    stage_roll(shown, total if len(who) == 1 else passed, groups, secret, detail)
     return lines
 
 
@@ -617,5 +743,8 @@ def death_save(campaign_dir: Path, state: dict, cid: str, rng=None, secret: bool
         if saves["failures"] >= 3:
             result += " — DEAD"
     character.save(campaign_dir, cid, sheet)
-    stage_roll(f"{sheet.get('name', cid)}: death save", kept, _d20_groups(faces, kept), secret)
+    entry = _entry({"id": cid, "name": sheet.get("name", cid)}, {"kept": kept, "faces": faces, "mode": "normal", "bonus": []}, [],
+                   "crit" if kept == 20 else "fumble" if kept == 1 else "success" if kept >= 10 else "fail")
+    detail = roll_detail("death", "Death Saving Throw", sheet.get("name", cid), [entry], {"label": "Difficulty Class", "value": 10})
+    stage_roll(f"{sheet.get('name', cid)}: death save", kept, _d20_groups(faces, kept), secret, detail)
     return f"{cid} death save: {kept} — {result}"

@@ -136,6 +136,7 @@
           "quantity": {"type": "integer", "minimum": 1},
           "weight": {"type": "number"},
           "description": {"type": "string"},
+          "rarity": {"type": "string", "enum": ["common", "uncommon", "rare", "very rare", "legendary"]},
           "equipped": {"type": "boolean"}
         },
         "required": ["name"]
@@ -192,6 +193,11 @@
           "items": {"type": "string"}
         }
       }
+    },
+    "resources_used": {
+      "type": "object",
+      "description": "Uses spent of class resources (Rage, Ki...), by name; a rest clears them",
+      "additionalProperties": {"type": "integer", "minimum": 0}
     },
     "features_and_traits": {
       "type": "array",

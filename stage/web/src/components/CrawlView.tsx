@@ -236,7 +236,7 @@ export function CrawlView({ state, siteId, canAct }: { state: StageState; siteId
 
   return (
     <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
-      <DiceOverlay roll={state.last_roll ?? null} />
+      <DiceOverlay rolls={state.rolls} />
       <canvas
         ref={canvas}
         width={W}

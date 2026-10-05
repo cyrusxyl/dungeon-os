@@ -7,6 +7,11 @@ A beat is a few lines of markup, sent in one `dnd-cli show beat` call:
     @narrate Candle smoke hangs under the low beams.
     @say sister-gareth happy What brings a drow monk to this chapel?
     @choices Ask about the Fist | Show Cassara's note | Leave
+    @roll cassara persuasion dc 14
+
+`@roll` asks a player character for a check or a saving throw (`dex-save`).
+The player adds bonuses and clicks Roll in the roll window; the DM gets the
+result as the next message. Put it last in the beat and end the turn.
 
 The party is on stage in every new room: the player characters come with
 `@scene`, so the DM does not `@enter` them. `@enter` is for NPCs.
@@ -39,7 +44,8 @@ def title(slug: str) -> str:
 USAGE = (
     "Beat lines: @scene <location-id> (the party comes with it) | @enter <actor-id> [position] | "
     "@exit <actor-id> | @narrate <text> | @say <actor-id> [emotion] <text> | "
-    "@choices <a> | <b> | ... | @clear | @explore <site-id> [<poi-id>|entrance]"
+    "@choices <a> | <b> | ... | @roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
+    "@explore <site-id> [<poi-id>|entrance]"
 )
 
 
@@ -115,6 +121,19 @@ def parse(text: str) -> list[dict]:
             if len(options) < 2:
                 raise BeatError(f"line {line_no}: @choices needs two or more options separated by '|'.")
             events.append({"type": "choices", "options": options})
+        elif command == "roll":
+            parts = rest.split()
+            if len(parts) < 2:
+                raise BeatError(f"line {line_no}: @roll needs a player character id and a check (for example @roll sireth stealth dc 14). {USAGE}")
+            event = {"type": "roll_request", "who": _check_id(parts[0], line_no, "character"), "what": parts[1].lower()}
+            for word in (w.lower() for w in parts[2:]):
+                if word == "hide":
+                    event["hide"] = True
+                elif m := re.fullmatch(r"(?:dc)?(\d+)", word):
+                    event["dc"] = int(m.group(1))
+                elif word != "dc":
+                    raise BeatError(f"line {line_no}: @roll does not know {word!r}; use dc <number> or hide.")
+            events.append(event)
         elif command == "explore":
             parts = rest.split()
             if not parts:

@@ -85,6 +85,21 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
                 return 1
             crawl.save(campaign_dir, e["site"], site)
 
+    # A roll request carries what the roll window shows before the roll (title, tiles).
+    for e in events:
+        if e["type"] != "roll_request":
+            continue
+        from dnd_cli import character, combat
+
+        try:
+            if not character.character_path(campaign_dir, e["who"]).exists():
+                raise combat.RulesError(f"@roll is for player characters; {e['who']!r} has no sheet. "
+                                        "Roll for others with `uv run dnd-cli check`.")
+            e.update(combat.roll_preview(campaign_dir, combat.load_state(campaign_dir), e["who"], e["what"]))
+        except (combat.RulesError, character.CharacterError) as err:
+            print(f"Error: @roll {e['who']} {e['what']}: {err}", file=sys.stderr)
+            return 1
+
     # A scene or site that is a place on a map moves the party marker there.
     found = maps.all_maps(campaign_dir)
     out = []

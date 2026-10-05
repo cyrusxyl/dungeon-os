@@ -7,9 +7,12 @@ import { DialogueBox } from '@/components/DialogueBox'
 import { LogDrawer } from '@/components/LogDrawer'
 import { MapOverlay } from '@/components/MapOverlay'
 import { PartyPanel } from '@/components/PartyPanel'
+import { RollRequest } from '@/components/RollRequest'
+import { SheetDrawer } from '@/components/SheetDrawer'
 import { StageView } from '@/components/StageView'
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
+import { useParty } from '@/lib/party'
 import { postJson, sendInput, titleCase, useStage } from '@/lib/stage'
 
 const STATUS_TEXT: Record<string, string> = {
@@ -31,6 +34,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const [consoleOpen, setConsoleOpen] = useState(false)
   const [mapOpen, setMapOpen] = useState(false)
   const [showParty, setShowParty] = useState(true)
+  const [sheet, setSheet] = useState<string | null>(null)
+  const { party, refresh } = useParty(state?.dm.status ?? 'starting')
 
   // On first load (or reload) everything already on record counts as read.
   useEffect(() => {
@@ -144,7 +149,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         )}
       </header>
 
-      <main className={`grid min-h-0 flex-1 gap-4 ${showParty ? 'lg:grid-cols-[1fr_20rem]' : ''}`}>
+      <main className={`grid min-h-0 flex-1 gap-4 ${showParty ? 'lg:grid-cols-[1fr_22rem]' : ''}`}>
         {state.creating ? (
           <section className="flex min-h-0 flex-col">
             <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} />
@@ -206,11 +211,15 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         )}
         {showParty && (
           <div className="hidden min-h-0 lg:flex">
-            <PartyPanel dmStatus={state.dm.status} />
+            <PartyPanel party={party} refresh={refresh} onSheet={setSheet} />
           </div>
         )}
       </main>
 
+      {state.roll_request && !state.creating && (
+        <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} canRoll={canType && caughtUp} />
+      )}
+      {sheet && party && <SheetDrawer party={party} who={sheet} onWho={setSheet} onClose={() => setSheet(null)} />}
       <MapOverlay open={mapOpen} onClose={() => setMapOpen(false)} state={state} canAct={canAct} />
       <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} log={state.log} />
       <ConsoleDrawer open={consoleOpen} onClose={() => setConsoleOpen(false)} dmLog={state.dm_log} />

@@ -5,7 +5,7 @@ description: Handle D&D 5e social encounters including persuasion, deception, in
 
 # Social Encounters & Interaction
 
-Roll every social check with one command: `uv run dnd-cli check sireth persuasion --dc 15` (`--adv`/`--dis` from the situation; a contested check: roll each side and compare; `--secret` for an NPC's hidden Insight). Do not work out modifiers yourself.
+On the visual stage, a player character rolls their own check: `@roll sireth persuasion dc 15` (the `stage` skill, rule 4). For everyone else, roll every social check with one command: `uv run dnd-cli check sireth persuasion --dc 15` (`--adv`/`--dis` from the situation; a contested check: roll each side and compare; `--secret` for an NPC's hidden Insight). Do not work out modifiers yourself.
 
 Manage roleplay-heavy encounters with API-sourced skill mechanics, relationship tracking, and language systems.
 
