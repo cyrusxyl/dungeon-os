@@ -38,6 +38,16 @@ ZONES = [f"{row}_{col}" for row in ZONE_BASELINE for col in ZONE_X]
 SLOTS = list(WALL_SLOTS) + ZONES
 
 
+# The DM's study: the loading screen of the stage, while the DM works. Not a campaign scene.
+FILLER = {
+    "template": "house", "wall": "timber", "floor": "planks_dark", "mood": "torchlit",
+    "slots": {"wall_left": "window_arched", "wall_center": "fireplace", "wall_right": "tapestry",
+              "wall_left2": "cabinet", "wall_right2": "dresser", "back_left": "chests", "back_center": None,
+              "back_right": "barrel_pile", "mid_center": "table_long", "mid_left": None, "mid_right": None,
+              "front_left": "plant", "front_right": "brazier"},
+}
+
+
 class SceneError(ValueError):
     """A bad scene spec. The message says how to fix it."""
 

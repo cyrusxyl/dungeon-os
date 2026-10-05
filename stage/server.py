@@ -731,6 +731,9 @@ def create_app(
         spec = {"template": request.path_params["name"], "mood": request.query_params.get("mood", "day")}
         return await png_response(scenes.png, spec, static=True)
 
+    async def asset_filler(request: Request):
+        return await png_response(scenes.png, scenes.FILLER, static=True)
+
     async def api_scene(request: Request):
         spec = scenes.load(need().campaign_dir, request.path_params["location"])
         try:
@@ -901,6 +904,7 @@ def create_app(
         Route("/asset/scene/{location}.png", asset_scene),
         Route("/api/scene/{location}", api_scene),
         Route("/asset/template/{name}.png", asset_template),
+        Route("/asset/filler.png", asset_filler),
         Route("/asset/actor/{actor_id}/full.png", asset_actor),
         Route("/asset/actor/{actor_id}/portrait/{emotion}.png", asset_actor),
         Route("/api/site/{site_id}", api_site),

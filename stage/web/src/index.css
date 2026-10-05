@@ -94,14 +94,12 @@ body {
 
 /* DM at the table: idle filler while the DM works. */
 @keyframes dm-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
-@keyframes dm-lean { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-3deg); } }
 @keyframes dm-flutter { 0%, 100% { transform: translate(0, 0) rotate(var(--r, 0deg)); } 50% { transform: translate(2px, -2px) rotate(calc(var(--r, 0deg) + 6deg)); } }
 @keyframes dm-roll { 0%, 70%, 100% { transform: translateX(0) rotate(0); } 85% { transform: translateX(3px) rotate(90deg); } }
 @keyframes dm-flame { 0%, 100% { transform: scaleY(1); opacity: 1; } 33% { transform: scaleY(1.3); opacity: 0.8; } 66% { transform: scaleY(0.85); opacity: 1; } }
 @keyframes dm-rise { from { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } to { transform: translateY(-34px); opacity: 0; } }
 @keyframes dm-dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
 .dm-bob { animation: dm-bob 1.6s steps(2) infinite; }
-.dm-lean { animation: dm-lean 3.2s steps(3) infinite; transform-origin: 50% 100%; }
 .dm-flutter { animation: dm-flutter 1.2s steps(3) infinite; }
 .dm-roll { animation: dm-roll 2.4s steps(4) infinite; }
 .dm-flame { animation: dm-flame 0.5s steps(3) infinite; transform-origin: 50% 100%; }
