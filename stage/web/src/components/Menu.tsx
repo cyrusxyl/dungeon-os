@@ -10,6 +10,14 @@ interface Campaign {
   slug: string
   name: string
   in_progress: boolean
+  can_continue: boolean // the DM's last conversation can be picked up again
+}
+
+interface Save {
+  id: string
+  time: number
+  kind: 'auto' | 'save' | 'load' | ''
+  label: string
 }
 
 interface Framework {
@@ -27,7 +35,7 @@ export interface MenuData {
   frameworks: Framework[]
 }
 
-type Panel = 'main' | 'load' | 'new' | 'settings'
+type Panel = 'main' | 'load' | 'campaign' | 'new' | 'settings'
 
 async function post(url: string, body: unknown): Promise<Record<string, unknown>> {
   return (await postJson(url, body)).json()
@@ -54,6 +62,8 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   const [party, setParty] = useState<'create' | 'premade'>('create')
   const [framework, setFramework] = useState(data.settings.agent_framework)
   const [model, setModel] = useState(data.settings.model)
+  const [picked, setPicked] = useState<Campaign | null>(null)
+  const [saves, setSaves] = useState<Save[] | null>(null)
   // A saved model outside the presets is edited as Custom, so it is never lost.
   const [custom, setCustom] = useState(
     () => !data.frameworks.find((f) => f.key === data.settings.agent_framework)?.models.includes(data.settings.model),
@@ -61,13 +71,24 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
 
   useEffect(() => setError(''), [panel])
 
-  const start = async (body: { campaign?: string; new_name?: string; pitch?: string; party?: string }) => {
+  const start = async (
+    body: { campaign?: string; dm?: 'continue' | 'fresh'; save?: string; new_name?: string; pitch?: string; party?: string },
+    url = '/api/game/start',
+  ) => {
     setBusy(true)
     setError('')
-    const res = await post('/api/game/start', body)
+    const res = await post(url, body)
     setBusy(false)
     if (res.error) setError(String(res.error))
     else onStarted()
+  }
+
+  const pick = async (c: Campaign) => {
+    setPicked(c)
+    setSaves(null)
+    setPanel('campaign')
+    const res = await fetch(`/api/saves/${c.slug}`)
+    setSaves(res.ok ? (await res.json()).saves : [])
   }
 
   const saveSettings = async () => {
@@ -100,9 +121,22 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
 
         {panel === 'main' && (
           <nav className="flex w-full flex-col gap-4">
-            <Button disabled={!data.resume || busy} onClick={() => data.resume && start({ campaign: data.resume.slug })} className="text-[10px]">
-              {data.resume ? `Resume — ${data.resume.name}` : 'Resume'}
+            {data.resume?.can_continue && (
+              <Button disabled={busy} onClick={() => start({ campaign: data.resume!.slug, dm: 'continue' })} className="text-[10px]">
+                Continue — {data.resume.name}
+              </Button>
+            )}
+            <Button
+              variant={data.resume?.can_continue ? 'outline' : 'default'}
+              disabled={!data.resume || busy}
+              onClick={() => data.resume && start({ campaign: data.resume.slug, dm: 'fresh' })}
+              className="text-[10px]"
+            >
+              {data.resume ? `${data.resume.can_continue ? 'New DM session' : 'Resume'} — ${data.resume.name}` : 'Resume'}
             </Button>
+            {data.resume?.can_continue && (
+              <p className="text-center text-sm text-[var(--dim)]">Continue keeps the DM's conversation (faster). A new DM session reads the campaign files again.</p>
+            )}
             <Button variant="outline" disabled={busy || data.campaigns.length === 0} onClick={() => setPanel('load')} className="text-[10px]">
               Load Game
             </Button>
@@ -121,9 +155,55 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
             <ul className="flex flex-col gap-3">
               {data.campaigns.map((c) => (
                 <li key={c.slug}>
-                  <Button variant="outline" disabled={busy} onClick={() => start({ campaign: c.slug })} className="w-full justify-between text-[10px]">
+                  <Button variant="outline" disabled={busy} onClick={() => pick(c)} className="w-full justify-between text-[10px]">
                     <span>{c.name}</span>
                     <span className="text-[var(--dim)]">{c.in_progress ? 'in progress' : 'new'}</span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
+
+        {panel === 'campaign' && picked && (
+          <Panel title={picked.name} onBack={() => setPanel('load')}>
+            <div className="flex flex-col gap-3">
+              {picked.can_continue && (
+                <Button disabled={busy} onClick={() => start({ campaign: picked.slug, dm: 'continue' })} className="text-[10px]">
+                  Continue the DM session
+                </Button>
+              )}
+              <Button
+                variant={picked.can_continue ? 'outline' : 'default'}
+                disabled={busy}
+                onClick={() => start({ campaign: picked.slug, dm: 'fresh' })}
+                className="text-[10px]"
+              >
+                {picked.in_progress ? 'New DM session, from the files' : 'Start'}
+              </Button>
+            </div>
+            <h3 className="pixel-font text-[10px] text-[var(--dim)]">Saves</h3>
+            {saves === null && <p className="text-sm text-[var(--dim)]">Looking…</p>}
+            {saves?.length === 0 && <p className="text-sm text-[var(--dim)]">No saves yet. The game saves after every DM turn.</p>}
+            <ul className="flex max-h-64 flex-col gap-2 overflow-y-auto overflow-x-hidden pr-1">
+              {saves?.map((v) => (
+                <li key={v.id} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 text-sm">
+                    <span className={v.kind === 'save' ? 'text-[var(--gold)]' : 'text-[var(--dim)]'}>
+                      {new Date(v.time * 1000).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                      {v.kind === 'save' ? ' ★' : v.kind === 'load' ? ' ↩' : ''}
+                    </span>
+                    <span className="block truncate">{v.label}</span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    title="The game goes back to this point. A new DM session starts. The present is saved first."
+                    onClick={() => start({ campaign: picked.slug, save: v.id }, '/api/game/load')}
+                    className="text-[10px]"
+                  >
+                    Load
                   </Button>
                 </li>
               ))}

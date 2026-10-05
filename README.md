@@ -57,15 +57,31 @@ kept next to it.
 In `--classic` mode, the start menu runs the DM in a real terminal on the
 left, with a live state and character panel on the right.
 
-- **Resume** continues the active campaign (the last one played) from its game
-  files (`state.json`, `session_log.md`, `canon.json`). It starts a fresh DM
-  session that reads those files — it does not need a saved conversation.
-- **Load Game** picks any other saved campaign under `game/campaigns/` and
-  plays it the same way.
+- **Resume** continues the active campaign (the last one played). On the
+  visual stage it offers two ways: **Continue** keeps the DM's own conversation
+  (`claude --resume`, or `agy --conversation`), so the DM does not read the
+  skills and files again and the first answer is faster; **New DM session**
+  starts a fresh DM that reads the game files (`state.json`, `session_log.md`,
+  `canon.json`). Continue is offered only when the saved conversation still
+  exists for the agent now set. The stage learns the conversation id from its
+  hook. The Restart button after a DM crash continues the conversation too.
+- **Load Game** picks any campaign under `game/campaigns/`, with the same two
+  ways to start it, and its **saves** (below).
 - **New Game** names a brand-new campaign, scaffolds it from the template,
   and starts Session Zero.
 - **Settings** picks the agent framework and model, saved to
   `game/settings.json` (per machine, git-ignored).
+
+## Saves
+
+Every campaign folder is its own git repository (`dnd_cli/saves.py`, git must
+be on PATH). The stage saves after each DM turn, and once when a game starts.
+The **Save** button in the game view makes a named save (while the DM is
+idle). **Load Game**, then a campaign, lists the saves; **Load** puts the files
+(including the stage log) back to that point and starts a new DM session,
+because the old conversation remembers what came later. A load never loses the
+present: the current state is saved first, and the load is a new commit on top.
+To look at the history by hand: `git -C game/campaigns/<slug> log`.
 
 ## dnd-cli Wrapper
 

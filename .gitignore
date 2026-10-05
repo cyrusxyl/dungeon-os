@@ -77,11 +77,9 @@ secrets/
 credentials.json
 
 # Campaign Data (user-specific)
-# Keep template, but ignore user-created campaigns and active state
-dungeon-os/campaigns/active.json
-dungeon-os/campaigns/*
-!dungeon-os/campaigns/template/
-!dungeon-os/campaigns/example-campaign/
+# Keep the template. Each played campaign is its own git repository (its saves, see dnd_cli/saves.py).
+game/campaigns/*
+!game/campaigns/template/
 
 # Launcher settings (per-machine: agent framework, model, last session ids)
 game/settings.json

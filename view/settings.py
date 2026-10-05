@@ -2,9 +2,9 @@
 
 Persisted to `game/settings.json` (git-ignored — it is per-machine, and the
 `sessions` block is rewritten every time you start a game). This module never
-writes campaign state; `sessions` maps a campaign slug to the id of the last
-`claude` conversation started for it — the menu uses it to tell that a
-just-created campaign has been played, even before its first session closes.
+writes campaign state; `sessions` maps a campaign slug to the last DM conversation
+({"id", "framework"}) — the menu uses it to tell that a just-created campaign
+has been played, and to offer "continue the same DM session".
 
 `build_dm_command` is a pure function: settings in, the `["sh", "-c", ...]`
 command that `view/app.py` hands to the terminal widget out. Keep it pure so
@@ -14,6 +14,8 @@ it stays unit-testable without spawning anything.
 from __future__ import annotations
 
 import json
+import os
+import re
 import shlex
 import shutil
 import uuid
@@ -81,16 +83,49 @@ def save_settings(values: dict) -> None:
     _write(current)
 
 
+def get_session(campaign_slug: str) -> dict | None:
+    """The last DM conversation of a campaign: {"id", "framework"}. An old entry is a bare Claude id."""
+    entry = load_settings().get("sessions", {}).get(campaign_slug)
+    if isinstance(entry, str):
+        entry = {"id": entry, "framework": "claude"}
+    return entry if isinstance(entry, dict) and entry.get("id") else None
+
+
 def get_last_session_id(campaign_slug: str) -> str | None:
-    return load_settings().get("sessions", {}).get(campaign_slug)
+    session = get_session(campaign_slug)
+    return session["id"] if session else None
 
 
-def set_last_session_id(campaign_slug: str, session_id: str) -> None:
+def set_last_session_id(campaign_slug: str, session_id: str, framework: str = "claude") -> None:
     data = load_settings()
     sessions = dict(data.get("sessions", {}))
-    sessions[campaign_slug] = session_id
+    sessions[campaign_slug] = {"id": session_id, "framework": framework}
     data["sessions"] = sessions
     _write(data)
+
+
+def clear_session(campaign_slug: str) -> None:
+    """Forget the DM conversation of a campaign (its files went back to an older save)."""
+    data = load_settings()
+    sessions = dict(data.get("sessions", {}))
+    if sessions.pop(campaign_slug, None) is not None:
+        data["sessions"] = sessions
+        _write(data)
+
+
+def claude_transcript(session_id: str) -> Path:
+    """Where Claude Code keeps a conversation: the folder name is the working directory with every symbol as "-"."""
+    root = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    return root / "projects" / re.sub(r"[^a-zA-Z0-9]", "-", str(GAME_DIR)) / f"{session_id}.jsonl"
+
+
+def can_continue(campaign_slug: str, settings: dict | None = None) -> bool:
+    """True if the DM conversation of this campaign can be picked up again by the agent now set."""
+    session = get_session(campaign_slug)
+    framework = (settings or load_settings()).get("agent_framework")
+    if not session or session["framework"] != framework:
+        return False
+    return claude_transcript(session["id"]).is_file() if framework == "claude" else framework == "agy"
 
 
 def _write(data: dict) -> None:
@@ -138,10 +173,12 @@ def build_dm_command(
         if model:
             parts += ["--model", shlex.quote(model)]
     else:
-        # agy / codex: no session concept here. agy takes `--model`, codex `-m`.
+        # agy takes `--model`, codex `-m`. Only agy resumes (`--conversation`); codex has no session here.
         parts = [FRAMEWORKS[framework]["binary"]]
         if framework == "agy":
             parts.append("--dangerously-skip-permissions")  # agy has no auto mode
+            if resume:
+                parts += ["--conversation", shlex.quote(session_id)]
         if model:
             parts += ["--model" if framework == "agy" else "-m", shlex.quote(model)]
         if initial_prompt and framework == "agy":
@@ -155,14 +192,30 @@ def build_dm_command(
     return ["sh", "-c", inner]
 
 
-def new_dm_session(campaign_dir: Path, initial_prompt: str | None = None, stage: bool = False) -> tuple[str, list[str]]:
-    """Make the campaign active and build a fresh DM session for it: (session id, command)."""
+def new_dm_session(
+    campaign_dir: Path, initial_prompt: str | None = None, stage: bool = False, *, resume: bool = False
+) -> tuple[str, list[str]]:
+    """Make the campaign active and build the DM session for it: (session id, command).
+
+    `resume`: pick up the saved conversation (it must pass `can_continue`); otherwise start a new one.
+    """
     from dnd_cli.campaign import set_active_campaign
 
     set_active_campaign(campaign_dir.name)
-    session_id = str(uuid.uuid4())
-    set_last_session_id(campaign_dir.name, session_id)
-    return session_id, build_dm_command(load_settings(), GAME_DIR, session_id, initial_prompt=initial_prompt, stage=stage)
+    settings = load_settings()
+    if resume:
+        session_id = get_last_session_id(campaign_dir.name)
+        if not session_id or not can_continue(campaign_dir.name, settings):
+            raise ValueError("no DM session to continue")
+    else:
+        session_id = str(uuid.uuid4())
+        if settings["agent_framework"] == "claude":
+            set_last_session_id(campaign_dir.name, session_id, "claude")  # we choose the id: `--session-id`
+        else:
+            clear_session(campaign_dir.name)  # agy makes its own id; the stage learns it from the hook
+    return session_id, build_dm_command(
+        settings, GAME_DIR, session_id, resume=resume, initial_prompt=initial_prompt, stage=stage
+    )
 
 
 def campaign_in_progress(campaign_dir: Path) -> bool:

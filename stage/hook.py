@@ -127,6 +127,10 @@ def main() -> None:
         name, data = from_agy(sys.argv[1], data)
     if name == "UserPromptSubmit":
         event = {"type": "dm_status", "status": "busy"}
+        # The conversation id, so the next launch can continue it. Claude: session_id; agy: conversationId.
+        session = data.get("session_id") or data.get("conversationId")
+        if session:
+            event["session"] = str(session)
     elif name == "Stop":
         event = {"type": "dm_status", "status": "idle"}
         text = (data.get("last_assistant_message") or "").strip()

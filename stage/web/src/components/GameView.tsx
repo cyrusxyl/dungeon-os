@@ -27,6 +27,9 @@ const STATUS_TEXT: Record<string, string> = {
 export function GameView({ onMenu }: { onMenu: () => void }) {
   const { state, campaign, connected } = useStage(onMenu)
   const [confirmQuit, setConfirmQuit] = useState(false)
+  // Save: null = closed, a string = the name being typed; `saved` flashes after a save.
+  const [saveName, setSaveName] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
   // End session: ask the DM to write the session record, then leave once it is idle again.
   const [ending, setEnding] = useState<'no' | 'sent' | 'working'>('no')
   const [logOpen, setLogOpen] = useState(false)
@@ -54,6 +57,15 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       postJson('/api/game/quit').then(onMenu)
     }
   }, [ending, state?.dm.status, onMenu])
+
+  const saveGame = async () => {
+    const res = await postJson('/api/game/save', { name: saveName ?? '' })
+    if (res.ok) {
+      setSaveName(null)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    }
+  }
 
   if (!state) {
     return <div className="pixel-font grid h-full place-items-center text-xs text-[var(--dim)]">Connecting to the table…</div>
@@ -112,6 +124,35 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         <Button size="sm" variant="outline" onClick={() => setConsoleOpen((v) => !v)} className="text-[10px]">
           Console
         </Button>
+        {saveName !== null ? (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault()
+              saveGame()
+            }}
+          >
+            <Input
+              autoFocus
+              aria-label="Save name"
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              placeholder="Name this save (optional)"
+              font="normal"
+              className="h-8 w-52 text-base"
+            />
+            <Button size="sm" type="submit" disabled={state.dm.status !== 'idle'} className="text-[10px]">
+              Save
+            </Button>
+            <Button size="sm" type="button" variant="outline" onClick={() => setSaveName(null)} className="text-[10px]">
+              Cancel
+            </Button>
+          </form>
+        ) : (
+          <Button size="sm" variant="outline" disabled={state.dm.status !== 'idle'} onClick={() => setSaveName('')} className="text-[10px]">
+            {saved ? 'Saved ✓' : 'Save'}
+          </Button>
+        )}
         {ending !== 'no' ? (
           <span className="flex flex-wrap items-center gap-2">
             <span className="pixel-font animate-pulse text-[10px] text-[var(--ember)]">The DM is writing the session record…</span>

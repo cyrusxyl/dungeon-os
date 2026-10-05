@@ -13,7 +13,8 @@ config.json (pitch and party mode) and characters/*.json (for the party panel
 and the creator). It writes characters/, players/ and state.json (through
 `creation.register`, when the player makes a character), stage/actors/,
 stage/effects.json (bonuses the player adds), and the combat tracker's
-used actions in state.json; both only while the DM is idle.
+used actions in state.json; both only while the DM is idle. Saves (dnd_cli/saves.py) are git commits of the whole
+campaign folder: git copies the files; this server never reads them for that.
 Site and map files under `stage/` hold secrets (the whole layout, hidden
 places): the routes send only what the party has seen or been told. It never
 opens dm_story.md (it only checks that the file exists), canon.json,
@@ -27,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import threading
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -43,7 +45,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from dnd_cli import actions, character, combat, effects, resources
+from dnd_cli import actions, character, combat, effects, resources, saves
 from stage import actors, beat, crawl, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
@@ -151,6 +153,19 @@ class Stage:
             self.state = stage_state.apply(self.state, event)
         return bool(events)
 
+    def remember_session(self, session_id: str) -> None:
+        from view.settings import get_last_session_id, load_settings, set_last_session_id
+
+        if get_last_session_id(self.campaign_dir.name) != session_id:
+            set_last_session_id(self.campaign_dir.name, session_id, load_settings()["agent_framework"])
+
+    def autosave(self, label: str | None = None) -> None:
+        """Save after each DM turn. The game goes on if git is missing or fails."""
+        try:
+            saves.save(self.campaign_dir, saves.AUTO, label or self.save_label())
+        except (saves.SaveError, OSError) as exc:
+            print(f"dungeon-os: autosave failed: {exc}", file=sys.stderr)
+
     def party_mode(self) -> str:
         return "premade" if (read_json(self.campaign_dir / "config.json") or {}).get("party") == "premade" else "create"
 
@@ -191,10 +206,24 @@ class Stage:
             beat.append(self.campaign_dir, [{"type": "scene", "location": newest.stem,
                                              "party": beat.party(self.campaign_dir)}])
 
+    def save_label(self) -> str:
+        """Where the story stands, for the save list: the last line on the log."""
+        last = (self.state["log"] or [{}])[-1]
+        text = " ".join(str(last.get("text", "")).split())
+        who = f"{last['actor']}: " if last.get("actor") else ""
+        return (who + text)[:80] or "start of the game"
+
     async def tail(self) -> None:
         while True:
-            if self.fold(self.read_new_events()):
+            events = self.read_new_events()
+            was_busy = self.state["dm"].get("status") != "idle"
+            if self.fold(events):
                 await self.broadcast(self.snapshot())
+            session = next((e["session"] for e in reversed(events) if e.get("session")), None)
+            if session:
+                await asyncio.to_thread(self.remember_session, session)
+            if was_busy and self.state["dm"].get("status") == "idle":
+                await asyncio.to_thread(self.autosave)
             if self.pending and self.dm_ready():
                 await self.submit(self.pending.pop(0))  # busy at once: the next loop waits
             await asyncio.sleep(0.15)
@@ -329,8 +358,11 @@ def character_ids(campaign_dir: Path) -> list[str]:
     return sorted(p.stem for p in (campaign_dir / "characters").glob("*.json"))
 
 
-def stage_first_prompt(campaign_dir: Path) -> str:
-    """The DM's first prompt, chosen from the files. Written for a small model: short, explicit, one paragraph."""
+def stage_first_prompt(campaign_dir: Path, resumed: bool = False) -> str:
+    """The DM's first prompt, chosen from the files. Written for a small model: short, explicit, one paragraph.
+
+    `resumed`: the DM keeps its conversation, so it knows the world and the skills. It needs only a nudge.
+    """
     slug = campaign_dir.name
     config = read_json(campaign_dir / "config.json") or {}
     premade = config.get("party") == "premade"
@@ -374,6 +406,13 @@ def stage_first_prompt(campaign_dir: Path) -> str:
             f"The world for the campaign `{slug}` exists. {pointer} The player is on the creation screen and "
             "makes the characters. Show no beat. Do not ask for a player name. Do nothing and wait for the next prompt."
         )
+    if resumed:
+        return (
+            f"The player is back. The game goes on in this same conversation, for the campaign `{slug}`. "
+            "The stage already shows your last beat; do not repeat it. The characters or the files may have "
+            "changed while you were away: run `uv run dnd-cli session brief` only if you need to look. "
+            "Then go on from where you stopped, with `uv run dnd-cli show beat`."
+        )
     return (
         f"Start the session for the campaign `{slug}`. {pointer} Begin with `uv run dnd-cli session brief`. "
         "The players watch the visual "
@@ -404,11 +443,14 @@ def creation_done_prompt(ids: list[str], joined: bool) -> str:
     )
 
 
-def default_command(campaign_dir: Path) -> list[str]:
-    """Make the campaign active and build a fresh DM session for it."""
-    from view.settings import new_dm_session
+def default_command(campaign_dir: Path, resume: bool = False) -> list[str]:
+    """Make the campaign active and build the DM session for it: the saved conversation if `resume` and it can
+    be continued, else a new one that reads the files."""
+    from view.settings import can_continue, new_dm_session
 
-    return new_dm_session(campaign_dir, stage_first_prompt(campaign_dir), stage=True)[1]
+    resume = resume and can_continue(campaign_dir.name)
+    prompt = stage_first_prompt(campaign_dir, resumed=resume)
+    return new_dm_session(campaign_dir, prompt, stage=True, resume=resume)[1]
 
 
 def make_character(campaign_dir: Path, body: dict) -> dict:
@@ -461,17 +503,19 @@ def make_character(campaign_dir: Path, body: dict) -> dict:
 class Table:
     """The one game this server runs, or none (the start menu)."""
 
-    def __init__(self, command_factory: Callable[[Path], list[str]]):
+    def __init__(self, command_factory: Callable[..., list[str]]):
         self.command_factory = command_factory
         self.stage: Stage | None = None
         self.tail_task: asyncio.Task | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self.on_start: Callable[[], None] = lambda: None
 
-    async def start(self, campaign_dir: Path, dm_command: list[str] | None = None) -> Stage:
+    async def start(self, campaign_dir: Path, dm_command: list[str] | None = None, resume: bool = False) -> Stage:
         await self.stop()
         self.on_start()
-        stage = Stage(campaign_dir, dm_command or self.command_factory(campaign_dir))
+        stage = Stage(campaign_dir, dm_command or self.command_factory(campaign_dir, resume=resume))
+        # A save of the files as they are, before the DM touches them.
+        await asyncio.to_thread(stage.autosave, "session start")
         stage.loop = self.loop
         # Restore the stage from earlier sessions without broadcasting it.
         stage.fold(stage.read_new_events())
@@ -498,10 +542,12 @@ class Table:
 
 def _menu(table: Table) -> dict:
     from dnd_cli.campaign import CAMPAIGNS_DIR, active_campaign_slug, list_campaigns
-    from view.settings import FRAMEWORKS, campaign_in_progress, framework_available, load_settings
+    from view.settings import FRAMEWORKS, campaign_in_progress, can_continue, framework_available, load_settings
 
+    settings = load_settings()
     campaigns = [
-        {"slug": slug, "name": name, "in_progress": campaign_in_progress(CAMPAIGNS_DIR / slug)}
+        {"slug": slug, "name": name, "in_progress": campaign_in_progress(CAMPAIGNS_DIR / slug),
+         "can_continue": can_continue(slug, settings)}
         for slug, name in list_campaigns()
     ]
     try:
@@ -509,7 +555,6 @@ def _menu(table: Table) -> dict:
     except (OSError, ValueError, KeyError):
         active = None
     resume = next((c for c in campaigns if c["slug"] == active and c["in_progress"]), None)
-    settings = load_settings()
     return {
         "game": table.stage.campaign_dir.name if table.stage else None,
         "campaigns": campaigns,
@@ -525,7 +570,7 @@ def _menu(table: Table) -> dict:
 def create_app(
     campaign_dir: Path | None = None,
     dm_command: list[str] | None = None,
-    command_factory: Callable[[Path], list[str]] = default_command,
+    command_factory: Callable[..., list[str]] = default_command,
 ) -> Starlette:
     """Serve the stage. With a campaign, start it at once; without one, open the start menu."""
     table = Table(command_factory)
@@ -584,7 +629,7 @@ def create_app(
     async def api_restart(request: Request):
         stage = need()
         if not stage.dm.alive:
-            stage.dm.command = table.command_factory(stage.campaign_dir)
+            stage.dm.command = table.command_factory(stage.campaign_dir, resume=True)
             stage.dm.start()
             await stage._local_event({"type": "dm_status", "status": "starting"})
         return JSONResponse({"ok": True, "alive": stage.dm.alive})
@@ -605,6 +650,43 @@ def create_app(
             campaign = resolve_campaign_dir(slug)
         except (CampaignError, OSError) as e:
             return error(str(e), 400)
+        # "continue": the DM keeps its conversation. Anything else: a new DM session that reads the files.
+        await table.start(campaign, resume=body.get("dm") == "continue")
+        return JSONResponse({"game": campaign.name})
+
+    async def api_saves(request: Request):
+        from dnd_cli.campaign import CampaignError, resolve_campaign_dir
+
+        try:
+            campaign = resolve_campaign_dir(request.path_params["slug"])
+        except CampaignError as e:
+            return error(str(e), 404)
+        return JSONResponse({"saves": await asyncio.to_thread(saves.list_saves, campaign)})
+
+    async def api_game_save(request: Request):
+        stage = need()
+        if not stage.dm_ready():
+            return error("Wait until the DM has finished its turn.")
+        name = " ".join(str((await request.json()).get("name", "")).split())
+        try:
+            save_id = await asyncio.to_thread(saves.save, stage.campaign_dir, saves.SAVE, name or stage.save_label(), True)
+        except (saves.SaveError, OSError) as e:
+            return error(str(e), 500)
+        return JSONResponse({"id": save_id})
+
+    async def api_game_load(request: Request):
+        """Put a campaign back to a save, then start it with a new DM session (the old conversation is from later)."""
+        from dnd_cli.campaign import CampaignError, resolve_campaign_dir
+        from view.settings import clear_session
+
+        body = await request.json()
+        try:
+            campaign = resolve_campaign_dir(str(body.get("campaign", "")))
+            await table.stop()  # no DM may write while the files change
+            await asyncio.to_thread(saves.restore, campaign, str(body.get("save", "")))
+        except (CampaignError, OSError) as e:
+            return error(str(e), 400)
+        clear_session(campaign.name)
         await table.start(campaign)
         return JSONResponse({"game": campaign.name})
 
@@ -1032,6 +1114,9 @@ def create_app(
         Route("/api/menu", api_menu),
         Route("/api/game/start", api_game_start, methods=["POST"]),
         Route("/api/game/quit", api_game_quit, methods=["POST"]),
+        Route("/api/game/save", api_game_save, methods=["POST"]),
+        Route("/api/game/load", api_game_load, methods=["POST"]),
+        Route("/api/saves/{slug}", api_saves),
         Route("/api/settings", api_settings, methods=["POST"]),
         Route("/api/input", api_input, methods=["POST"]),
         Route("/api/restart", api_restart, methods=["POST"]),
