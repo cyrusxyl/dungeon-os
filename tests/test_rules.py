@@ -61,7 +61,7 @@ class Fixed(random.Random):
 
 def campaign(tmp: Path) -> Path:
     """The example campaign as committed (a live run may have changed the working copy)."""
-    src = REPO / "game" / "campaigns" / "example-campaign"
+    src = REPO / "tests" / "fixtures" / "example-campaign"
     c = tmp / "camp"
     shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
     tracked = subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split()

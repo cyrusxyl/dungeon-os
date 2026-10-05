@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 import shutil
@@ -85,19 +86,19 @@ def test_settings_roundtrip() -> None:
             check("defaults when no file", defaults["agent_framework"] == "claude")
 
             settings.save_settings({"agent_framework": "gemini", "model": "x"})
-            settings.set_last_session_id("baldurs-gate", "abc-123")
+            settings.set_last_session_id("example-campaign", "abc-123")
             reloaded = settings.load_settings()
             check("framework persisted", reloaded["agent_framework"] == "gemini")
             check("model persisted", reloaded["model"] == "x")
             check(
                 "session id persisted",
-                settings.get_last_session_id("baldurs-gate") == "abc-123",
+                settings.get_last_session_id("example-campaign") == "abc-123",
             )
             check(
                 "save keeps the sessions block",
                 (
                     settings.save_settings({"model": "y"})
-                    or settings.get_last_session_id("baldurs-gate") == "abc-123"
+                    or settings.get_last_session_id("example-campaign") == "abc-123"
                 ),
             )
         finally:
@@ -107,7 +108,7 @@ def test_settings_roundtrip() -> None:
 def test_list_campaigns() -> None:
     print("list_campaigns")
     slugs = [s for s, _ in list_campaigns()]
-    check("finds baldurs-gate", "baldurs-gate" in slugs)
+    check("finds example-campaign", "example-campaign" in slugs)
     check("excludes template", "template" not in slugs)
 
 
@@ -151,7 +152,7 @@ async def _drive_menu() -> None:
             async with app.run_test() as pilot:
                 from textual.widgets import Button
 
-                # The active campaign (baldurs-gate) has real game files with a
+                # The active campaign (example-campaign) has real game files with a
                 # closed session, so Resume works off those — no stored id.
                 resume_btn = app.query_one("#resume", Button)
                 check("Resume enabled for in-progress campaign", not resume_btn.disabled)
@@ -218,8 +219,8 @@ async def _drive_menu() -> None:
                 await pilot.pause()
                 check("Load Game opens", isinstance(app.screen, LoadGameScreen))
                 check(
-                    "Load Game lists baldurs-gate",
-                    bool(app.screen.query("#campaign-baldurs-gate")),
+                    "Load Game lists example-campaign",
+                    bool(app.screen.query("#campaign-example-campaign")),
                 )
                 await pilot.press("escape")
                 await pilot.pause()
@@ -280,7 +281,7 @@ def test_menu_loop_orchestration() -> None:
             calls["menu"] += 1
             if calls["menu"] == 1:
                 return {
-                    "campaign": "baldurs-gate",
+                    "campaign": "example-campaign",
                     "session_id": "sid-x",
                     "resume": False,
                 }
@@ -315,12 +316,31 @@ def test_menu_loop_orchestration() -> None:
 def main() -> int:
     test_build_dm_command()
     test_settings_roundtrip()
-    test_list_campaigns()
-    test_create_campaign()
-    test_menu_loop_orchestration()
-    asyncio.run(_drive_menu())
+    # The real game/campaigns may hold anything (or nothing): use a fixed fixture.
+    with fixture_campaigns():
+        test_list_campaigns()
+        test_create_campaign()
+        test_menu_loop_orchestration()
+        asyncio.run(_drive_menu())
     print(f"\n{PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0
+
+
+@contextmanager
+def fixture_campaigns():
+    """A temp campaigns folder: the template and the example campaign (active), as play would see them."""
+    saved = campaign.CAMPAIGNS_DIR, campaign.ACTIVE_PATH
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / "campaigns"
+        root.mkdir()
+        shutil.copytree(saved[0] / "template", root / "template")
+        shutil.copytree(Path(__file__).resolve().parent / "fixtures" / "example-campaign", root / "example-campaign")
+        (root / "active.json").write_text('{"active_campaign_path": "campaigns/example-campaign"}')
+        campaign.CAMPAIGNS_DIR, campaign.ACTIVE_PATH = root, root / "active.json"
+        try:
+            yield root
+        finally:
+            campaign.CAMPAIGNS_DIR, campaign.ACTIVE_PATH = saved
 
 
 if __name__ == "__main__":

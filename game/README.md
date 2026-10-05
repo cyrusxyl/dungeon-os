@@ -48,33 +48,15 @@ directory's `CLAUDE.md` as system prompt, discovers skills in
 `./.claude/skills/`, and reads `campaigns/active.json` for the active
 campaign) and opens a live player view at `http://127.0.0.1:8000` in your
 browser. Pass a campaign slug to play a specific one, e.g.
-`uv run dungeon-os baldurs-gate`; use `--no-view` to skip the player view.
+`uv run dungeon-os my-campaign`; use `--no-view` to skip the player view.
 
 ### Starting Your First Session
 
-1. **Load the example campaign:**
-   The `campaigns/active.json` file already points to `example-campaign`.
+1. Run `uv run dungeon-os` and choose **New Game**. Name the campaign.
+2. The DM starts Session Zero: it builds the story bible and the canon, and creates your character with you (`dnd-cli character new`).
+3. Play. The DM tracks every change in the campaign files.
 
-2. **Greet the DM:**
-   ```
-   Hello! I'm ready to play.
-   ```
-
-3. **Identify yourself:**
-   ```
-   I'm Alice, playing Aragorn.
-   ```
-
-4. **Start playing:**
-   ```
-   What do we see in the town square?
-   ```
-
-The DM will:
-- Read `state.json` to understand current situation
-- Check `players/player1.json` to confirm you control Aragorn
-- Load appropriate skills based on your actions
-- Narrate vividly and track all changes in files
+A sample campaign for the tests is in `tests/fixtures/example-campaign/`.
 
 ## How It Works
 
@@ -83,7 +65,7 @@ The DM will:
 All campaign data lives in `/campaigns/{campaign-name}/`:
 
 ```
-campaigns/example-campaign/
+campaigns/my-campaign/
 ├── state.json              # Current game state (location, time, encounter)
 ├── config.json             # Campaign settings
 ├── session_log.md          # Narrative history
