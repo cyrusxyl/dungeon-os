@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -54,6 +55,20 @@ def ensure_web_build() -> None:
     subprocess.run(["npm", "run", "build", "--silent"], cwd=web, check=True)
 
 
+def lan_hosts() -> list[str]:
+    """The names this computer answers to on the network: its address, its host name and the .local name. The IP comes
+    from the route to a documentation address (RFC 5737); a UDP connect sends no packet."""
+    name = socket.gethostname()
+    found = [name, f"{name}.local"]
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("192.0.2.1", 9))
+            found.insert(0, probe.getsockname()[0])
+    except OSError:
+        pass  # no network route: the names still work
+    return found
+
+
 def run_stage(campaign: str | None, open_browser: bool, host: str, port: int, allowed_hosts: list[str]) -> None:
     """Serve the visual stage: the start menu, or straight into one campaign."""
     from stage.server import LOCAL_HOSTS, serve
@@ -79,7 +94,8 @@ def run_stage(campaign: str | None, open_browser: bool, host: str, port: int, al
         threading.Thread(target=lambda: (lpc.catalog(), actors.dcss_monsters()), daemon=True).start()
     except Exception as exc:  # The stage still runs, with silhouettes and blank rooms.
         print(f"dungeon-os: {exc}", file=sys.stderr)
-    url = f"http://{host if host in LOCAL_HOSTS else 'localhost'}:{port}"
+    # Tell the owner the address to open on the table screen: a phone cannot join through "localhost".
+    url = f"http://{host if host in LOCAL_HOSTS else (allowed_hosts[0] if allowed_hosts else 'localhost')}:{port}"
     if open_browser and host in LOCAL_HOSTS:
         Timer(1.5, webbrowser.open, args=(url,)).start()
     print(f"DungeonOS: {url}", file=sys.stderr)
@@ -133,7 +149,16 @@ def main() -> None:
         metavar="NAME",
         help="Host name or IP the browser may use besides localhost; repeat for more",
     )
+    parser.add_argument(
+        "--lan",
+        action="store_true",
+        help="Let phones and other computers on your network join: listen on every address and allow this computer's "
+        "network address and name. Add --allow-host for any other name (a Tailscale name). There is no password.",
+    )
     args = parser.parse_args()
+    if args.lan:
+        args.host = "0.0.0.0"
+        args.allow_host = [*lan_hosts(), *args.allow_host]
 
     if not args.classic:
         run_stage(args.campaign, not args.no_browser, args.host, args.port, args.allow_host)

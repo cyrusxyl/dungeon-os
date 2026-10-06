@@ -29,12 +29,27 @@ def check(label: str, cond: bool) -> None:
         print(f"  FAIL {label}")
 
 
-def raises(fn) -> bool:
+def raises(fn, exc=beat.BeatError) -> bool:
     try:
         fn()
-    except beat.BeatError:
+    except exc:
         return True
     return False
+
+
+def fixture_campaign(tmp) -> Path:
+    """A copy of the example campaign with its committed files (a test may have changed the checkout)."""
+    import shutil
+    import subprocess
+
+    src = Path(__file__).parent / "fixtures" / "example-campaign"
+    c = Path(tmp) / "camp"
+    shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
+    for rel in subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split():
+        got = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=src, capture_output=True)
+        if got.returncode == 0:
+            (c / rel).write_bytes(got.stdout)
+    return c
 
 
 def test_parse() -> None:
@@ -329,6 +344,29 @@ def test_local_only() -> None:
     check("an Origin from another allowed host is refused",
           not request_allowed("websocket", "GET", {**home, "origin": "http://pi.example.ts.net:3842"}, pi))
     check("a foreign Host is still refused with allowed hosts", not request_allowed("http", "GET", {"host": "evil.example:3842"}, pi))
+
+    import socket
+
+    from view import launch
+
+    class Probe:
+        def __init__(self, *a): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def connect(self, addr): self.addr = addr
+        def getsockname(self): return ("192.168.1.50", 5555)
+
+    real_socket, real_name = launch.socket.socket, launch.socket.gethostname
+    launch.socket.socket, launch.socket.gethostname = Probe, lambda: "pi4"
+    try:
+        check("--lan allows the address, the name and the .local name", launch.lan_hosts() == ["192.168.1.50", "pi4", "pi4.local"])
+
+        def no_route(*a):
+            raise OSError("no route")
+        Probe.connect = no_route
+        check("--lan without a network route still allows the names", launch.lan_hosts() == ["pi4", "pi4.local"])
+    finally:
+        launch.socket.socket, launch.socket.gethostname = real_socket, real_name
 
     async def run_middleware(hosts, host):
         seen = []
@@ -791,14 +829,6 @@ def test_creator() -> None:
 
 def test_seats() -> None:
     print("seats and host: who may do what")
-    from stage.seats import SeatError
-
-    def raises(fn) -> bool:
-        try:
-            fn()
-        except SeatError:
-            return True
-        return False
 
     import asyncio
     import shutil
@@ -813,9 +843,9 @@ def test_seats() -> None:
     check("the first device to ask is the host", seats.ensure_host("a" * 16) and not seats.ensure_host("b" * 16))
     seats.claim("a" * 16, "aragorn", "Alex")
     check("a seat is taken", seats.owns("a" * 16, "aragorn") and not seats.owns("b" * 16, "aragorn"))
-    check("a second device cannot take it", raises(lambda: seats.claim("b" * 16, "aragorn", "Sam")))
+    check("a second device cannot take it", raises(lambda: seats.claim("b" * 16, "aragorn", "Sam"), SeatError))
     check("one device may hold two seats", seats.claim("a" * 16, "legolas") is None and seats.mine("a" * 16) == ["aragorn", "legolas"])
-    check("a device cannot free another's seat", raises(lambda: seats.release("b" * 16, "aragorn")))
+    check("a device cannot free another's seat", raises(lambda: seats.release("b" * 16, "aragorn"), SeatError))
     seats.claim("b" * 16, "gimli", "Sam")
     seats.release("a" * 16, "gimli")  # the host frees a seat
     check("the host frees any seat", "gimli" not in seats.owners)
@@ -824,7 +854,7 @@ def test_seats() -> None:
     seats.release("a" * 16, "aragorn")
     check("a freed seat is not away", "aragorn" not in seats.away)
     check("the public view has no device token", "a" * 16 not in json.dumps(seats.public()) and sid("a" * 16) == seats.public()["host"])
-    check("a wrong host code is refused", raises(lambda: seats.take_host("b" * 16, "WXYZ" if seats.code != "WXYZ" else "ABCD")))
+    check("a wrong host code is refused", raises(lambda: seats.take_host("b" * 16, "WXYZ" if seats.code != "WXYZ" else "ABCD"), SeatError))
     old = seats.code
     seats.take_host("b" * 16, old.lower())
     check("the right code gives the host over, once", seats.is_host("b" * 16) and seats.code != old)
@@ -837,24 +867,17 @@ def test_seats() -> None:
         locked = Seats()
         locked.ensure_host("a" * 16)
         for _ in range(5):
-            raises(lambda: locked.take_host("b" * 16, "????"))
+            raises(lambda: locked.take_host("b" * 16, "????"), SeatError)
         good = locked.code
-        check("five wrong codes lock the door, even for the right code", raises(lambda: locked.take_host("b" * 16, good)) and locked.is_host("a" * 16))
+        check("five wrong codes lock the door, even for the right code", raises(lambda: locked.take_host("b" * 16, good), SeatError) and locked.is_host("a" * 16))
         now[0] += 61
         locked.take_host("b" * 16, good)
         check("the door opens again after a minute", locked.is_host("b" * 16))
     finally:
         seats_module.time = real_time
 
-    src = Path(__file__).parent / "fixtures" / "example-campaign"
     with tempfile.TemporaryDirectory() as tmp:
-        c = Path(tmp) / "camp"
-        shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
-        tracked = subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split()
-        for rel in tracked:
-            got = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=src, capture_output=True)
-            if got.returncode == 0:
-                (c / rel).write_bytes(got.stdout)
+        c = fixture_campaign(tmp)
         st = combat.load_state(c)
         st["active_encounter"] = {"type": "combat", "round": 1, "participants": ["aragorn", "legolas"], "current_turn": "aragorn",
                                   "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "legolas", "initiative": 5, "bonus": 3}],
@@ -1033,15 +1056,8 @@ def test_table_talk() -> None:
           and state.apply(state.apply(state.empty(), {"type": "narrate", "text": "Hi"}), {"type": "await", "who": "all"})["await"]["who"] == "all")
     check("targeted choices keep who", state.apply(state.empty(), {"type": "choices", "who": "sireth", "options": ["a", "b"]})["choices"]["who"] == "sireth")
 
-    src = Path(__file__).parent / "fixtures" / "example-campaign"
     with tempfile.TemporaryDirectory() as tmp:
-        c = Path(tmp) / "camp"
-        shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
-        tracked = subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split()
-        for rel in tracked:
-            got = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=src, capture_output=True)
-            if got.returncode == 0:
-                (c / rel).write_bytes(got.stdout)
+        c = fixture_campaign(tmp)
         A, B, G = "device-alex-00000000", "device-sam-000000000", "device-guest-0000000"
 
         async def routes():
@@ -1126,7 +1142,6 @@ def test_table_talk() -> None:
             idle()
 
             stage.seats.claim(G, "gimli", "Gus")
-            stage.seats.claim(G, "boromir", "Gus") if (c / "characters" / "boromir.json").exists() else None
             stage.fold([{"type": "await", "who": "gimli"}])
             stage.seats.release(G, "gimli")
             sent.clear()
@@ -1303,15 +1318,8 @@ def test_player_actions() -> None:
             {"type": "roll_done"})))
     check("a roll keeps the detail", state.apply(s, {"type": "roll", "expr": "x", "total": 1, "dice": [], "detail": {"kind": "check"}})["rolls"][-1]["detail"] == {"kind": "check"})
 
-    src = Path(__file__).parent / "fixtures" / "example-campaign"
     with tempfile.TemporaryDirectory() as tmp:
-        c = Path(tmp) / "camp"
-        shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
-        tracked = subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split()
-        for rel in tracked:
-            got = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=src, capture_output=True)
-            if got.returncode == 0:
-                (c / rel).write_bytes(got.stdout)
+        c = fixture_campaign(tmp)
 
         view = party.view(c)
         legolas = next(x for x in view["characters"] if x["id"] == "legolas")

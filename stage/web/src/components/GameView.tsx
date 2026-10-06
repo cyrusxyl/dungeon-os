@@ -9,6 +9,7 @@ import { HostControls } from '@/components/HostControls'
 import { LogDrawer } from '@/components/LogDrawer'
 import { MapOverlay } from '@/components/MapOverlay'
 import { Card, PartyPanel } from '@/components/PartyPanel'
+import { RoleScreen } from '@/components/RoleScreen'
 import { RollRequest } from '@/components/RollRequest'
 import { SeatPicker } from '@/components/SeatPicker'
 import { SheetDrawer } from '@/components/SheetDrawer'
@@ -17,8 +18,8 @@ import { TurnBar } from '@/components/TurnBar'
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
 import { useParty } from '@/lib/party'
-import { recall, remember, useMe } from '@/lib/seats'
-import { type Layout, type Mode, useView } from '@/lib/view'
+import { recallSeats, rememberSeats, savedName, useMe } from '@/lib/seats'
+import { defaultMode, type Layout, type Mode, useView } from '@/lib/view'
 import { postJson, sendInput, titleCase, useStage } from '@/lib/stage'
 
 const STATUS_TEXT: Record<string, string> = {
@@ -28,6 +29,8 @@ const STATUS_TEXT: Record<string, string> = {
   waiting: 'The DM needs an answer in the console.',
   exited: 'The DM session ended.',
 }
+
+const NO_SEATS: string[] = []
 
 export function GameView({ onMenu }: { onMenu: () => void }) {
   const { state, campaign, connected } = useStage(onMenu)
@@ -46,37 +49,24 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const [sheet, setSheet] = useState<string | null>(null)
   const { party, refresh } = useParty(state?.dm.status ?? 'starting')
   const me = useMe(state)
-  const { mode, setMode, hand, setHand } = useView()
+  const { mode, setMode, chosen: roleChosen, hand, setHand } = useView()
   const [viewOpen, setViewOpen] = useState(false)
-  // A device with no seat can watch (the table screen does) instead of picking one.
-  const [watching, setWatchingNow] = useState(false)
   const [seatOpen, setSeatOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
   const [inputError, setInputError] = useState('')
 
-  const setWatching = (v: boolean) => {
-    setWatchingNow(v)
-    remember(campaign, 'watching', v)
-  }
-  // After a reload or a new game start, this browser sits back down at the seats it had, and keeps its choice to watch.
+  // After a reload or a new game start, this browser sits back down at the seats it had.
   const restored = useRef(false)
   useEffect(() => {
     if (!state || !me || !party || !campaign || restored.current) return
     restored.current = true
-    setWatchingNow(recall(campaign, 'watching') as boolean)
-    const name = (() => {
-      try {
-        return localStorage.getItem('dungeon-player-name') ?? ''
-      } catch {
-        return ''
-      }
-    })()
-    for (const who of recall(campaign, 'seats') as string[]) {
-      if (party.characters.some((c) => c.id === who) && !state.seats.some((s) => s.who === who)) postJson('/api/seat/claim', { who, name })
+    for (const who of recallSeats(campaign)) {
+      if (party.characters.some((c) => c.id === who) && !state.seats.some((s) => s.who === who)) postJson('/api/seat/claim', { who, name: savedName() })
     }
   }, [state, me, party, campaign])
   useEffect(() => {
-    if (me && restored.current && me.mine.length) remember(campaign, 'seats', me.mine)
+    if (me && restored.current && me.mine.length) rememberSeats(campaign, me.mine)
   }, [me?.mine, campaign])
 
   // On first load (or reload) everything already on record counts as read.
@@ -115,14 +105,16 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const pending = Math.max(0, unread.length - 1)
   const caughtUp = unread.length <= 1
   const speaker = current?.type === 'say' ? current.actor : undefined
-  const mine = me?.mine ?? []
+  const mine = me?.mine ?? NO_SEATS
   const isHost = me?.host ?? false
   // The table screen only shows the game: it takes no input.
   const canType = state.dm.status === 'idle' && (isHost || mine.length > 0) && mode !== 'table'
   // Several seats on one device: the line goes to the DM as this character (the one on turn, if it is yours).
   const who = mine.includes(chosen ?? '') ? chosen! : mine.includes(party?.combat?.current ?? '') ? party!.combat!.current! : mine[0]
   const showCreator = state.creating && (state.creator === me?.sid || (state.creator === null && isHost))
-  const picking = Boolean(me) && !showCreator && ((mine.length === 0 && !watching && mode !== 'table') || seatOpen)
+  // The device that started the game, with no seat and no saved choice, says first what it is: the table or a place to play.
+  const needsRole = Boolean(me) && isHost && !showCreator && !roleChosen && mine.length === 0 && recallSeats(campaign).length === 0
+  const picking = Boolean(me) && !showCreator && !needsRole && ((mine.length === 0 && mode !== 'table') || seatOpen)
   const choices = caughtUp ? state.choices?.options : undefined
   const nameOf = (id: string) => party?.characters.find((c) => c.id === id)?.name ?? titleCase(id)
 
@@ -143,32 +135,40 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const statusText = activity && state.dm.status === 'busy' ? `${baseStatus.replace(/…$/, '')} — ${activity}…` : baseStatus
 
   const advance = () => setReadSeq(unread[0]?.seq ?? readSeq)
-  const submit = async (text: string) => {
+  // Act and Whisper: the text stays in the box unless the server takes it (a turn, or an awaited player, was first).
+  const send = async (text: string, whisper: boolean) => {
     const t = text.trim()
-    if (!t || !canSpeak) return
-    const res = await sendInput(t, mine.length ? who : undefined)
+    if (!t || !(whisper ? canWhisper : canSpeak)) return
+    const res = await sendInput(t, { who: mine.length ? who : undefined, whisper })
     if (res.ok) {
       setDraft('')
       setInputError('')
-      setReadSeq(log.at(-1)?.seq ?? readSeq)
-    } else {
-      // Someone else was first (a turn, an awaited player): the text stays, so nothing is lost.
-      setInputError((await res.json().catch(() => null))?.error ?? 'The DM could not take that. Try again.')
-    }
-  }
-  const whisper = async (text: string) => {
-    const t = text.trim()
-    if (!t || !canWhisper) return
-    const res = await sendInput(t, who, false, true)
-    if (res.ok) {
-      setDraft('')
-      setInputError('')
+      if (!whisper) setReadSeq(log.at(-1)?.seq ?? readSeq)
     } else {
       setInputError((await res.json().catch(() => null))?.error ?? 'The DM could not take that. Try again.')
     }
   }
+  const submit = (text: string) => send(text, false)
+  const whisper = (text: string) => send(text, true)
 
   // What the DM said to this player alone, and who the DM still waits for.
+  const sendNow =
+    isHost && awaiting?.who === 'all' && awaiting.answered.length > 0 && awaiting.waiting.length > 0 ? (
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => postJson('/api/send-now')}
+        title="Send the answers so far to the DM. The players who have not answered are left out."
+        className="text-[10px]"
+      >
+        Send now
+      </Button>
+    ) : null
+  const awaitingText = !awaiting
+    ? ''
+    : awaiting.who === 'all'
+      ? waitingText || 'Everyone answered.'
+      : `The DM waits for ${nameOf(awaiting.who)}.`
   const extras = (
     <>
       {state.private.slice(-3).map((p) => (
@@ -184,18 +184,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       )}
       {awaiting && (
         <p className="flex flex-wrap items-center gap-2 text-[var(--dim)]">
-          {awaiting.who === 'all' ? (answered ? `You answered. ${waitingText}` : waitingText || 'Everyone answered.') : `The DM waits for ${nameOf(awaiting.who)}.`}
-          {isHost && awaiting.who === 'all' && awaiting.answered.length > 0 && awaiting.waiting.length > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => postJson('/api/send-now')}
-              title="Send the answers so far to the DM. The players who have not answered are left out."
-              className="text-[10px]"
-            >
-              Send now
-            </Button>
-          )}
+          {answered ? `You answered. ${awaitingText}` : awaitingText}
+          {sendNow}
         </p>
       )}
     </>
@@ -237,7 +227,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
                   >
                     {mine.map((id) => (
                       <option key={id} value={id}>
-                        {party?.characters.find((c) => c.id === id)?.name ?? titleCase(id)}
+                        {nameOf(id)}
                       </option>
                     ))}
                   </select>
@@ -282,13 +272,9 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         </p>
       )}
       {awaiting && (
-        <p className="text-lg text-[var(--ember)]">
-          {awaiting.who === 'all' ? waitingText || 'Everyone answered.' : `The DM waits for ${nameOf(awaiting.who)}.`}
-          {isHost && awaiting.who === 'all' && awaiting.answered.length > 0 && awaiting.waiting.length > 0 && (
-            <Button size="sm" variant="outline" onClick={() => postJson('/api/send-now')} className="ml-3 text-[10px]">
-              Send now
-            </Button>
-          )}
+        <p className="flex flex-wrap items-center gap-3 text-lg text-[var(--ember)]">
+          {awaitingText}
+          {sendNow}
         </p>
       )}
     </>
@@ -298,6 +284,17 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       {state.roll_request && !showCreator && (
         <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} canRoll={canType && caughtUp && mine.includes(state.roll_request.who)} />
       )}
+      {needsRole && <RoleScreen onTable={() => setMode('table')} onPlay={() => setMode(defaultMode())} />}
+      {inviteOpen && (
+        <div role="dialog" aria-label="Invite" className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4">
+          <div className="flex w-full max-w-xs flex-col gap-3 border-4 border-[var(--gold)] bg-[var(--panel)] p-4">
+            <JoinQr />
+            <Button variant="outline" onClick={() => setInviteOpen(false)} className="text-[10px]">
+              Close
+            </Button>
+          </div>
+        </div>
+      )}
       {picking && me && (
         <SeatPicker
           campaign={campaign}
@@ -305,8 +302,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           seats={state.seats}
           me={me}
           onClose={() => {
-            setWatching(true)
             setSeatOpen(false)
+            if (!mine.length) setMode('table') // no seat: this device only watches
           }}
           onNew={() => postJson('/api/creation/open')}
         />
@@ -356,6 +353,26 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       )}
     </div>
   )
+  // Buttons both headers carry: take a seat, the map, the log, a code for friends, and the screen choice.
+  const sharedButtons = (
+    <>
+      {me && mode !== 'table' && (
+        <Button size="sm" variant="outline" onClick={() => setSeatOpen(true)} title="Pick, leave or add a character that you play." className="text-[10px]">
+          Seat
+        </Button>
+      )}
+      <Button size="sm" variant="outline" onClick={() => setMapOpen(true)} className="text-[10px]">
+        Map
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => setLogOpen((v) => !v)} className="text-[10px]">
+        Log
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)} title="Show the code that phones scan to join this game." className="text-[10px]">
+        Invite
+      </Button>
+      {viewMenu}
+    </>
+  )
   if (mode === 'hand') {
     const layout =
       hand.layout === 'portrait'
@@ -372,18 +389,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
             aria-hidden="true"
           />
           <span className="min-w-0 flex-1 truncate text-sm text-[var(--dim)]">{connected ? statusText : 'Reconnecting…'}</span>
-          {me && (
-            <Button size="sm" variant="outline" onClick={() => { setWatching(false); setSeatOpen(true) }} title="Pick, leave or add a character that you play." className="text-[10px]">
-              Seat
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => setMapOpen(true)} className="text-[10px]">
-            Map
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setLogOpen((v) => !v)} className="text-[10px]">
-            Log
-          </Button>
-          {viewMenu}
+          {sharedButtons}
         </header>
         {viewPanel}
         <main className={`min-h-0 flex-1 gap-3 overflow-y-auto ${showCreator ? '' : layout}`}>
@@ -446,28 +452,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
             New character
           </Button>
         )}
-        <Button size="sm" variant="outline" onClick={() => setMapOpen(true)} className="text-[10px]">
-          Map
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setLogOpen((v) => !v)} className="text-[10px]">
-          Log
-        </Button>
-        {viewMenu}
+        {sharedButtons}
         {me && <HostControls me={me} />}
-        {me && mode !== 'table' && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setWatching(false)
-              setSeatOpen(true)
-            }}
-            title="Pick, leave or add a character that you play."
-            className="text-[10px]"
-          >
-            Seat
-          </Button>
-        )}
         {isHost && state.creating && !showCreator && (
           <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/done')} title="Close the character creator that another device left open." className="text-[10px]">
             Close creator
@@ -525,8 +511,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
                 sendInput(
                   'End the session now: follow the session-end procedure in the dm-canon-procedures skill ' +
                     '(one `uv run dnd-cli session end` with the recap), then say goodbye in one short beat.',
-                  undefined,
-                  true,
+                  { asHost: true },
                 )
               }}
               className="text-[10px]"

@@ -2,6 +2,8 @@
 // state after each change; the client only renders it.
 import { useEffect, useRef, useState } from 'react'
 
+import { read, write } from '@/lib/local'
+
 /** True when a key press belongs to whatever has focus: inputs, the console, and every button. */
 export function focusOwnsKeys(e: KeyboardEvent): boolean {
   return Boolean((e.target as HTMLElement).closest?.('input, textarea, select, button, a, [role=button], .xterm'))
@@ -150,19 +152,20 @@ export interface Roll {
 }
 
 /** This browser's private token. It tells the server which device asks; there is no password. */
+let device: string | undefined
 export function deviceId(): string {
-  try {
-    let id = localStorage.getItem('dungeon-device')
-    if (!id) {
-      id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
-      localStorage.setItem('dungeon-device', id)
+  if (!device) {
+    device = read('dungeon-device') ?? undefined
+    if (!device) {
+      device = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
+      write('dungeon-device', device)
     }
-    return id
-  } catch {
-    return memoryId
   }
+  return device
 }
-const memoryId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
+
+/** The header every request to the server carries, so it knows which device asks. */
+export const deviceHeaders = () => ({ 'X-Device': deviceId() })
 
 function wsUrl(path: string): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -227,14 +230,14 @@ export function wsPtyUrl(): string {
 export function postJson(url: string, body: unknown = {}): Promise<Response> {
   return fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Device': deviceId() },
+    headers: { 'Content-Type': 'application/json', ...deviceHeaders() },
     body: JSON.stringify(body),
   })
 }
 
 /** A line for the DM. `asHost` is a host control (End session): the DM gets it untagged. */
-export async function sendInput(text: string, who?: string, asHost = false, whisper = false): Promise<Response> {
-  return postJson('/api/input', { text, who, as_host: asHost, whisper })
+export async function sendInput(text: string, opts: { who?: string; asHost?: boolean; whisper?: boolean } = {}): Promise<Response> {
+  return postJson('/api/input', { text, who: opts.who, as_host: opts.asHost, whisper: opts.whisper })
 }
 
 export function titleCase(id: string): string {

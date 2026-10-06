@@ -4,47 +4,26 @@ import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
 import type { Party } from '@/lib/party'
 import type { Me } from '@/lib/seats'
-import { recall, remember } from '@/lib/seats'
+import { useHint } from '@/lib/hint'
+import { recallSeats, rememberSeats, saveName, savedName } from '@/lib/seats'
 import { postJson, type Seat } from '@/lib/stage'
-
-const NAME_KEY = 'dungeon-player-name'
-
-function savedName(): string {
-  try {
-    return localStorage.getItem(NAME_KEY) ?? ''
-  } catch {
-    return ''
-  }
-}
 
 /** The join screen: a player types a name and sits at a free character, or makes a new one. */
 export function SeatPicker({ campaign, party, seats, me, onClose, onNew }: { campaign: string; party: Party | null; seats: Seat[]; me: Me; onClose: () => void; onNew: () => void }) {
   const [name, setName] = useState(savedName)
   const [error, setError] = useState('')
-  // What the button under the pointer or focus does. `title` gives the same text as a browser tooltip.
-  const [hint, setHint] = useState('')
-  const tip = (text: string) => ({
-    title: text,
-    onMouseEnter: () => setHint(text),
-    onFocus: () => setHint(text),
-    onMouseLeave: () => setHint(''),
-    onBlur: () => setHint(''),
-  })
+  const { hint, tip } = useHint()
   const owner = (id: string) => seats.find((s) => s.who === id)
   const free = (party?.characters ?? []).filter((c) => !owner(c.id))
 
   const leave = async (who: string) => {
     const res = await postJson('/api/seat/release', { who })
-    if (res.ok) remember(campaign, 'seats', (recall(campaign, 'seats') as string[]).filter((id) => id !== who))
+    if (res.ok) rememberSeats(campaign, recallSeats(campaign).filter((id) => id !== who))
   }
 
   const take = async (ids: string[]) => {
     const player = name.trim() || 'Player'
-    try {
-      localStorage.setItem(NAME_KEY, player)
-    } catch {
-      /* private window: the name is just not remembered */
-    }
+    saveName(player)
     const results = await Promise.all(ids.map((who) => postJson('/api/seat/claim', { who, name: player })))
     const bad = results.find((r) => !r.ok)
     setError(bad ? ((await bad.json().catch(() => null))?.error ?? 'The seat is taken.') : '')

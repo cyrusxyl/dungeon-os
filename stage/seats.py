@@ -26,6 +26,10 @@ MAX_WRONG_CODES = 5
 LOCK_SECONDS = 60
 
 
+def new_code() -> str:
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(4))
+
+
 class SeatError(ValueError):
     """A seat or host request the table refuses. The message says why."""
 
@@ -37,7 +41,7 @@ def sid(device: str) -> str:
 class Seats:
     def __init__(self) -> None:
         self.host: str | None = None
-        self.code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(4))
+        self.code = new_code()
         self.owners: dict[str, str] = {}  # character id -> device
         self.names: dict[str, str] = {}  # device -> player name
         self.away: set[str] = set()  # character ids
@@ -67,7 +71,7 @@ class Seats:
         self.host = device
         self.wrong_codes = 0
         # The old host's code must not work again.
-        self.code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(4))
+        self.code = new_code()
 
     # -- seats -----------------------------------------------------------
 

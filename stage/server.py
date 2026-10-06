@@ -256,7 +256,7 @@ class Stage:
             events = self.read_new_events()
             was_busy = self.state["dm"].get("status") != "idle"
             if self.fold(events):
-                await self.broadcast(self.snapshot())
+                await self.broadcast()
             session = next((e["session"] for e in reversed(events) if e.get("session")), None)
             if session:
                 await asyncio.to_thread(self.remember_session, session)
@@ -266,11 +266,11 @@ class Stage:
                 await self.submit(self.pending.pop(0))  # busy at once: the next loop waits
             await asyncio.sleep(0.15)
 
-    async def broadcast(self, message: dict) -> None:
-        """Send to every stage socket. A snapshot is built again for each one, so it holds only what that device may see."""
+    async def broadcast(self) -> None:
+        """Send the stage to every stage socket. It is built again for each one, so it holds only what that device may see."""
         for ws in list(self.event_clients):
             try:
-                await ws.send_json(self.snapshot(self.client_device.get(ws)) if message.get("kind") == "snapshot" else message)
+                await ws.send_json(self.snapshot(self.client_device.get(ws)))
             except Exception:
                 self.event_clients.discard(ws)
                 self.client_device.pop(ws, None)
@@ -298,7 +298,7 @@ class Stage:
         # Server-side status, not written to the log: a restart must not
         # replay "exited".
         self.fold([event])
-        await self.broadcast(self.snapshot())
+        await self.broadcast()
 
     def away_note(self) -> str:
         names = [self.char_name(w) for w in sorted(self.seats.away) if w in self.seats.owners]
@@ -759,8 +759,7 @@ def create_app(
             who = None  # a host control (End session): the DM must not read it as a character's words
         whisper = bool(body.get("whisper")) and bool(who)
         if who:
-            if who not in mine:
-                raise HTTPException(403, "That is not your character. Take a seat first.")
+            own(request, stage, who)
             name = stage.char_name(who)
             text = f"[{stage.seats.player(device, who)} as {name}{', private' if whisper else ''}] {text}"
         elif not stage.seats.is_host(device):
@@ -780,7 +779,7 @@ def create_app(
                 await stage._local_event({"type": "await_done"})  # the awaited player answers: the answer goes out below
             elif aw and aw["who"] == "all":
                 stage.intents[who] = str(body.get("text", ""))
-                await stage.broadcast(stage.snapshot())
+                await stage.broadcast()
                 await stage.flush_intents()
                 return JSONResponse({"ok": True, "queued": True})
         await stage.submit(text)
@@ -808,7 +807,7 @@ def create_app(
         had_host = stage.seats.host is not None
         host = stage.seats.ensure_host(device)
         if not had_host:
-            await stage.broadcast(stage.snapshot())
+            await stage.broadcast()
         return JSONResponse({"sid": sid(device), "host": host, "host_code": stage.seats.code if host else None})
 
     async def seat_call(request: Request, fn):
@@ -820,7 +819,7 @@ def create_app(
             fn(stage.seats, device, who, body)
         except SeatError as e:
             return error(str(e), 403)
-        await stage.broadcast(stage.snapshot())
+        await stage.broadcast()
         await stage.flush_intents()  # a player who leaves or goes away may have been the last one awaited
         return JSONResponse({"ok": True})
 
@@ -841,7 +840,7 @@ def create_app(
         except SeatError as e:
             return error(str(e), 403)
         print(f"dungeon-os: new host code {stage.seats.code}", file=sys.stderr, flush=True)
-        await stage.broadcast(stage.snapshot())
+        await stage.broadcast()
         return JSONResponse({"ok": True})
 
     async def api_menu(request: Request):
@@ -921,8 +920,7 @@ def create_app(
         return JSONResponse(_menu(table))
 
     async def api_game_quit(request: Request):
-        if table.stage:
-            host_only(request)
+        menu_gate(request)
         await table.stop()
         return JSONResponse({"game": None})
 
@@ -1000,7 +998,7 @@ def create_app(
         except (RulesError, CharacterError, lpc.ActorError, AssetError) as e:
             return error(str(e), 400)
         stage.seats.claim(device, made["id"], str(body.get("player_name") or ""))  # the maker plays it
-        await stage.broadcast(stage.snapshot())
+        await stage.broadcast()
         return JSONResponse(made)
 
     async def api_creation_open(request: Request):
@@ -1010,7 +1008,7 @@ def create_app(
         if stage.opened and owner != device:
             return error("Someone else is making a character.", 409)
         stage.open_creator(device)
-        await stage.broadcast(stage.snapshot())
+        await stage.broadcast()
         return JSONResponse({"ok": True})
 
     async def api_creation_done(request: Request):
@@ -1019,7 +1017,7 @@ def create_app(
         if not (stage.seats.is_host(device) or device == stage.creator):
             raise HTTPException(403, "Only the player who opened the creator, or the host, can close it.")
         stage.close_creator()
-        await stage.broadcast(stage.snapshot())
+        await stage.broadcast()
         return JSONResponse({"ok": True})
 
     async def asset_scene(request: Request):
@@ -1154,7 +1152,7 @@ def create_app(
             return error(str(e), 400)
         state = combat.load_state(stage.campaign_dir)
         now = state["active_encounter"]["current_turn"]
-        name = character.load(stage.campaign_dir, who).get("name", who)
+        name = stage.char_name(who)
         if character.character_path(stage.campaign_dir, now).exists():
             todo = "It is a player character's turn now: narrate the change in one beat, then wait for the player."
         else:

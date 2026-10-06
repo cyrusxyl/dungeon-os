@@ -4,6 +4,8 @@
 //   hand  : a phone. It shows this player's character card and the input. The scene is optional.
 import { useCallback, useState } from 'react'
 
+import { read, readJson, write } from '@/lib/local'
+
 export type Mode = 'full' | 'table' | 'hand'
 export type Layout = 'auto' | 'portrait' | 'landscape'
 export interface HandOpts {
@@ -12,50 +14,35 @@ export interface HandOpts {
 }
 
 const MODES: Mode[] = ['full', 'table', 'hand']
-const DEFAULT_HAND: HandOpts = { scene: false, layout: 'auto' }
+const LAYOUTS: Layout[] = ['auto', 'portrait', 'landscape']
 
-function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
+/** A small screen is a hand and a large one is full. */
+export const defaultMode = (): Mode => (window.innerWidth < 800 ? 'hand' : 'full')
 
-function write(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-  } catch {
-    /* private window: the choice lasts until the page closes */
-  }
-}
-
-/** The address can force a mode (`?view=table`); else the saved choice; else a small screen is a hand and a large one is full. */
-function firstMode(): Mode {
+/** The address can force a mode (`?view=table`); else the saved choice. `chosen` is false when neither is there. */
+function firstMode(): { mode: Mode; chosen: boolean } {
   const wanted = new URLSearchParams(location.search).get('view') ?? read('dungeon-view')
-  if (MODES.includes(wanted as Mode)) return wanted as Mode
-  return window.innerWidth < 800 ? 'hand' : 'full'
+  return MODES.includes(wanted as Mode) ? { mode: wanted as Mode, chosen: true } : { mode: defaultMode(), chosen: false }
 }
 
 function firstHand(): HandOpts {
-  try {
-    const saved = JSON.parse(read('dungeon-hand') ?? '{}')
-    return { scene: Boolean(saved.scene), layout: ['auto', 'portrait', 'landscape'].includes(saved.layout) ? saved.layout : 'auto' }
-  } catch {
-    return DEFAULT_HAND
-  }
+  const saved = readJson<Partial<HandOpts>>('dungeon-hand', {})
+  return { scene: Boolean(saved.scene), layout: LAYOUTS.includes(saved.layout as Layout) ? (saved.layout as Layout) : 'auto' }
 }
 
 export function useView() {
-  const [mode, setModeNow] = useState<Mode>(firstMode)
+  const [first] = useState(firstMode)
+  const [mode, setModeNow] = useState<Mode>(first.mode)
+  const [chosen, setChosen] = useState(first.chosen)
   const [hand, setHandNow] = useState<HandOpts>(firstHand)
   const setMode = useCallback((m: Mode) => {
     setModeNow(m)
+    setChosen(true)
     write('dungeon-view', m)
   }, [])
   const setHand = useCallback((h: HandOpts) => {
     setHandNow(h)
     write('dungeon-hand', JSON.stringify(h))
   }, [])
-  return { mode, setMode, hand, setHand }
+  return { mode, setMode, chosen, hand, setHand }
 }

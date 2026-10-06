@@ -252,8 +252,14 @@ def main() -> int:
                 await page.call("Emulation.setDeviceMetricsOverride", width=1500, height=950, deviceScaleFactor=1, mobile=False)
                 await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/")
                 await asyncio.sleep(2.5)
+                await page.shot("role-screen")
+                role = "Boolean(document.querySelector('[aria-label=\"Set up this device\"]'))"
+                check("the host device first says what it is", await page.eval(role))
+                check("no seat picker before that", not await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
+                await page.click("Play here")
+                await asyncio.sleep(1)
                 await page.shot("seat-picker")
-                check("a new device sees the seat picker", await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
+                check("then it sees the seat picker", await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
                 check("the first device is the host: it sees a host code", "Host code" in await page.eval("document.body.innerText"))
                 await page.click("Play all free")
                 await asyncio.sleep(1.2)
@@ -293,6 +299,28 @@ def main() -> int:
                 check("the hand screen has the input box", bool(await page.eval("Boolean(document.querySelector('#player-input'))")))
                 check("the hand screen shows only this player's cards", await page.eval("document.querySelectorAll('main section h2').length") >= 1
                       and "Where" not in await page.eval("document.body.innerText"))
+
+                print("the table role")
+                await page.eval("""(async () => {
+                    const h = {'Content-Type': 'application/json', 'X-Device': localStorage.getItem('dungeon-device')}
+                    for (const who of ['aragorn', 'legolas']) await fetch('/api/seat/release', {method: 'POST', headers: h, body: JSON.stringify({who})})
+                    localStorage.removeItem('dungeon-view')
+                    Object.keys(localStorage).filter((k) => k.startsWith('dungeon-seats')).forEach((k) => localStorage.removeItem(k))
+                })()""")
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/")
+                await asyncio.sleep(2.5)
+                check("a host with no seat and no saved choice is asked again", await page.eval(role))
+                await page.click("Table screen")
+                await asyncio.sleep(1)
+                check("the table role: no seat picker, a join box, no input", not await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))")
+                      and "Join" in await page.eval("document.body.innerText") and not await page.eval("Boolean(document.querySelector('#player-input'))"))
+
+                print("a phone that joins")
+                await page.eval("localStorage.setItem('dungeon-device', 'f0e1d2c3b4a5968778695a4b3c2d1e0f'); localStorage.removeItem('dungeon-view')")
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/")
+                await asyncio.sleep(2.5)
+                check("a joining device is not asked what it is: it goes straight to the seat picker",
+                      not await page.eval(role) and await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
 
         asyncio.run(run())
     finally:
