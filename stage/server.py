@@ -121,6 +121,8 @@ class Stage:
         self.state = stage_state.empty()
         self.offset = 0
         self.event_clients: set[WebSocket] = set()
+        self.client_device: dict[WebSocket, str | None] = {}  # who each stage socket is, to filter its snapshot
+        self.intents: dict[str, str] = {}  # character id -> what the player said while the DM awaits everyone
         self.pty_clients: set[WebSocket] = set()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.seats = Seats()
@@ -159,6 +161,8 @@ class Stage:
     def fold(self, events: list[dict]) -> bool:
         for event in events:
             self.state = stage_state.apply(self.state, event)
+        if not self.state.get("await"):
+            self.intents.clear()
         return bool(events)
 
     def remember_session(self, session_id: str) -> None:
@@ -180,9 +184,32 @@ class Stage:
     def creating(self) -> bool:
         return self.opened
 
-    def snapshot(self) -> dict:
+    def awaiting(self) -> dict | None:
+        """Who the DM waits for: `waiting` still owe an answer, `answered` have given one. Public: no text."""
+        aw = self.state.get("await")
+        if not aw:
+            return None
+        if aw["who"] != "all":
+            # A character that nobody plays, or whose player is away, awaits nobody: the table goes on.
+            seated = aw["who"] in self.seats.owners and aw["who"] not in self.seats.away
+            return {"who": aw["who"], "waiting": [aw["who"]] if seated else [], "answered": []}
+        # One device is one answerer: a player who runs several characters answers once, as one of them.
+        present = [who for who in self.seats.owners if who not in self.seats.away]
+        done = {self.seats.owners[w] for w in self.intents if w in self.seats.owners}
+        return {"who": "all", "waiting": [w for w in present if self.seats.owners[w] not in done],
+                "answered": [w for w in present if self.seats.owners[w] in done]}
+
+    def snapshot(self, device: str | None = None) -> dict:
+        """The stage as one device may see it: whispers and targeted choices only for their player, the DM's log only for the host."""
         state = {**self.state, "creating": self.creating(), "party_mode": self.party_mode(), **self.seats.public(),
-                 "creator": sid(self.creator) if self.creator else None}
+                 "creator": sid(self.creator) if self.creator else None, "awaiting": self.awaiting()}
+        mine = set(self.seats.mine(device))
+        state["private"] = [p for p in self.state["private"] if p["who"] in mine]
+        choices = state.get("choices")
+        if choices and choices.get("who") and choices["who"] not in mine:
+            state["choices"] = None
+        if not self.seats.is_host(device):
+            state["dm_log"] = []
         req = state.get("roll_request")
         if req and req.get("hide"):
             # A hidden DC stays on the server: the roll uses the copy in self.state.
@@ -240,11 +267,13 @@ class Stage:
             await asyncio.sleep(0.15)
 
     async def broadcast(self, message: dict) -> None:
+        """Send to every stage socket. A snapshot is built again for each one, so it holds only what that device may see."""
         for ws in list(self.event_clients):
             try:
-                await ws.send_json(message)
+                await ws.send_json(self.snapshot(self.client_device.get(ws)) if message.get("kind") == "snapshot" else message)
             except Exception:
                 self.event_clients.discard(ws)
+                self.client_device.pop(ws, None)
 
     # -- DM process ------------------------------------------------------
 
@@ -270,6 +299,30 @@ class Stage:
         # replay "exited".
         self.fold([event])
         await self.broadcast(self.snapshot())
+
+    def away_note(self) -> str:
+        names = [self.char_name(w) for w in sorted(self.seats.away) if w in self.seats.owners]
+        return f" Away, skip their turns: {', '.join(names)}." if names else ""
+
+    def char_name(self, who: str) -> str:
+        try:
+            return character.load(self.campaign_dir, who).get("name", who)
+        except character.CharacterError:
+            return who  # the DM named a character that has no sheet
+
+    async def flush_intents(self, force: bool = False) -> bool:
+        """Send the collected answers to the DM as one prompt, once every present player has answered (or the host forces it)."""
+        aw = self.state.get("await")
+        self.intents = {w: t for w, t in self.intents.items() if w in self.seats.owners}  # a freed seat answers no more
+        if not (aw and aw["who"] == "all" and self.intents and self.dm_ready()):
+            return False
+        if self.awaiting()["waiting"] and not force:
+            return False
+        parts = " | ".join(f"[{self.seats.player(None, w)} as {self.char_name(w)}] {t}" for w, t in self.intents.items())
+        self.intents.clear()
+        await self._local_event({"type": "await_done"})
+        await self.submit(f"[The players answer together] {parts} Resolve each answer, then narrate one beat." + self.away_note())
+        return True
 
     async def submit(self, text: str) -> None:
         """Type a player's line into the DM's prompt and press Enter."""
@@ -661,13 +714,16 @@ def create_app(
         if stage is None:
             await ws.close(code=4000)
             return
-        await ws.send_json(stage.snapshot())
+        device = device_of(ws)
+        stage.client_device[ws] = device
+        await ws.send_json(stage.snapshot(device))
         stage.event_clients.add(ws)
         try:
             while True:
                 await ws.receive_text()
         except WebSocketDisconnect:
             stage.event_clients.discard(ws)
+            stage.client_device.pop(ws, None)
 
     async def ws_pty(ws: WebSocket):
         await ws.accept()
@@ -698,16 +754,43 @@ def create_app(
         mine = stage.seats.mine(device)
         who = str(body["who"]) if body.get("who") else (mine[0] if len(mine) == 1 else None)
         text = str(body.get("text", ""))
-        if body.get("as_host") and stage.seats.is_host(device):
+        as_host = bool(body.get("as_host")) and stage.seats.is_host(device)
+        if as_host:
             who = None  # a host control (End session): the DM must not read it as a character's words
+        whisper = bool(body.get("whisper")) and bool(who)
         if who:
             if who not in mine:
                 raise HTTPException(403, "That is not your character. Take a seat first.")
-            name = character.load(stage.campaign_dir, who).get("name", who)
-            text = f"[{stage.seats.player(device, who)} as {name}] {text}"
+            name = stage.char_name(who)
+            text = f"[{stage.seats.player(device, who)} as {name}{', private' if whisper else ''}] {text}"
         elif not stage.seats.is_host(device):
             raise HTTPException(403, "Take a seat first.")
+        if not stage.dm_ready():
+            raise HTTPException(409, "The DM is busy.")
+        if who and not whisper:
+            # In a combat, only the player whose turn it is may speak or act; a whisper to the DM is always allowed.
+            enc = combat.load_state(stage.campaign_dir).get("active_encounter") or {}
+            turn = enc.get("current_turn") if enc.get("type") == "combat" else None
+            if turn and character.character_path(stage.campaign_dir, turn).exists():
+                if who != turn:
+                    raise HTTPException(409, f"It is {stage.char_name(turn)}'s turn.")
+            elif (aw := stage.state.get("await")) and aw["who"] != "all" and aw["who"] != who and aw["who"] in stage.awaiting()["waiting"]:
+                raise HTTPException(409, f"The DM waits for {stage.char_name(aw['who'])}.")
+            elif aw and aw["who"] == who:
+                await stage._local_event({"type": "await_done"})  # the awaited player answers: the answer goes out below
+            elif aw and aw["who"] == "all":
+                stage.intents[who] = str(body.get("text", ""))
+                await stage.broadcast(stage.snapshot())
+                await stage.flush_intents()
+                return JSONResponse({"ok": True, "queued": True})
         await stage.submit(text)
+        return JSONResponse({"ok": True})
+
+    async def api_send_now(request: Request):
+        """The host sends the answers collected so far, without waiting for the players who have not answered."""
+        stage = host_only(request)
+        if not await stage.flush_intents(force=True):
+            return error("There is nothing to send.")
         return JSONResponse({"ok": True})
 
     async def api_restart(request: Request):
@@ -738,6 +821,7 @@ def create_app(
         except SeatError as e:
             return error(str(e), 403)
         await stage.broadcast(stage.snapshot())
+        await stage.flush_intents()  # a player who leaves or goes away may have been the last one awaited
         return JSONResponse({"ok": True})
 
     async def api_seat_claim(request: Request):
@@ -1055,8 +1139,17 @@ def create_app(
         body = await request.json()
         who = pc_or_404(stage, body.get("who"))
         own(request, stage, who)
+        def end_and_skip(st):
+            """End the turn, then end the turn of each player who is away, so the order never waits for them."""
+            out = combat.end_turn(stage.campaign_dir, st, who)
+            for _ in st["active_encounter"].get("participants", []):
+                cur = st["active_encounter"]["current_turn"]
+                if cur not in stage.seats.away or cur not in stage.seats.owners:
+                    break
+                out += [f"{stage.char_name(cur)} is away: turn skipped."] + combat.end_turn(stage.campaign_dir, st, cur)
+            return out
         try:
-            lines = await run_in_threadpool(with_rules, stage, lambda st: combat.end_turn(stage.campaign_dir, st, who))
+            lines = await run_in_threadpool(with_rules, stage, end_and_skip)
         except combat.RulesError as e:
             return error(str(e), 400)
         state = combat.load_state(stage.campaign_dir)
@@ -1067,7 +1160,7 @@ def create_app(
         else:
             todo = (f"It is {now}'s turn: run it with the rules commands (attack, save), narrate it, then `encounter next`. "
                     "Repeat for each creature until a player character is up, then wait for the player.")
-        await stage.submit(f"[{name} ends their turn] " + " ".join(lines) + " " + todo)
+        await stage.submit(f"[{name} ends their turn] " + " ".join(lines) + " " + todo + stage.away_note())
         return JSONResponse({"lines": lines})
 
     async def api_resource(request: Request):
@@ -1288,6 +1381,7 @@ def create_app(
         Route("/api/input", api_input, methods=["POST"]),
         Route("/api/restart", api_restart, methods=["POST"]),
         Route("/api/me", api_me),
+        Route("/api/send-now", api_send_now, methods=["POST"]),
         Route("/api/seat/claim", api_seat_claim, methods=["POST"]),
         Route("/api/seat/release", api_seat_release, methods=["POST"]),
         Route("/api/seat/away", api_seat_away, methods=["POST"]),

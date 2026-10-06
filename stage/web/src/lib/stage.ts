@@ -79,7 +79,8 @@ export interface StageState {
   scene: string | null
   actors: Record<string, { position: Position; emotion?: string }>
   log: StoryLine[]
-  choices: { options: string[]; seq: number } | null
+  /** `who` set: the choices are for one player character (the server sends them to that player only). */
+  choices: { options: string[]; seq: number; who?: string } | null
   dm: { status: 'starting' | 'busy' | 'idle' | 'waiting' | 'exited'; reason?: string; message?: string }
   dm_log: string[]
   versions: Record<string, number>
@@ -96,7 +97,10 @@ export interface StageState {
   seats: Seat[]
   /** The `sid` of the device that has the creator open; null while it is the host's. */
   creator: string | null
-}
+  /** Whispers from the DM to this device's characters. */
+  private: { who: string; text: string; seq: number }[]
+  /** The DM waits for answers: `who` is `all` or one character id. Names only, never the answers. */
+  awaiting: { who: string; waiting: string[]; answered: string[] } | null}
 
 /** One creature's roll in the roll window: the d20s, the tiles that add to it, and how it came out. */
 export interface RollEntry {
@@ -178,7 +182,7 @@ export function useStage(onNoGame: () => void): { state: StageState | null; camp
     let timer: number | undefined
 
     const connect = () => {
-      ws = new WebSocket(wsUrl('/ws'))
+      ws = new WebSocket(wsUrl(`/ws?d=${deviceId()}`))
       ws.onopen = () => {
         retry.current = 0
         setConnected(true)
@@ -229,8 +233,8 @@ export function postJson(url: string, body: unknown = {}): Promise<Response> {
 }
 
 /** A line for the DM. `asHost` is a host control (End session): the DM gets it untagged. */
-export async function sendInput(text: string, who?: string, asHost = false): Promise<void> {
-  await postJson('/api/input', { text, who, as_host: asHost })
+export async function sendInput(text: string, who?: string, asHost = false, whisper = false): Promise<Response> {
+  return postJson('/api/input', { text, who, as_host: asHost, whisper })
 }
 
 export function titleCase(id: string): string {

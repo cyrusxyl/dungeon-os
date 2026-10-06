@@ -36,6 +36,10 @@ EOF
 | `@narrate <text>` | A narration line in the dialogue box, with no portrait. |
 | `@say <actor-id> [emotion] <text>` | A character speaks, with portrait. Emotions: `neutral` `happy` `angry` `sad` `shock` `blush` `shame` `eyeroll` `closed`. |
 | `@choices <a> \| <b> \| <c>` | Choice buttons. Put it last. The player can still type a free action. |
+| `@choices-for <pc-id> <a> \| <b>` | Choice buttons for one player character. Only that player sees them. |
+| `@whisper <pc-id> <text>` | A private line for one player character's player. The table and the other players do not see it. Use it for what only that character senses or knows. |
+| `@await all` | Put it last, and end your turn. The stage collects one answer from each present player, then sends them to you as one message: `[The players answer together] [Alex as Jamie] … \| [Sam as Sireth] …`. Use it when every player must act (a new room, a shared choice). |
+| `@await <pc-id>` | Put it last. Only that player may answer. Use it when the story turns to one character. |
 | `@roll <pc-id> <skill\|ability\|abil-save> [dc N] [hide]` | Ask a player character to roll a check or a saving throw, for example `@roll sireth stealth dc 14` or `@roll sireth dex-save dc 13`. Put it last and end your turn. See rule 4. |
 | `@clear` | Remove all characters, keep the room. |
 | `@explore <site-id> [<poi-id>\|entrance]` | Show a site the players walk through (see Sites). |
@@ -133,7 +137,9 @@ uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=me
 - In the site view, the players see the walls, doors and passages, and walk by themselves. **Do not describe the layout** (exits, passages, which way to go) and **do not give movement choices**. Narrate what they sense and what they find.
 - For a fight or a talk, use `@scene` as usual (it leaves the site view), then send `@explore <site-id>` to let them walk on.
 
-**Several players.** A line that starts with `[Alex as Jamie]` is a player's words, said as that character. A different player may say the next line. Answer the right character. A line with no tag comes from the host and is a table control. Do not reveal what one player said to the others unless the story does.
+**Several players.** Without `@await`, the first answer reaches you at once. In a combat the stage lets only the player on turn speak, so do not use `@await` there. A line tagged `(private)`, like `[Alex as Jamie, private] …`, is a whisper to you: answer with `@whisper`, never in public. When the message says `Away, skip their turns: X`, run `encounter next` past X without a roll or a narration.
+
+**Reading player lines.** A line that starts with `[Alex as Jamie]` is a player's words, said as that character. A different player may say the next line. Answer the right character. A line with no tag comes from the host and is a table control. Do not reveal what one player said to the others unless the story does.
 
 **Messages from the stage.** A message that starts with `[explore]` or `[map]` comes from the stage, not from a player's words. Do what it says in one beat:
 

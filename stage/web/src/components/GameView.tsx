@@ -52,6 +52,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const [watching, setWatchingNow] = useState(false)
   const [seatOpen, setSeatOpen] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
+  const [inputError, setInputError] = useState('')
 
   const setWatching = (v: boolean) => {
     setWatchingNow(v)
@@ -123,6 +124,17 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const showCreator = state.creating && (state.creator === me?.sid || (state.creator === null && isHost))
   const picking = Boolean(me) && !showCreator && ((mine.length === 0 && !watching && mode !== 'table') || seatOpen)
   const choices = caughtUp ? state.choices?.options : undefined
+  const nameOf = (id: string) => party?.characters.find((c) => c.id === id)?.name ?? titleCase(id)
+
+  // Turn rules (the server enforces them; the UI only says why the box is shut). In a combat only the player on turn
+  // speaks. When the DM awaits one character, only that player answers. A whisper to the DM is always possible.
+  const onTurn = party?.combat && party.characters.some((c) => c.id === party.combat!.current) ? party.combat.current : null
+  const awaiting = state.awaiting
+  const lockedFor = mine.length === 0 ? null : onTurn && !mine.includes(onTurn) ? `It is ${nameOf(onTurn)}'s turn.` : !onTurn && awaiting && awaiting.who !== 'all' && awaiting.waiting.includes(awaiting.who) && !mine.includes(awaiting.who) ? `The DM waits for ${nameOf(awaiting.who)}.` : null
+  const canSpeak = canType && !lockedFor
+  const canWhisper = state.dm.status === 'idle' && mine.length > 0 && mode !== 'table'
+  const answered = awaiting?.who === 'all' && mine.some((id) => awaiting.answered.includes(id))
+  const waitingText = awaiting?.who === 'all' && awaiting.waiting.length ? `Waiting for ${awaiting.waiting.map(nameOf).join(', ')}.` : ''
   // Walking and travel wait until the player has read the story so far.
   const canAct = canType && caughtUp
   const waitingWorld = state.party_mode === 'premade' && log.length === 0 && ['starting', 'busy'].includes(state.dm.status)
@@ -133,14 +145,65 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const advance = () => setReadSeq(unread[0]?.seq ?? readSeq)
   const submit = async (text: string) => {
     const t = text.trim()
-    if (!t || !canType) return
-    setDraft('')
-    setReadSeq(log.at(-1)?.seq ?? readSeq)
-    await sendInput(t, mine.length ? who : undefined)
+    if (!t || !canSpeak) return
+    const res = await sendInput(t, mine.length ? who : undefined)
+    if (res.ok) {
+      setDraft('')
+      setInputError('')
+      setReadSeq(log.at(-1)?.seq ?? readSeq)
+    } else {
+      // Someone else was first (a turn, an awaited player): the text stays, so nothing is lost.
+      setInputError((await res.json().catch(() => null))?.error ?? 'The DM could not take that. Try again.')
+    }
+  }
+  const whisper = async (text: string) => {
+    const t = text.trim()
+    if (!t || !canWhisper) return
+    const res = await sendInput(t, who, false, true)
+    if (res.ok) {
+      setDraft('')
+      setInputError('')
+    } else {
+      setInputError((await res.json().catch(() => null))?.error ?? 'The DM could not take that. Try again.')
+    }
   }
 
+  // What the DM said to this player alone, and who the DM still waits for.
+  const extras = (
+    <>
+      {state.private.slice(-3).map((p) => (
+        <p key={p.seq} className="border-2 border-[var(--gold)] bg-[var(--panel-2)] px-2 py-1 text-lg">
+          <span className="pixel-font mr-2 text-[9px] text-[var(--gold)]">Only you · {nameOf(p.who)}</span>
+          {p.text}
+        </p>
+      ))}
+      {inputError && (
+        <p role="alert" className="text-[var(--bad)]">
+          {inputError}
+        </p>
+      )}
+      {awaiting && (
+        <p className="flex flex-wrap items-center gap-2 text-[var(--dim)]">
+          {awaiting.who === 'all' ? (answered ? `You answered. ${waitingText}` : waitingText || 'Everyone answered.') : `The DM waits for ${nameOf(awaiting.who)}.`}
+          {isHost && awaiting.who === 'all' && awaiting.answered.length > 0 && awaiting.waiting.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => postJson('/api/send-now')}
+              title="Send the answers so far to the DM. The players who have not answered are left out."
+              className="text-[10px]"
+            >
+              Send now
+            </Button>
+          )}
+        </p>
+      )}
+    </>
+  )
   const inputBlock = (
-    state.dm.status === 'exited' ? (
+    <>
+      {extras}
+      {state.dm.status === 'exited' ? (
             <div className="flex items-center gap-3">
               <span className="text-[var(--dim)]">The DM session ended.</span>
               <Button onClick={() => postJson('/api/restart')} className="text-[10px]">
@@ -152,14 +215,14 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
               {choices && (
                 <div className="flex flex-wrap gap-3">
                   {choices.map((c) => (
-                    <Button key={c} disabled={!canType} onClick={() => submit(c)} className="text-[10px]">
+                    <Button key={c} disabled={!canSpeak} onClick={() => submit(c)} className="text-[10px]">
                       {c}
                     </Button>
                   ))}
                 </div>
               )}
               <form
-                className="flex gap-3"
+                className="flex flex-wrap gap-3"
                 onSubmit={(e) => {
                   e.preventDefault()
                   submit(draft)
@@ -179,30 +242,57 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
                     ))}
                   </select>
                 )}
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 basis-40">
                 <Input
                   id="player-input"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder={canType ? 'What do you do?' : mine.length === 0 && !isHost ? 'Take a seat to play.' : statusText}
-                  disabled={!canType}
+                  placeholder={lockedFor ? `${lockedFor} You can whisper to the DM.` : canType ? 'What do you do?' : mine.length === 0 && !isHost ? 'Take a seat to play.' : statusText}
+                  disabled={!(canSpeak || canWhisper)}
                   className="text-lg"
                   font="normal"
                 />
                 </div>
-                <Button type="submit" disabled={!canType || !draft.trim()} className="text-[10px]">
-                  Act
+                <Button type="submit" disabled={!canSpeak || !draft.trim()} className="text-[10px]">
+                  {answered ? 'Change' : 'Act'}
                 </Button>
+                {mine.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canWhisper || !draft.trim()}
+                    onClick={() => whisper(draft)}
+                    title="Tell the DM something that only the DM sees. It does not use your turn."
+                    className="text-[10px]"
+                  >
+                    Whisper
+                  </Button>
+                )}
               </form>
             </>
-          )
+          )}
+    </>
   )
   // The table screen has no input. It shows what the DM offers, so everyone at the table can read it.
-  const tableChoices = choices ? (
-    <p className="text-lg text-[var(--dim)]">
-      The DM offers: <span className="text-[var(--parchment)]">{choices.join(' · ')}</span>
-    </p>
-  ) : null
+  const tableChoices = (
+    <>
+      {choices && (
+        <p className="text-lg text-[var(--dim)]">
+          The DM offers: <span className="text-[var(--parchment)]">{choices.join(' · ')}</span>
+        </p>
+      )}
+      {awaiting && (
+        <p className="text-lg text-[var(--ember)]">
+          {awaiting.who === 'all' ? waitingText || 'Everyone answered.' : `The DM waits for ${nameOf(awaiting.who)}.`}
+          {isHost && awaiting.who === 'all' && awaiting.answered.length > 0 && awaiting.waiting.length > 0 && (
+            <Button size="sm" variant="outline" onClick={() => postJson('/api/send-now')} className="ml-3 text-[10px]">
+              Send now
+            </Button>
+          )}
+        </p>
+      )}
+    </>
+  )
   const overlays = (
     <>
       {state.roll_request && !showCreator && (

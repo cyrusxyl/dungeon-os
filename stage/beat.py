@@ -13,6 +13,19 @@ A beat is a few lines of markup, sent in one `dnd-cli show beat` call:
 The player adds bonuses and clicks Roll in the roll window; the DM gets the
 result as the next message. Put it last in the beat and end the turn.
 
+With several players:
+
+    @whisper cassara You see a key with your family sigil on the goblin's belt.
+    @choices-for sireth Grab the key | Leave it
+    @await all
+    @await sireth
+
+`@whisper` and `@choices-for` reach one player character's player only; the table
+and the other players do not see them. `@await all` makes the stage collect one
+answer from each present player, then send them to you together. `@await <pc>`
+lets only that player answer. Without `@await`, the first answer comes at once.
+Put `@await` last in the beat and end the turn.
+
 The party is on stage in every new room: the player characters come with
 `@scene`, so the DM does not `@enter` them. `@enter` is for NPCs.
 
@@ -44,7 +57,8 @@ def title(slug: str) -> str:
 USAGE = (
     "Beat lines: @scene <location-id> (the party comes with it) | @enter <actor-id> [position] | "
     "@exit <actor-id> | @narrate <text> | @say <actor-id> [emotion] <text> | "
-    "@choices <a> | <b> | ... | @roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
+    "@choices <a> | <b> | ... | @choices-for <pc-id> <a> | <b> | @whisper <pc-id> <text> | @await all|<pc-id> | "
+    "@roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
     "@explore <site-id> [<poi-id>|entrance]"
 )
 
@@ -121,6 +135,22 @@ def parse(text: str) -> list[dict]:
             if len(options) < 2:
                 raise BeatError(f"line {line_no}: @choices needs two or more options separated by '|'.")
             events.append({"type": "choices", "options": options})
+        elif command == "choices-for":
+            who, _, after = rest.partition(" ")
+            options = [o.strip() for o in after.split("|") if o.strip()]
+            if not who or len(options) < 2:
+                raise BeatError(f"line {line_no}: @choices-for needs a player character id and two or more options separated by '|'.")
+            events.append({"type": "choices", "who": _check_id(who, line_no, "character"), "options": options})
+        elif command == "whisper":
+            who, _, after = rest.partition(" ")
+            if not who or not after.strip():
+                raise BeatError(f"line {line_no}: @whisper needs a player character id and text. {USAGE}")
+            events.append({"type": "whisper", "who": _check_id(who, line_no, "character"), "text": after.strip()})
+        elif command == "await":
+            word = rest.split()[0].lower() if rest.split() else ""
+            if not word:
+                raise BeatError(f"line {line_no}: @await needs 'all' or a player character id. {USAGE}")
+            events.append({"type": "await", "who": word if word == "all" else _check_id(word, line_no, "character")})
         elif command == "roll":
             parts = rest.split()
             if len(parts) < 2:

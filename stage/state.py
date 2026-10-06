@@ -13,6 +13,7 @@ LOG_LIMIT = 60
 ROLL_LIMIT = 6
 DM_LOG_LIMIT = 30
 ACTIVITY_LIMIT = 12
+PRIVATE_LIMIT = 20
 AUTO_POSITIONS = ("left", "right", "center", "far-left", "far-right")
 
 
@@ -23,6 +24,8 @@ def empty() -> dict:
         "actors": {},
         "log": [],
         "choices": None,
+        "private": [],
+        "await": None,
         "roll_request": None,
         "dm": {"status": "starting"},
         "dm_log": [],
@@ -68,6 +71,7 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = None
         s["roll_request"] = None
         s["explore"] = None
+        s["await"] = None
     elif kind == "explore":
         s["explore"] = event["site"]
         s["actors"] = {}
@@ -86,6 +90,8 @@ def apply(state: dict, event: dict) -> dict:
         s["actors"].pop(event["actor"], None)
     elif kind == "clear":
         s["actors"] = {}
+    elif kind == "await_done":
+        s["await"] = None  # the server sent the answers to the DM
     elif kind in ("narrate", "say"):
         if kind == "say":
             actor = dict(s["actors"].get(event["actor"]) or {"position": _free_position(s["actors"])})
@@ -94,8 +100,14 @@ def apply(state: dict, event: dict) -> dict:
         s["log"] = (s["log"] + [{**event, "seq": s["seq"]}])[-LOG_LIMIT:]
         s["choices"] = None
         s["roll_request"] = None
+        s["await"] = None  # the DM answered; a later `@await` in the same beat sets it again
     elif kind == "choices":
-        s["choices"] = {"options": event["options"], "seq": s["seq"]}
+        s["choices"] = {"options": event["options"], "seq": s["seq"]} | ({"who": event["who"]} if event.get("who") else {})
+    elif kind == "whisper":
+        # Only the server hands this to the owner of `who` (stage/server.py snapshot); it is never in the public log.
+        s["private"] = (s["private"] + [{"who": event["who"], "text": event["text"], "seq": s["seq"]}])[-PRIVATE_LIMIT:]
+    elif kind == "await":
+        s["await"] = {"who": event["who"], "seq": s["seq"]}
     elif kind == "roll_request":
         s["roll_request"] = {k: v for k, v in event.items() if k not in ("type", "beat")} | {"seq": s["seq"]}
     elif kind == "roll_done":

@@ -872,6 +872,11 @@ def test_seats() -> None:
             stage.submit = fake
             stage.state["dm"] = {"status": "idle"}
             get = lambda path, d=A: api(app, "GET", path, device=d)
+
+            def set_turn(cid):
+                st = combat.load_state(c)
+                st["active_encounter"]["current_turn"] = cid
+                combat.save_state(c, st)
             post = lambda path, b, d=A: api(app, "POST", path, b, device=d)
 
             status, r = await api(app, "GET", "/api/me", device=None)
@@ -912,6 +917,7 @@ def test_seats() -> None:
             check("a player's line is tagged with player and character", sent == ["[Alex as Aragorn] I open the door"])
             sent.clear()
             await post("/api/seat/claim", {"who": "legolas", "name": "Alex"})
+            set_turn("legolas")
             status, r = await post("/api/input", {"text": "hi", "who": "gimli"})
             check("a line for a character that is not yours is refused", status == 403)
             status, r = await post("/api/input", {"text": "hi", "who": "legolas"})
@@ -992,8 +998,176 @@ def test_seats() -> None:
             await post("/api/input", {"text": "hello", "as_host": True}, A)
             check("a guest cannot send untagged lines", sent == [])
             await post("/api/seat/claim", {"who": "legolas", "name": "Alex"}, A)
+            set_turn("legolas")
             await post("/api/input", {"text": "hello", "as_host": True}, A)
             check("as_host from a non-host stays tagged", sent == ["[Alex as Legolas] hello"])
+            await app.state.table.stop()
+        asyncio.run(routes())
+
+
+def test_table_talk() -> None:
+    print("several players: whispers, awaited answers, turn rules")
+    import asyncio
+    import shutil
+    import subprocess
+
+    from dnd_cli import combat
+    from stage.server import create_app
+
+    check("@whisper parses and continues on the next line", beat.parse("@whisper cassara A key.\nIt bears your sigil.") == [
+        {"type": "whisper", "who": "cassara", "text": "A key. It bears your sigil."}])
+    check("@choices-for names the player character", beat.parse("@choices-for sireth Grab it | Leave it") == [
+        {"type": "choices", "who": "sireth", "options": ["Grab it", "Leave it"]}])
+    check("@await takes all or a character", [e["who"] for e in beat.parse("@await all\n@await sireth")] == ["all", "sireth"])
+    check("bad table-talk lines are refused", all(raises(lambda t=t: beat.parse(t)) for t in (
+        "@whisper cassara", "@whisper", "@choices-for sireth One", "@choices-for", "@await")))
+    s = state.apply(state.empty(), {"type": "whisper", "who": "cassara", "text": "A key."})
+    check("a whisper is private state, not log", s["private"] == [{"who": "cassara", "text": "A key.", "seq": 1}] and s["log"] == [])
+    s = state.apply(s, {"type": "await", "who": "all"})
+    check("an await survives a busy DM and a whisper", s["await"]["who"] == "all"
+          and state.apply(s, {"type": "dm_status", "status": "busy"})["await"] is not None
+          and state.apply(s, {"type": "whisper", "who": "x", "text": "y"})["await"] is not None)
+    check("the DM's story, or the answers going out, end the await", all(state.apply(s, e)["await"] is None for e in (
+        {"type": "narrate", "text": "x"}, {"type": "say", "actor": "a", "text": "x"}, {"type": "scene", "location": "x"}, {"type": "await_done"})))
+    check("an await at the end of a beat stays", [state.apply(state.empty(), e) for e in beat.parse("@narrate Hi\n@await all")][-1]["await"] is not None
+          and state.apply(state.apply(state.empty(), {"type": "narrate", "text": "Hi"}), {"type": "await", "who": "all"})["await"]["who"] == "all")
+    check("targeted choices keep who", state.apply(state.empty(), {"type": "choices", "who": "sireth", "options": ["a", "b"]})["choices"]["who"] == "sireth")
+
+    src = Path(__file__).parent / "fixtures" / "example-campaign"
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp) / "camp"
+        shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
+        tracked = subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split()
+        for rel in tracked:
+            got = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=src, capture_output=True)
+            if got.returncode == 0:
+                (c / rel).write_bytes(got.stdout)
+        A, B, G = "device-alex-00000000", "device-sam-000000000", "device-guest-0000000"
+
+        async def routes():
+            app = create_app(None)
+            stage = await app.state.table.start(c, ["cat"])
+            sent = []
+
+            async def fake(text):
+                sent.append(text)
+            stage.submit = fake
+            post = lambda path, b, d=A: api(app, "POST", path, b, device=d)
+            await api(app, "GET", "/api/me", device=A)  # A is the host
+            stage.seats.claim(A, "aragorn", "Alex")
+            stage.seats.claim(B, "legolas", "Sam")
+            idle = lambda: stage.fold([{"type": "dm_status", "status": "idle"}])
+            busy = lambda: stage.fold([{"type": "dm_status", "status": "busy"}])
+            idle()
+
+            stage.fold([{"type": "whisper", "who": "legolas", "text": "A key."},
+                        {"type": "choices", "who": "legolas", "options": ["Take", "Leave"]},
+                        {"type": "dm_status", "status": "idle", "dm_text": "secret DM notes"}])
+            a, b, nobody = (stage.snapshot(d)["state"] for d in (A, B, None))
+            check("a whisper reaches only its player", b["private"][0]["text"] == "A key." and a["private"] == [] and nobody["private"] == [])
+            check("targeted choices reach only their player", b["choices"]["options"] == ["Take", "Leave"] and a["choices"] is None and nobody["choices"] is None)
+            check("the DM's log reaches only the host", a["dm_log"] == ["secret DM notes"] and b["dm_log"] == [] and nobody["dm_log"] == [])
+            check("the public log holds no whisper", all("key" not in json.dumps(x).lower() for x in (a["log"], b["log"])))
+
+            stage.fold([{"type": "await", "who": "all"}])
+            status, r = await post("/api/input", {"text": "I search"}, B)
+            check("an answer is held while others are awaited", status == 200 and r.get("queued") and sent == [])
+            aw = stage.snapshot(A)["state"]["awaiting"]
+            check("everyone sees who answered, not what", aw == {"who": "all", "waiting": ["aragorn"], "answered": ["legolas"]}
+                  and "I search" not in json.dumps(stage.snapshot(A)))
+            await post("/api/input", {"text": "I guard"}, A)
+            check("the last answer sends one prompt with both players", len(sent) == 1 and "answer together" in sent[0]
+                  and "[Sam as Legolas] I search" in sent[0] and "[Alex as Aragorn] I guard" in sent[0] and not stage.intents)
+            check("the await ends when the answers go out", stage.snapshot(A)["state"]["awaiting"] is None)
+            busy()
+
+            sent.clear(); idle()
+            stage.fold([{"type": "await", "who": "all"}])
+            await post("/api/input", {"text": "I wait"}, B)
+            status, r = await post("/api/send-now", {}, G)
+            check("a guest cannot force the answers", status == 403)
+            status, r = await post("/api/send-now", {}, A)
+            check("the host sends what was collected", status == 200 and len(sent) == 1 and "[Sam as Legolas] I wait" in sent[0] and "Alex" not in sent[0])
+            idle()
+            status, r = await post("/api/send-now", {}, A)
+            check("nothing to send is refused", status == 409)
+
+            sent.clear()
+            stage.fold([{"type": "await", "who": "all"}])
+            await post("/api/input", {"text": "I scout"}, B)
+            await post("/api/seat/away", {"who": "aragorn", "away": True}, A)
+            check("an away player is not awaited: the last answer goes out", len(sent) == 1 and "[Sam as Legolas] I scout" in sent[0]
+                  and "Away, skip their turns: Aragorn" in sent[0])
+            await post("/api/seat/away", {"who": "aragorn", "away": False}, A)
+            busy(); idle()
+
+            sent.clear()
+            stage.fold([{"type": "await", "who": "all"}])
+            await post("/api/input", {"text": "I hold"}, B)
+            status, r = await post("/api/input", {"text": "psst", "whisper": True}, B)
+            check("a whisper under an awaited round goes out, and keeps the answers held",
+                  status == 200 and sent == ["[Sam as Legolas, private] psst"] and stage.intents == {"legolas": "I hold"})
+            busy(); idle()
+            check("the DM going busy and idle keeps the await and the held answer", stage.state["await"] is not None and stage.intents == {"legolas": "I hold"})
+            sent.clear()
+            await post("/api/input", {"text": "I guard"}, A)
+            check("then the last answer sends both together", len(sent) == 1 and "I hold" in sent[0] and "I guard" in sent[0])
+            stage.fold([{"type": "narrate", "text": "The door opens."}])
+            idle()
+
+            stage.seats.owners["aragorn"] = B  # solo: one device plays both characters
+            sent.clear()
+            stage.fold([{"type": "await", "who": "all"}])
+            await post("/api/input", {"text": "we go in", "who": "legolas"}, B)
+            check("one device with two seats answers once", len(sent) == 1 and "[Sam as Legolas] we go in" in sent[0]
+                  and stage.snapshot(B)["state"]["awaiting"] is None)
+            stage.seats.owners["aragorn"] = A
+            stage.fold([{"type": "narrate", "text": "x"}])
+            idle()
+
+            stage.seats.claim(G, "gimli", "Gus")
+            stage.seats.claim(G, "boromir", "Gus") if (c / "characters" / "boromir.json").exists() else None
+            stage.fold([{"type": "await", "who": "gimli"}])
+            stage.seats.release(G, "gimli")
+            sent.clear()
+            status, r = await post("/api/input", {"text": "free"}, B)
+            check("an awaited character nobody plays locks no one out", status == 200 and sent == ["[Sam as Legolas] free"])
+            stage.fold([{"type": "narrate", "text": "x"}])
+
+            sent.clear()
+            stage.fold([{"type": "await", "who": "aragorn"}])
+            status, r = await post("/api/input", {"text": "me first"}, B)
+            check("only the awaited player may answer", status == 409 and "waits for Aragorn" in r["error"] and sent == [])
+            status, r = await post("/api/input", {"text": "psst", "whisper": True}, B)
+            check("a whisper to the DM is always allowed", status == 200 and sent == ["[Sam as Legolas, private] psst"])
+            status, r = await post("/api/input", {"text": "my answer"}, A)
+            check("the awaited player answers at once, tagged", status == 200 and sent[-1] == "[Alex as Aragorn] my answer"
+                  and stage.state["await"] is None)
+            busy(); idle()
+
+            stage.state["dm"] = {"status": "busy"}
+            status, r = await post("/api/input", {"text": "now?"}, A)
+            check("a busy DM refuses a line", status == 409)
+            idle()
+
+            st = combat.load_state(c)
+            st["active_encounter"] = {"type": "combat", "round": 1, "participants": ["aragorn", "legolas"], "current_turn": "aragorn",
+                                      "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "legolas", "initiative": 5, "bonus": 3}],
+                                      "conditions": {}, "monsters": {}}
+            combat.save_state(c, st)
+            sent.clear()
+            status, r = await post("/api/input", {"text": "I shoot"}, B)
+            check("in a combat only the player on turn may speak", status == 409 and "Aragorn's turn" in r["error"])
+            status, r = await post("/api/input", {"text": "psst", "whisper": True}, B)
+            check("but anyone may whisper to the DM", status == 200)
+            status, r = await post("/api/input", {"text": "I swing"}, A)
+            check("the player on turn speaks", status == 200 and sent[-1] == "[Alex as Aragorn] I swing")
+
+            await post("/api/seat/away", {"who": "legolas", "away": True}, B)
+            sent.clear()
+            status, r = await post("/api/end-turn", {"who": "aragorn"}, A)
+            check("an away player's turn is skipped", status == 200 and any("Legolas is away" in x for x in r["lines"])
+                  and combat.load_state(c)["active_encounter"]["current_turn"] == "aragorn" and "Away, skip their turns: Legolas" in sent[-1])
             await app.state.table.stop()
         asyncio.run(routes())
 
@@ -1304,6 +1478,7 @@ if __name__ == "__main__":
     test_party()
     test_player_actions()
     test_seats()
+    test_table_talk()
     test_local_only()
     test_crawl()
     test_maps()

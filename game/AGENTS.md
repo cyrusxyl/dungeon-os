@@ -165,7 +165,7 @@ If the player action is a claim about a past event ("you told us the gate was op
 6. Ask "What do you do?"
 
 ### During Play
-- **For each round of interaction within a campaign, ask each player what they plan to do.** On the visual stage, offer options with an `@choices` line (the `stage` skill); the AskUserQuestion tool is blocked there. In the classic terminal view, use the AskUserQuestion tool if available to gather all player actions simultaneously
+- **For each round of interaction within a campaign, ask each player what they plan to do.** On the visual stage, offer options with an `@choices` line, and end a beat with `@await all` when every player must answer (the `stage` skill); the AskUserQuestion tool is blocked there. In the classic terminal view, use the AskUserQuestion tool if available to gather all player actions simultaneously
 - Listen to player intent, not exact rules syntax
 - Load appropriate skill for the situation
 - Execute tools deterministically
