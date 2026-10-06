@@ -66,6 +66,14 @@ export interface StoryLine {
   emotion?: string
 }
 
+/** One seat: a player at a character. `sid` is a public id for the device; the device token never leaves it. */
+export interface Seat {
+  who: string
+  player: string
+  sid: string
+  away: boolean
+}
+
 export interface StageState {
   seq: number
   scene: string | null
@@ -83,6 +91,11 @@ export interface StageState {
   creating: boolean
   party_mode: 'create' | 'premade'
   activity?: string[]
+  /** The `sid` of the host's device, once there is one. */
+  host: string | null
+  seats: Seat[]
+  /** The `sid` of the device that has the creator open; null while it is the host's. */
+  creator: string | null
 }
 
 /** One creature's roll in the roll window: the d20s, the tiles that add to it, and how it came out. */
@@ -131,6 +144,21 @@ export interface Roll {
   detail?: RollDetail
   seq: number
 }
+
+/** This browser's private token. It tells the server which device asks; there is no password. */
+export function deviceId(): string {
+  try {
+    let id = localStorage.getItem('dungeon-device')
+    if (!id) {
+      id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
+      localStorage.setItem('dungeon-device', id)
+    }
+    return id
+  } catch {
+    return memoryId
+  }
+}
+const memoryId = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')
 
 function wsUrl(path: string): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -188,16 +216,21 @@ export function useStage(onNoGame: () => void): { state: StageState | null; camp
 }
 
 export function wsPtyUrl(): string {
-  return wsUrl('/ws/pty')
+  return wsUrl(`/ws/pty?d=${deviceId()}`)
 }
 
 /** POST as JSON: the server refuses any other POST (see LocalOnly in stage/server.py). */
 export function postJson(url: string, body: unknown = {}): Promise<Response> {
-  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Device': deviceId() },
+    body: JSON.stringify(body),
+  })
 }
 
-export async function sendInput(text: string): Promise<void> {
-  await postJson('/api/input', { text })
+/** A line for the DM. `asHost` is a host control (End session): the DM gets it untagged. */
+export async function sendInput(text: string, who?: string, asHost = false): Promise<void> {
+  await postJson('/api/input', { text, who, as_host: asHost })
 }
 
 export function titleCase(id: string): string {

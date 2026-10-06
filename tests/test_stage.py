@@ -573,12 +573,18 @@ def test_cli_defaults_and_races() -> None:
     check("a sheet's race text maps to a race", actors.race_of("Drow (High Elf)") == "drow" and actors.race_of("Half-Elf") == "half-elf")
 
 
-async def call(app, method, target, body=None):
+HOST_DEVICE = "host-device-0000000000"
+
+
+async def call(app, method, target, body=None, device=HOST_DEVICE):
     """One request straight into the ASGI app (no httpx needed): (status, content type, bytes)."""
     path, _, query = target.partition("?")
     data = json.dumps(body).encode() if body is not None else b""
-    scope = {"type": "http", "method": method, "path": path, "query_string": query.encode(), "headers": [
-        (b"host", b"localhost"), (b"content-type", b"application/json")], "scheme": "http", "http_version": "1.1"}
+    headers = [(b"host", b"localhost"), (b"content-type", b"application/json")]
+    if device:
+        headers.append((b"x-device", device.encode()))
+    scope = {"type": "http", "method": method, "path": path, "query_string": query.encode(), "headers": headers,
+             "scheme": "http", "http_version": "1.1"}
     out = {"body": b""}
     sent = False
 
@@ -598,8 +604,8 @@ async def call(app, method, target, body=None):
     await app(scope, receive, send)
     return out["status"], out["type"], out["body"]
 
-async def api(app, method, target, body=None):
-    status, _, raw = await call(app, method, target, body)
+async def api(app, method, target, body=None, device=HOST_DEVICE):
+    status, _, raw = await call(app, method, target, body, device)
     return status, json.loads(raw)
 
 
@@ -724,6 +730,7 @@ def test_creator() -> None:
                 c = camp(tmp, {"party": "create"})
                 app = create_app(None)
                 stage = await app.state.table.start(c, ["cat"])
+                await api(app, "GET", "/api/me")  # the first device is the host
                 status, r = await api(app, "GET", "/api/creation/options")
                 check("options: served and memoized", status == 200 and r["classes"][0]["index"] == "fighter")
                 look = {"race": "elf", "body": "female", "skin": "light", "eyes": "green", "hair": "hair_long:blonde"}
@@ -779,6 +786,215 @@ def test_creator() -> None:
                 await app.state.table.stop()
             finally:
                 rules_cmd._api = saved
+        asyncio.run(routes())
+
+
+def test_seats() -> None:
+    print("seats and host: who may do what")
+    from stage.seats import SeatError
+
+    def raises(fn) -> bool:
+        try:
+            fn()
+        except SeatError:
+            return True
+        return False
+
+    import asyncio
+    import shutil
+    import subprocess
+
+    from dnd_cli import character, combat
+    from stage.seats import SeatError, Seats, sid
+    from stage.server import create_app
+
+    seats = Seats()
+    check("no host at first", not seats.is_host("a" * 16))
+    check("the first device to ask is the host", seats.ensure_host("a" * 16) and not seats.ensure_host("b" * 16))
+    seats.claim("a" * 16, "aragorn", "Alex")
+    check("a seat is taken", seats.owns("a" * 16, "aragorn") and not seats.owns("b" * 16, "aragorn"))
+    check("a second device cannot take it", raises(lambda: seats.claim("b" * 16, "aragorn", "Sam")))
+    check("one device may hold two seats", seats.claim("a" * 16, "legolas") is None and seats.mine("a" * 16) == ["aragorn", "legolas"])
+    check("a device cannot free another's seat", raises(lambda: seats.release("b" * 16, "aragorn")))
+    seats.claim("b" * 16, "gimli", "Sam")
+    seats.release("a" * 16, "gimli")  # the host frees a seat
+    check("the host frees any seat", "gimli" not in seats.owners)
+    seats.set_away("a" * 16, "aragorn", True)
+    check("away is kept, and cleared with the seat", seats.public()["seats"][0]["away"] is True)
+    seats.release("a" * 16, "aragorn")
+    check("a freed seat is not away", "aragorn" not in seats.away)
+    check("the public view has no device token", "a" * 16 not in json.dumps(seats.public()) and sid("a" * 16) == seats.public()["host"])
+    check("a wrong host code is refused", raises(lambda: seats.take_host("b" * 16, "WXYZ" if seats.code != "WXYZ" else "ABCD")))
+    old = seats.code
+    seats.take_host("b" * 16, old.lower())
+    check("the right code gives the host over, once", seats.is_host("b" * 16) and seats.code != old)
+
+    import stage.seats as seats_module
+
+    now = [1000.0]
+    real_time, seats_module.time = seats_module.time, type("T", (), {"monotonic": staticmethod(lambda: now[0])})
+    try:
+        locked = Seats()
+        locked.ensure_host("a" * 16)
+        for _ in range(5):
+            raises(lambda: locked.take_host("b" * 16, "????"))
+        good = locked.code
+        check("five wrong codes lock the door, even for the right code", raises(lambda: locked.take_host("b" * 16, good)) and locked.is_host("a" * 16))
+        now[0] += 61
+        locked.take_host("b" * 16, good)
+        check("the door opens again after a minute", locked.is_host("b" * 16))
+    finally:
+        seats_module.time = real_time
+
+    src = Path(__file__).parent / "fixtures" / "example-campaign"
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp) / "camp"
+        shutil.copytree(src, c, ignore=shutil.ignore_patterns("stage", ".cache"))
+        tracked = subprocess.run(["git", "ls-files", "."], cwd=src, capture_output=True, text=True).stdout.split()
+        for rel in tracked:
+            got = subprocess.run(["git", "show", f"HEAD:./{rel}"], cwd=src, capture_output=True)
+            if got.returncode == 0:
+                (c / rel).write_bytes(got.stdout)
+        st = combat.load_state(c)
+        st["active_encounter"] = {"type": "combat", "round": 1, "participants": ["aragorn", "legolas"], "current_turn": "aragorn",
+                                  "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "legolas", "initiative": 5, "bonus": 3}],
+                                  "conditions": {}, "monsters": {}}
+        combat.save_state(c, st)
+        A, B, G = "device-alex-00000000", "device-sam-000000000", "device-guest-0000000"
+
+        async def routes():
+            app = create_app(None)
+            stage = await app.state.table.start(c, ["cat"])
+            sent = []
+
+            async def fake(text):
+                sent.append(text)
+            stage.submit = fake
+            stage.state["dm"] = {"status": "idle"}
+            get = lambda path, d=A: api(app, "GET", path, device=d)
+            post = lambda path, b, d=A: api(app, "POST", path, b, device=d)
+
+            status, r = await api(app, "GET", "/api/me", device=None)
+            check("no device id: refused", status == 403)
+            status, r = await api(app, "GET", "/api/me", device="short")
+            check("a bad device id: refused", status == 403)
+            status, r = await get("/api/me")
+            check("the first device is the host and sees the code", status == 200 and r["host"] and len(r["host_code"]) == 4)
+            code = r["host_code"]
+            status, r = await get("/api/me", B)
+            check("the second device is a guest with no code", not r["host"] and r["host_code"] is None and r["sid"] == sid(B))
+            check("the snapshot names the host by sid, not by token",
+                  stage.snapshot()["state"]["host"] == sid(A) and A not in json.dumps(stage.snapshot()))
+
+            status, r = await post("/api/action", {"who": "aragorn", "action": "dash"})
+            check("no seat: no action", status == 403)
+            status, r = await post("/api/seat/claim", {"who": "aragorn", "name": "Alex"})
+            check("a seat is claimed", status == 200 and stage.seats.owns(A, "aragorn"))
+            status, r = await post("/api/seat/claim", {"who": "aragorn", "name": "Sam"}, B)
+            check("a taken seat is refused", status == 403 and "Alex" in r["error"])
+            status, r = await post("/api/seat/claim", {"who": "../x"}, B)
+            check("a seat for no character is 404", status == 404)
+            status, r = await post("/api/action", {"who": "aragorn", "action": "dash"}, B)
+            check("another player cannot act for the character", status == 403 and not sent)
+            status, r = await post("/api/end-turn", {"who": "aragorn"}, B)
+            check("another player cannot end the turn", status == 403)
+            status, r = await post("/api/resource", {"who": "aragorn", "name": "Second Wind"}, B)
+            check("another player cannot spend a resource", status == 403)
+            status, r = await post("/api/effects", {"who": "aragorn", "from": "aragorn", "effect": "bless"}, B)
+            check("another player cannot cast for the owner", status == 403)
+            status, r = await post("/api/action", {"who": "aragorn", "action": "dash"})
+            check("the owner acts", status == 200 and sent)
+
+            status, r = await post("/api/input", {"text": "I open the door"}, G)
+            check("a guest with no seat cannot talk to the DM", status == 403)
+            sent.clear()
+            await post("/api/input", {"text": "I open the door"})
+            check("a player's line is tagged with player and character", sent == ["[Alex as Aragorn] I open the door"])
+            sent.clear()
+            await post("/api/seat/claim", {"who": "legolas", "name": "Alex"})
+            status, r = await post("/api/input", {"text": "hi", "who": "gimli"})
+            check("a line for a character that is not yours is refused", status == 403)
+            status, r = await post("/api/input", {"text": "hi", "who": "legolas"})
+            check("with two seats the player says which one", status == 200 and sent == ["[Alex as Legolas] hi"])
+            await post("/api/seat/release", {"who": "legolas"})
+
+            for path in ("/api/game/save", "/api/restart", "/api/game/quit"):
+                status, r = await post(path, {}, B)
+                check(f"a guest cannot use {path}", status == 403)
+            status, r = await post("/api/game/start", {"campaign": "x"}, B)
+            check("a guest cannot start another game", status == 403)
+            status, r = await post("/api/settings", {"agent_framework": "claude"}, B)
+            check("a guest cannot change settings", status == 403)
+            status, r = await post("/api/campaign/delete", {"campaign": "x"}, B)
+            check("a guest cannot delete a campaign", status == 403)
+            status, r = await post("/api/game/load", {"campaign": "x", "save": "y"}, B)
+            check("a guest cannot load a save", status == 403)
+            status, r = await post("/api/creation/done", {}, B)
+            check("a guest cannot close another's creator", status == 403)
+            status, r = await post("/api/site/x/move", {"dir": "n"}, G)
+            check("a guest with no seat cannot walk the party", status == 403)
+            status, r = await post("/api/map/travel", {"map": "x", "to": "y"}, G)
+            check("a guest with no seat cannot travel", status == 403)
+
+            async def socket(path, device):
+                """Open a websocket straight on the app; the messages the server sent."""
+                sent_msgs = []
+                inbox = [{"type": "websocket.connect"}]
+
+                async def receive():
+                    if inbox:
+                        return inbox.pop(0)
+                    return {"type": "websocket.disconnect", "code": 1000}
+
+                async def send(msg):
+                    sent_msgs.append(msg)
+                scope = {"type": "websocket", "path": path, "query_string": f"d={device}".encode(), "scheme": "ws",
+                         "headers": [(b"host", b"localhost")], "subprotocols": []}
+                await app(scope, receive, send)
+                return sent_msgs
+            closed = [m for m in await socket("/ws/pty", B) if m["type"] == "websocket.close"]
+            check("a guest's console socket is closed (1008)", closed and closed[0]["code"] == 1008)
+            check("the host's console socket stays open", not [m for m in await socket("/ws/pty", A) if m["type"] == "websocket.close" and m.get("code") == 1008])
+            status, r = await post("/api/host/claim", {"code": "ZZZZ" if code != "ZZZZ" else "AAAA"}, B)
+            check("a wrong host code is refused", status == 403 and stage.seats.is_host(A))
+            status, r = await post("/api/host/claim", {"code": code}, B)
+            check("the table screen takes the host with the code", status == 200 and stage.seats.is_host(B) and not stage.seats.is_host(A))
+            status, r = await post("/api/game/save", {}, A)
+            check("the old host is a guest now", status == 403)
+            status, r = await post("/api/seat/release", {"who": "aragorn"}, B)
+            check("the new host frees a seat", status == 200 and not stage.seats.owns(A, "aragorn"))
+            status, r = await post("/api/action", {"who": "aragorn", "action": "dash"}, B)
+            check("the host has no seat by being host", status == 403)
+
+            status, r = await post("/api/seat/claim", {"who": "aragorn", "name": "Sam"}, B)
+            status, r = await post("/api/seat/away", {"who": "aragorn", "away": True}, G)
+            check("only the owner or host sets away", status == 403)
+            status, r = await post("/api/seat/away", {"who": "aragorn", "away": True}, B)
+            check("away shows to everyone", status == 200 and stage.snapshot()["state"]["seats"][0]["away"] is True)
+            status, r = await post("/api/creation/open", {}, B)
+            check("the host opens the creator", status == 200 and stage.creator == B)
+            status, r = await post("/api/creation/open", {}, A)
+            check("a second device cannot open it over the first", status == 409 and stage.creator == B)
+            status, r = await post("/api/creation/done", {}, A)
+            check("and cannot close it", status == 403)
+            status, r = await post("/api/creation/done", {}, B)
+            check("the opener closes it", status == 200 and not stage.opened and stage.creator is None)
+            await post("/api/creation/open", {}, A)
+            status, r = await post("/api/creation/open", {}, B)
+            check("the host cannot open it over a player either", status == 409 and stage.creator == A)
+            status, r = await post("/api/creation/done", {}, B)
+            check("but the host can close a creator that a dead phone left open", status == 200 and not stage.opened)
+
+            sent.clear()
+            await post("/api/input", {"text": "End the session now", "as_host": True}, B)
+            check("a host control reaches the DM untagged", sent == ["End the session now"])
+            sent.clear()
+            await post("/api/input", {"text": "hello", "as_host": True}, A)
+            check("a guest cannot send untagged lines", sent == [])
+            await post("/api/seat/claim", {"who": "legolas", "name": "Alex"}, A)
+            await post("/api/input", {"text": "hello", "as_host": True}, A)
+            check("as_host from a non-host stays tagged", sent == ["[Alex as Legolas] hello"])
+            await app.state.table.stop()
         asyncio.run(routes())
 
 
@@ -971,6 +1187,8 @@ def test_player_actions() -> None:
         async def routes():
             app = create_app(None)
             stage = await app.state.table.start(c, ["cat"])
+            for who in ("aragorn", "legolas"):
+                stage.seats.claim(HOST_DEVICE, who, "Alex")  # the test device plays both
             post = lambda path, b: api(app, "POST", path, b)
             stage.state["dm"] = {"status": "busy"}
             status, r = await post("/api/effects", {"who": "aragorn", "op": "add", "effect": "bless"})
@@ -1085,6 +1303,7 @@ if __name__ == "__main__":
     test_activity()
     test_party()
     test_player_actions()
+    test_seats()
     test_local_only()
     test_crawl()
     test_maps()

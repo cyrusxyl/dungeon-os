@@ -8,6 +8,11 @@
   server is the only place that folds events (stage/state.py).
 - `/api/input` submits a line the player typed in the input box.
 
+Who may do what: a device is a browser with a random token (X-Device header, `?d=` on a websocket; see
+stage/seats.py). The first device is the host: Save, Load, Quit, Restart and the DM console are host-only. A
+player acts only for the characters its device has claimed (a seat), and its lines reach the DM tagged
+`[Player as Character]`. There is no password; the Host header check below still guards DNS rebinding.
+
 Allowlist: besides `{campaign}/stage/`, this server reads only state.json,
 config.json (pitch and party mode) and characters/*.json (for the party panel
 and the creator). It writes characters/, players/ and state.json (through
@@ -49,6 +54,7 @@ from dnd_cli import actions, character, combat, effects, resources, saves
 from stage import actors, beat, crawl, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
+from stage.seats import DEVICE_RE, SeatError, Seats, sid
 
 STAGE_DIR = Path(__file__).resolve().parent
 WEB_DIST = STAGE_DIR / "web" / "dist"
@@ -117,6 +123,8 @@ class Stage:
         self.event_clients: set[WebSocket] = set()
         self.pty_clients: set[WebSocket] = set()
         self.loop: asyncio.AbstractEventLoop | None = None
+        self.seats = Seats()
+        self.creator: str | None = None  # the device that has the character creator open; None: the host
         self.pending: list[str] = []  # prompts for the DM, sent one at a time when it is idle
         self.seen_ids = character_ids(campaign_dir)  # sheets that existed when the creator opened
         # Open from the start for a new party; it stays open until the player is done (not when the first sheet lands).
@@ -173,20 +181,23 @@ class Stage:
         return self.opened
 
     def snapshot(self) -> dict:
-        state = {**self.state, "creating": self.creating(), "party_mode": self.party_mode()}
+        state = {**self.state, "creating": self.creating(), "party_mode": self.party_mode(), **self.seats.public(),
+                 "creator": sid(self.creator) if self.creator else None}
         req = state.get("roll_request")
         if req and req.get("hide"):
             # A hidden DC stays on the server: the roll uses the copy in self.state.
             state["roll_request"] = {k: v for k, v in req.items() if k != "dc"}
         return {"kind": "snapshot", "state": state, "campaign": self.campaign_dir.name}
 
-    def open_creator(self) -> None:
+    def open_creator(self, device: str | None = None) -> None:
         self.opened = True
+        self.creator = device
         self.seen_ids = character_ids(self.campaign_dir)
 
     def close_creator(self) -> None:
         """Close the creator; queue one prompt that names the characters made since it opened."""
         self.opened = False
+        self.creator = None
         now = character_ids(self.campaign_dir)
         new = [i for i in now if i not in self.seen_ids]
         if new:
@@ -282,7 +293,7 @@ LOCAL_HOSTS = {"127.0.0.1", "localhost"}
 
 
 def request_allowed(scope_type: str, method: str, headers: dict[str, str], hosts: frozenset[str] = frozenset(LOCAL_HOSTS)) -> bool:
-    """Only this machine's own browser tab may drive the DM.
+    """Only a browser tab of this site may talk to the server, and only on a host name the owner allowed.
 
     The DM terminal accepts keystrokes, so a web page on another site must not
     reach it: WebSockets have no CORS, and a cross-site text/plain POST needs
@@ -317,7 +328,7 @@ class LocalOnly:
                 else:
                     await send({"type": "http.response.start", "status": 403,
                                 "headers": [(b"content-type", b"text/plain")]})
-                    await send({"type": "http.response.body", "body": b"Forbidden: local browser tab only."})
+                    await send({"type": "http.response.body", "body": b"Forbidden: this host name or page origin is not allowed."})
                 return
         await self.app(scope, receive, send)
 
@@ -511,10 +522,13 @@ class Table:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.on_start: Callable[[], None] = lambda: None
 
-    async def start(self, campaign_dir: Path, dm_command: list[str] | None = None, resume: bool = False) -> Stage:
+    async def start(self, campaign_dir: Path, dm_command: list[str] | None = None, resume: bool = False,
+                    seats: Seats | None = None) -> Stage:
         await self.stop()
         self.on_start()
         stage = Stage(campaign_dir, dm_command or self.command_factory(campaign_dir, resume=resume))
+        if seats is not None:  # a load keeps the host and the seats
+            stage.seats = seats
         # A save of the files as they are, before the DM touches them.
         await asyncio.to_thread(stage.autosave, "session start")
         stage.loop = self.loop
@@ -522,6 +536,8 @@ class Table:
         stage.fold(stage.read_new_events())
         stage.state["dm"] = {"status": "starting"}
         stage.dm.start()
+        # The host code is also on the server's log: if the host's device dies, the owner can read it there.
+        print(f"dungeon-os: host code {stage.seats.code}", file=sys.stderr, flush=True)
         self.tail_task = asyncio.ensure_future(stage.tail())
         self.stage = stage
         return stage
@@ -594,6 +610,42 @@ def create_app(
             raise HTTPException(409, "No game is running.")
         return table.stage
 
+    # -- who is asking ---------------------------------------------------
+
+    def device_of(request: Request | WebSocket) -> str | None:
+        token = request.headers.get("x-device") or request.query_params.get("d") or ""
+        return token if DEVICE_RE.match(token) else None
+
+    def require_device(request: Request) -> str:
+        device = device_of(request)
+        if device is None:
+            raise HTTPException(403, "This browser has no device id. Reload the page.")
+        return device
+
+    def menu_gate(request: Request) -> str:
+        """A menu action: anyone may use it while no game runs; with a game, only the host."""
+        device = require_device(request)
+        if table.stage and not table.stage.seats.is_host(device):
+            raise HTTPException(403, "Only the host can do that.")
+        return device
+
+    def host_only(request: Request) -> Stage:
+        stage = need()
+        if not stage.seats.is_host(require_device(request)):
+            raise HTTPException(403, "Only the host can do that.")
+        return stage
+
+    def own(request: Request, stage: Stage, who: str) -> str:
+        """The device, when it plays `who`. Nobody acts for another player's character."""
+        device = require_device(request)
+        if not stage.seats.owns(device, who):
+            raise HTTPException(403, "That is not your character. Take a seat first.")
+        return device
+
+    def can_play(request: Request, stage: Stage) -> None:
+        if not stage.seats.can_play(require_device(request)):
+            raise HTTPException(403, "Take a seat first.")
+
     async def index(request: Request):
         page = WEB_DIST / "index.html"
         if not page.exists():
@@ -623,6 +675,9 @@ def create_app(
         if stage is None:
             await ws.close(code=4000)
             return
+        if not stage.seats.is_host(device_of(ws)):
+            await ws.close(code=1008)  # the console takes keystrokes into the DM: host only
+            return
         await ws.send_bytes(bytes(stage.dm.scrollback))
         stage.pty_clients.add(ws)
         try:
@@ -636,17 +691,74 @@ def create_app(
             stage.pty_clients.discard(ws)
 
     async def api_input(request: Request):
+        """A line for the DM. A player's line carries the player and the character; the host may speak untagged."""
+        stage = need()
+        device = require_device(request)
         body = await request.json()
-        await need().submit(str(body.get("text", "")))
+        mine = stage.seats.mine(device)
+        who = str(body["who"]) if body.get("who") else (mine[0] if len(mine) == 1 else None)
+        text = str(body.get("text", ""))
+        if body.get("as_host") and stage.seats.is_host(device):
+            who = None  # a host control (End session): the DM must not read it as a character's words
+        if who:
+            if who not in mine:
+                raise HTTPException(403, "That is not your character. Take a seat first.")
+            name = character.load(stage.campaign_dir, who).get("name", who)
+            text = f"[{stage.seats.player(device, who)} as {name}] {text}"
+        elif not stage.seats.is_host(device):
+            raise HTTPException(403, "Take a seat first.")
+        await stage.submit(text)
         return JSONResponse({"ok": True})
 
     async def api_restart(request: Request):
-        stage = need()
+        stage = host_only(request)
         if not stage.dm.alive:
             stage.dm.command = table.command_factory(stage.campaign_dir, resume=True)
             stage.dm.start()
             await stage._local_event({"type": "dm_status", "status": "starting"})
         return JSONResponse({"ok": True, "alive": stage.dm.alive})
+
+    async def api_me(request: Request):
+        """This device: its public id, and the host code when it is the host."""
+        stage = need()
+        device = require_device(request)
+        had_host = stage.seats.host is not None
+        host = stage.seats.ensure_host(device)
+        if not had_host:
+            await stage.broadcast(stage.snapshot())
+        return JSONResponse({"sid": sid(device), "host": host, "host_code": stage.seats.code if host else None})
+
+    async def seat_call(request: Request, fn):
+        stage = need()
+        device = require_device(request)
+        body = await request.json()
+        who = pc_or_404(stage, body.get("who"))
+        try:
+            fn(stage.seats, device, who, body)
+        except SeatError as e:
+            return error(str(e), 403)
+        await stage.broadcast(stage.snapshot())
+        return JSONResponse({"ok": True})
+
+    async def api_seat_claim(request: Request):
+        return await seat_call(request, lambda s, d, who, b: s.claim(d, who, str(b.get("name") or "")))
+
+    async def api_seat_release(request: Request):
+        return await seat_call(request, lambda s, d, who, b: s.release(d, who))
+
+    async def api_seat_away(request: Request):
+        return await seat_call(request, lambda s, d, who, b: s.set_away(d, who, bool(b.get("away"))))
+
+    async def api_host_claim(request: Request):
+        stage = need()
+        device = require_device(request)
+        try:
+            stage.seats.take_host(device, str((await request.json()).get("code", "")))
+        except SeatError as e:
+            return error(str(e), 403)
+        print(f"dungeon-os: new host code {stage.seats.code}", file=sys.stderr, flush=True)
+        await stage.broadcast(stage.snapshot())
+        return JSONResponse({"ok": True})
 
     async def api_menu(request: Request):
         return JSONResponse(_menu(table))
@@ -654,6 +766,7 @@ def create_app(
     async def api_game_start(request: Request):
         from dnd_cli.campaign import CampaignError, create_campaign, resolve_campaign_dir
 
+        device = menu_gate(request)
         body = await request.json()
         try:
             if body.get("new_name"):
@@ -665,7 +778,8 @@ def create_app(
         except (CampaignError, OSError) as e:
             return error(str(e), 400)
         # "continue": the DM keeps its conversation. Anything else: a new DM session that reads the files.
-        await table.start(campaign, resume=body.get("dm") == "continue")
+        stage = await table.start(campaign, resume=body.get("dm") == "continue")
+        stage.seats.ensure_host(device)  # whoever starts the game is the host
         return JSONResponse({"game": campaign.name})
 
     async def api_saves(request: Request):
@@ -678,7 +792,7 @@ def create_app(
         return JSONResponse({"saves": await asyncio.to_thread(saves.list_saves, campaign)})
 
     async def api_game_save(request: Request):
-        stage = need()
+        stage = host_only(request)
         if not stage.dm_ready():
             return error("Wait until the DM has finished its turn.")
         name = " ".join(str((await request.json()).get("name", "")).split())
@@ -693,6 +807,8 @@ def create_app(
         from dnd_cli.campaign import CampaignError, resolve_campaign_dir
         from view.settings import clear_session
 
+        device = menu_gate(request)
+        seats = table.stage.seats if table.stage else None
         body = await request.json()
         try:
             campaign = resolve_campaign_dir(str(body.get("campaign", "")))
@@ -701,13 +817,15 @@ def create_app(
         except (CampaignError, OSError) as e:
             return error(str(e), 400)
         clear_session(campaign.name)
-        await table.start(campaign)
+        stage = await table.start(campaign, seats=seats)
+        stage.seats.ensure_host(device)
         return JSONResponse({"game": campaign.name})
 
     async def api_campaign_delete(request: Request):
         from dnd_cli.campaign import CampaignError, delete_campaign
         from view.settings import clear_session
 
+        menu_gate(request)
         slug = str((await request.json()).get("campaign", ""))
         if table.stage and table.stage.campaign_dir.name == slug:
             return error("This campaign is running. Quit the game first.", 409)
@@ -719,12 +837,15 @@ def create_app(
         return JSONResponse(_menu(table))
 
     async def api_game_quit(request: Request):
+        if table.stage:
+            host_only(request)
         await table.stop()
         return JSONResponse({"game": None})
 
     async def api_settings(request: Request):
         from view.settings import FRAMEWORKS, save_settings
 
+        menu_gate(request)
         body = await request.json()
         if body.get("agent_framework") not in FRAMEWORKS:
             return error("unknown agent framework", 400)
@@ -788,21 +909,31 @@ def create_app(
         from dnd_cli.combat import RulesError
 
         stage = need()
+        device = require_device(request)
         body = await request.json()
         try:
             made = await run_in_threadpool(make_character, stage.campaign_dir, body)
         except (RulesError, CharacterError, lpc.ActorError, AssetError) as e:
             return error(str(e), 400)
+        stage.seats.claim(device, made["id"], str(body.get("player_name") or ""))  # the maker plays it
+        await stage.broadcast(stage.snapshot())
         return JSONResponse(made)
 
     async def api_creation_open(request: Request):
         stage = need()
-        stage.open_creator()
+        device = require_device(request)
+        owner = stage.creator or stage.seats.host  # an open creator with no owner belongs to the host
+        if stage.opened and owner != device:
+            return error("Someone else is making a character.", 409)
+        stage.open_creator(device)
         await stage.broadcast(stage.snapshot())
         return JSONResponse({"ok": True})
 
     async def api_creation_done(request: Request):
         stage = need()
+        device = require_device(request)
+        if not (stage.seats.is_host(device) or device == stage.creator):
+            raise HTTPException(403, "Only the player who opened the creator, or the host, can close it.")
         stage.close_creator()
         await stage.broadcast(stage.snapshot())
         return JSONResponse({"ok": True})
@@ -878,6 +1009,7 @@ def create_app(
         body = await request.json()
         who = pc_or_404(stage, body.get("who"))
         src = pc_or_404(stage, body.get("from") or who)
+        own(request, stage, src)  # the giver acts; the receiver may be anyone in the party
         try:
             await run_in_threadpool(with_rules, stage, lambda st: actions.grant(stage.campaign_dir, st, src, who, str(body.get("effect"))))
         except (combat.RulesError, character.CharacterError) as e:
@@ -889,6 +1021,7 @@ def create_app(
         stage = idle_stage()
         body = await request.json()
         who = pc_or_404(stage, body.get("who"))
+        own(request, stage, who)
         target = body.get("target")
         weapon = body.get("weapon")
         try:
@@ -921,6 +1054,7 @@ def create_app(
         stage = idle_stage()
         body = await request.json()
         who = pc_or_404(stage, body.get("who"))
+        own(request, stage, who)
         try:
             lines = await run_in_threadpool(with_rules, stage, lambda st: combat.end_turn(stage.campaign_dir, st, who))
         except combat.RulesError as e:
@@ -941,6 +1075,7 @@ def create_app(
         stage = idle_stage()
         body = await request.json()
         who = pc_or_404(stage, body.get("who"))
+        own(request, stage, who)
 
         def go():
             sheet = character.load(stage.campaign_dir, who)
@@ -964,6 +1099,7 @@ def create_app(
         req = stage.state.get("roll_request")
         if not req:
             return error("No roll is waiting.", 409)
+        own(request, stage, req["who"])
         skip = [str(x) for x in body.get("skip", []) if isinstance(x, str)]
         # Clear the request at once: a double click must not roll twice.
         await stage._local_event({"type": "roll_done"})
@@ -1025,6 +1161,7 @@ def create_app(
     async def exploring(request: Request):
         """(stage, body, site_id, site), or an error response, for an action in the site the party explores."""
         stage = need()
+        can_play(request, stage)
         # Read the body first: no await between loading and saving the site.
         body = await request.json()
         site_id, site = site_or_none(stage, request)
@@ -1104,6 +1241,7 @@ def create_app(
 
     async def api_map_travel(request: Request):
         stage = need()
+        can_play(request, stage)
         body = await request.json()
         map_id, dest = str(body.get("map", "")), str(body.get("to", ""))
         found = maps.all_maps(stage.campaign_dir)
@@ -1149,6 +1287,11 @@ def create_app(
         Route("/api/settings", api_settings, methods=["POST"]),
         Route("/api/input", api_input, methods=["POST"]),
         Route("/api/restart", api_restart, methods=["POST"]),
+        Route("/api/me", api_me),
+        Route("/api/seat/claim", api_seat_claim, methods=["POST"]),
+        Route("/api/seat/release", api_seat_release, methods=["POST"]),
+        Route("/api/seat/away", api_seat_away, methods=["POST"]),
+        Route("/api/host/claim", api_host_claim, methods=["POST"]),
         Route("/api/party", api_party),
         Route("/api/effects", api_effects, methods=["POST"]),
         Route("/api/action", api_action, methods=["POST"]),

@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 
 import { Progress } from '@/components/ui/8bit/progress'
+import { type Seat } from '@/lib/stage'
 import { act, type CardAction, type EffectPreset, type Offer, type Party, type PartyChar, ROMAN, TONE } from '@/lib/party'
 
 const TURN_KINDS = [
@@ -174,7 +175,8 @@ function Actions({ c, party, canAct, refresh }: { c: PartyChar; party: Party; ca
   )
 }
 
-function Card({ c, party, active, canAct, refresh, onSheet }: { c: PartyChar; party: Party; active: boolean; canAct: boolean; refresh: () => void; onSheet: () => void }) {
+export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds }: { c: PartyChar; party: Party; active: boolean; canAct: boolean; refresh: () => void; onSheet: () => void; seat?: Seat; mineIds: string[] }) {
+  const mine = mineIds.includes(c.id)
   const [portraitOk, setPortraitOk] = useState(true)
   const cur = c.hp.current ?? 0
   const max = c.hp.max || 1
@@ -199,6 +201,22 @@ function Card({ c, party, active, canAct, refresh, onSheet }: { c: PartyChar; pa
           <p className="truncate text-sm text-[var(--dim)]">
             {c.race} {c.class} · lvl {c.level}
           </p>
+          {seat && (
+            <p className="flex items-center gap-2 text-sm text-[var(--gold)]">
+              <span className="truncate">{mine ? 'You' : seat.player}</span>
+              {seat.away && <span className="text-[var(--ember)]">away</span>}
+              {mine && (
+                <button
+                  type="button"
+                  onClick={() => act('/api/seat/away', { who: c.id, away: !seat.away }, refresh)}
+                  title={seat.away ? 'Come back to the game.' : 'Mark yourself away. The DM can skip you.'}
+                  className="pixel-font border-2 border-[var(--border)] px-1 text-[8px] text-[var(--dim)] hover:text-[var(--parchment)]"
+                >
+                  {seat.away ? 'Back' : 'Away'}
+                </button>
+              )}
+            </p>
+          )}
           <div className="mt-1 flex items-center gap-2">
             <Progress value={(cur / max) * 100} variant="retro" className="h-3 flex-1" progressBg="bg-[var(--ember)]" />
             <span className="text-sm tabular-nums">
@@ -268,7 +286,7 @@ function Card({ c, party, active, canAct, refresh, onSheet }: { c: PartyChar; pa
             {k.name}
           </Chip>
         ))}
-        <GiveBonus offers={c.offers} catalogue={catalogue} onGive={(o) => act('/api/effects', { who: c.id, from: o.from, effect: o.effect }, refresh)} />
+        <GiveBonus offers={c.offers.filter((o) => mineIds.includes(o.from))} catalogue={catalogue} onGive={(o) => act('/api/effects', { who: c.id, from: o.from, effect: o.effect }, refresh)} />
       </div>
 
       <button type="button" onClick={onSheet} className="pixel-font self-start text-[9px] text-[var(--dim)] hover:text-[var(--gold)]">
@@ -279,7 +297,7 @@ function Card({ c, party, active, canAct, refresh, onSheet }: { c: PartyChar; pa
 }
 
 /** The party: who acts now, each character's HP, turn actions, slots, bonuses, and a way into the sheet. */
-export const PartyPanel = memo(function PartyPanel({ party, refresh, onSheet, canAct }: { party: Party | null; refresh: () => void; onSheet: (id: string) => void; canAct: boolean }) {
+export const PartyPanel = memo(function PartyPanel({ party, refresh, onSheet, canAct, seats, mine }: { party: Party | null; refresh: () => void; onSheet: (id: string) => void; canAct: boolean; seats: Seat[]; mine: string[] }) {
   if (!party) return null
   return (
     <aside className="flex w-full flex-col gap-3 overflow-y-auto border-4 border-[var(--border)] bg-[var(--panel)] p-3">
@@ -291,7 +309,7 @@ export const PartyPanel = memo(function PartyPanel({ party, refresh, onSheet, ca
         </section>
       )}
       {party.characters.map((c) => (
-        <Card key={c.id} c={c} party={party} active={party.combat?.current === c.id} canAct={canAct} refresh={refresh} onSheet={() => onSheet(c.id)} />
+        <Card key={c.id} c={c} party={party} active={party.combat?.current === c.id} canAct={canAct && mine.includes(c.id)} refresh={refresh} onSheet={() => onSheet(c.id)} seat={seats.find((s) => s.who === c.id)} mineIds={mine} />
       ))}
       {party.quests.length > 0 && (
         <section>

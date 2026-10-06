@@ -133,6 +133,8 @@ uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=me
 - In the site view, the players see the walls, doors and passages, and walk by themselves. **Do not describe the layout** (exits, passages, which way to go) and **do not give movement choices**. Narrate what they sense and what they find.
 - For a fight or a talk, use `@scene` as usual (it leaves the site view), then send `@explore <site-id>` to let them walk on.
 
+**Several players.** A line that starts with `[Alex as Jamie]` is a player's words, said as that character. A different player may say the next line. Answer the right character. A line with no tag comes from the host and is a table control. Do not reveal what one player said to the others unless the story does.
+
 **Messages from the stage.** A message that starts with `[explore]` or `[map]` comes from the stage, not from a player's words. Do what it says in one beat:
 
 - `the party sees <poi>`: show what they find (an `@narrate`, or a scene with actors).

@@ -169,6 +169,7 @@ def test_server() -> None:
             app = server.create_app(None, command_factory=lambda d, resume=False: ["cat"])  # a stub DM
             table = app.state.table
             stage = await table.start(c, ["cat"])
+            await api(app, "GET", "/api/me")  # the test device is the host
             check("session start is saved", [s["label"] for s in saves.list_saves(c)] == ["session start"])
 
             status, r = await api(app, "POST", "/api/game/save", {"name": "x"})
@@ -201,6 +202,7 @@ def test_server() -> None:
             status, r = await api(app, "POST", "/api/game/load", {"campaign": c.name, "save": "nothere"})
             check("load of a missing save is a clean error", status == 400 and "No such save" in r["error"])
             await table.start(c, ["cat"])
+            await api(app, "GET", "/api/me")
             status, r = await api(app, "POST", "/api/campaign/delete", {"campaign": c.name})
             check("a running campaign is not deleted", status == 409 and c.is_dir())
             await table.stop()

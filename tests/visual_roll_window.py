@@ -252,10 +252,27 @@ def main() -> int:
                 await page.call("Emulation.setDeviceMetricsOverride", width=1500, height=950, deviceScaleFactor=1, mobile=False)
                 await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/")
                 await asyncio.sleep(2.5)
+                await page.shot("seat-picker")
+                check("a new device sees the seat picker", await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
+                check("the first device is the host: it sees a host code", "Host code" in await page.eval("document.body.innerText"))
+                await page.click("Play all free")
+                await asyncio.sleep(1.2)
+                check("sitting down closes the picker", not await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
                 import os
                 os.environ["DUNGEON_STAGE_LOG"] = str(beat.log_path(c))
                 await scenarios(page, c)
                 await combat_turn(page, c)
+                print("table and hand screens")
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/?view=table")
+                await asyncio.sleep(2.5)
+                check("the table screen has no input box", not await page.eval("Boolean(document.querySelector('#player-input'))"))
+                check("the table screen shows the party", "Aragorn" in await page.eval("document.body.innerText"))
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/?view=hand")
+                await asyncio.sleep(2.5)
+                await page.shot("hand")
+                check("the hand screen has the input box", bool(await page.eval("Boolean(document.querySelector('#player-input'))")))
+                check("the hand screen shows only this player's cards", await page.eval("document.querySelectorAll('main section h2').length") >= 1
+                      and "Where" not in await page.eval("document.body.innerText"))
 
         asyncio.run(run())
     finally:
