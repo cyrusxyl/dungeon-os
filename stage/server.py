@@ -541,6 +541,17 @@ class Table:
                 pass
 
 
+def _last_played(campaign_dir: Path) -> int:
+    """Unix time of the newest save, or of the config file when there is no save."""
+    found = saves.list_saves(campaign_dir, 1)
+    if found:
+        return found[0]["time"]
+    try:
+        return int((campaign_dir / "config.json").stat().st_mtime)
+    except OSError:
+        return 0
+
+
 def _menu(table: Table) -> dict:
     from dnd_cli.campaign import CAMPAIGNS_DIR, active_campaign_slug, list_campaigns
     from view.settings import FRAMEWORKS, campaign_in_progress, can_continue, framework_available, load_settings
@@ -548,9 +559,10 @@ def _menu(table: Table) -> dict:
     settings = load_settings()
     campaigns = [
         {"slug": slug, "name": name, "in_progress": campaign_in_progress(CAMPAIGNS_DIR / slug),
-         "can_continue": can_continue(slug, settings)}
+         "can_continue": can_continue(slug, settings), "last_played": _last_played(CAMPAIGNS_DIR / slug)}
         for slug, name in list_campaigns()
     ]
+    campaigns.sort(key=lambda c: c["last_played"], reverse=True)  # the campaign played last comes first
     try:
         active = active_campaign_slug()
     except (OSError, ValueError, KeyError):
@@ -691,6 +703,20 @@ def create_app(
         clear_session(campaign.name)
         await table.start(campaign)
         return JSONResponse({"game": campaign.name})
+
+    async def api_campaign_delete(request: Request):
+        from dnd_cli.campaign import CampaignError, delete_campaign
+        from view.settings import clear_session
+
+        slug = str((await request.json()).get("campaign", ""))
+        if table.stage and table.stage.campaign_dir.name == slug:
+            return error("This campaign is running. Quit the game first.", 409)
+        try:
+            await asyncio.to_thread(delete_campaign, slug)
+        except (CampaignError, OSError) as e:
+            return error(str(e), 400)
+        clear_session(slug)
+        return JSONResponse(_menu(table))
 
     async def api_game_quit(request: Request):
         await table.stop()
@@ -1117,6 +1143,7 @@ def create_app(
         Route("/api/game/start", api_game_start, methods=["POST"]),
         Route("/api/game/quit", api_game_quit, methods=["POST"]),
         Route("/api/game/save", api_game_save, methods=["POST"]),
+        Route("/api/campaign/delete", api_campaign_delete, methods=["POST"]),
         Route("/api/game/load", api_game_load, methods=["POST"]),
         Route("/api/saves/{slug}", api_saves),
         Route("/api/settings", api_settings, methods=["POST"]),

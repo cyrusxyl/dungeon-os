@@ -200,7 +200,19 @@ def test_server() -> None:
             check("the game runs again after a load", table.stage is not None and table.stage.dm.alive)
             status, r = await api(app, "POST", "/api/game/load", {"campaign": c.name, "save": "nothere"})
             check("load of a missing save is a clean error", status == 400 and "No such save" in r["error"])
+            await table.start(c, ["cat"])
+            status, r = await api(app, "POST", "/api/campaign/delete", {"campaign": c.name})
+            check("a running campaign is not deleted", status == 409 and c.is_dir())
             await table.stop()
+
+            other = make_campaign(Path(tmp), "c0")
+            os.utime(other / "config.json", (1, 1))
+            status, r = await api(app, "GET", "/api/menu")
+            check("campaigns come newest first", [x["slug"] for x in r["campaigns"]] == ["c1", "c0"])
+            status, r = await api(app, "POST", "/api/campaign/delete", {"campaign": "../x"})
+            check("a bad name is refused", status == 400)
+            status, r = await api(app, "POST", "/api/campaign/delete", {"campaign": "c0"})
+            check("delete removes the campaign", status == 200 and not other.exists() and [x["slug"] for x in r["campaigns"]] == ["c1"])
 
         try:
             asyncio.run(run())

@@ -92,6 +92,21 @@ def campaign_display_name(campaign_dir: Path) -> str:
     return name or campaign_dir.name
 
 
+def delete_campaign(slug: str) -> None:
+    """Remove a campaign folder (its saves are inside it). Only a bare slug, never the template."""
+    if slug != Path(slug).name or slug in ("", ".", "..", "template"):
+        raise CampaignError("Bad campaign name.")
+    campaign_dir = CAMPAIGNS_DIR / slug
+    if not (campaign_dir / "config.json").is_file():
+        raise CampaignError("No such campaign.")
+    shutil.rmtree(campaign_dir)
+    try:
+        if active_campaign_slug() == slug:
+            ACTIVE_PATH.unlink()
+    except (OSError, ValueError, KeyError):
+        pass
+
+
 def create_campaign(name: str, pitch: str = "", party: str = "create") -> str:
     """Scaffold a new campaign directory from the template. Returns its slug.
 

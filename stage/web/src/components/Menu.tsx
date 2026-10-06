@@ -11,6 +11,7 @@ interface Campaign {
   name: string
   in_progress: boolean
   can_continue: boolean // the DM's last conversation can be picked up again
+  last_played: number // unix time; the list comes newest first
 }
 
 interface Save {
@@ -64,6 +65,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   const [model, setModel] = useState(data.settings.model)
   const [picked, setPicked] = useState<Campaign | null>(null)
   const [saves, setSaves] = useState<Save[] | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   // A saved model outside the presets is edited as Custom, so it is never lost.
   const [custom, setCustom] = useState(
     () => !data.frameworks.find((f) => f.key === data.settings.agent_framework)?.models.includes(data.settings.model),
@@ -85,10 +87,21 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
 
   const pick = async (c: Campaign) => {
     setPicked(c)
+    setConfirmDelete(false)
     setSaves(null)
     setPanel('campaign')
     const res = await fetch(`/api/saves/${c.slug}`)
     setSaves(res.ok ? (await res.json()).saves : [])
+  }
+
+  const deleteCampaign = async (c: Campaign) => {
+    setBusy(true)
+    const res = await post('/api/campaign/delete', { campaign: c.slug })
+    setBusy(false)
+    if (res.error) return setError(String(res.error))
+    onChanged(res as unknown as MenuData)
+    setConfirmDelete(false)
+    setPanel('load')
   }
 
   const saveSettings = async () => {
@@ -157,7 +170,9 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
                 <li key={c.slug}>
                   <Button variant="outline" disabled={busy} onClick={() => pick(c)} className="w-full justify-between text-[10px]">
                     <span>{c.name}</span>
-                    <span className="text-[var(--dim)]">{c.in_progress ? 'in progress' : 'new'}</span>
+                    <span className="text-[var(--dim)]">
+                      {c.in_progress ? new Date(c.last_played * 1000).toLocaleDateString([], { dateStyle: 'short' }) : 'new'}
+                    </span>
                   </Button>
                 </li>
               ))}
@@ -208,6 +223,25 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
                 </li>
               ))}
             </ul>
+            <div className="flex flex-col gap-2 border-t-2 border-[var(--border)] pt-3">
+              {!confirmDelete ? (
+                <Button variant="outline" disabled={busy} onClick={() => setConfirmDelete(true)} className="text-[10px] text-red-400">
+                  Delete campaign
+                </Button>
+              ) : (
+                <>
+                  <p className="text-sm text-red-400">Delete {picked.name} and all its saves? This cannot be undone.</p>
+                  <div className="flex gap-2">
+                    <Button disabled={busy} onClick={() => deleteCampaign(picked)} className="flex-1 text-[10px]">
+                      Yes, delete
+                    </Button>
+                    <Button variant="outline" disabled={busy} onClick={() => setConfirmDelete(false)} className="flex-1 text-[10px]">
+                      Cancel
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
           </Panel>
         )}
 
