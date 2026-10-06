@@ -19,6 +19,7 @@ independent session.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -53,9 +54,9 @@ def ensure_web_build() -> None:
     subprocess.run(["npm", "run", "build", "--silent"], cwd=web, check=True)
 
 
-def run_stage(campaign: str | None, open_browser: bool) -> None:
+def run_stage(campaign: str | None, open_browser: bool, host: str, port: int, allowed_hosts: list[str]) -> None:
     """Serve the visual stage: the start menu, or straight into one campaign."""
-    from stage.server import serve
+    from stage.server import LOCAL_HOSTS, serve
 
     campaign_dir = None
     if campaign:
@@ -78,10 +79,14 @@ def run_stage(campaign: str | None, open_browser: bool) -> None:
         threading.Thread(target=lambda: (lpc.catalog(), actors.dcss_monsters()), daemon=True).start()
     except Exception as exc:  # The stage still runs, with silhouettes and blank rooms.
         print(f"dungeon-os: {exc}", file=sys.stderr)
-    if open_browser:
-        Timer(1.5, webbrowser.open, args=(WEB_VIEW_URL,)).start()
-    print(f"DungeonOS: {WEB_VIEW_URL}", file=sys.stderr)
-    serve(campaign_dir)
+    url = f"http://{host if host in LOCAL_HOSTS else 'localhost'}:{port}"
+    if open_browser and host in LOCAL_HOSTS:
+        Timer(1.5, webbrowser.open, args=(url,)).start()
+    print(f"DungeonOS: {url}", file=sys.stderr)
+    if host not in LOCAL_HOSTS:
+        print("DungeonOS: no password. Allowed host names: " + (", ".join(allowed_hosts) or "none (add --allow-host)"),
+              file=sys.stderr)
+    serve(campaign_dir, host=host, port=port, allowed_hosts=allowed_hosts)
 
 
 def main() -> None:
@@ -110,10 +115,28 @@ def main() -> None:
         action="store_true",
         help="Start the server but don't auto-open a browser tab",
     )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Address to listen on (default 127.0.0.1; use 0.0.0.0 for a home server). There is no password.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("PORT", 8000)),
+        help="Port to listen on (default: $PORT, else 8000)",
+    )
+    parser.add_argument(
+        "--allow-host",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Host name or IP the browser may use besides localhost; repeat for more",
+    )
     args = parser.parse_args()
 
     if not args.classic:
-        run_stage(args.campaign, open_browser=not args.no_browser)
+        run_stage(args.campaign, not args.no_browser, args.host, args.port, args.allow_host)
         return
 
     if args.web:

@@ -30,7 +30,7 @@ import json
 import os
 import sys
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -281,17 +281,17 @@ class Stage:
 LOCAL_HOSTS = {"127.0.0.1", "localhost"}
 
 
-def request_allowed(scope_type: str, method: str, headers: dict[str, str]) -> bool:
+def request_allowed(scope_type: str, method: str, headers: dict[str, str], hosts: frozenset[str] = frozenset(LOCAL_HOSTS)) -> bool:
     """Only this machine's own browser tab may drive the DM.
 
     The DM terminal accepts keystrokes, so a web page on another site must not
     reach it: WebSockets have no CORS, and a cross-site text/plain POST needs
-    no preflight. Rules: the Host is a loopback name (also stops DNS
-    rebinding); an Origin, when sent, is this same host and port; a POST is
+    no preflight. Rules: the Host is a loopback name or one the owner allowed
+    with `--allow-host` (this also stops DNS rebinding); an Origin, when sent, is this same host and port; a POST is
     JSON (a plain cross-site form cannot send that without a preflight).
     """
     host = headers.get("host", "")
-    if host.rsplit(":", 1)[0] not in LOCAL_HOSTS:
+    if host.rsplit(":", 1)[0].lower() not in hosts:
         return False
     origin = headers.get("origin")
     if origin is not None and origin.split("://", 1)[-1].rstrip("/") != host:
@@ -304,13 +304,14 @@ def request_allowed(scope_type: str, method: str, headers: dict[str, str]) -> bo
 class LocalOnly:
     """ASGI middleware: refuse anything `request_allowed` refuses, websockets included."""
 
-    def __init__(self, app):
+    def __init__(self, app, hosts: frozenset[str] = frozenset(LOCAL_HOSTS)):
         self.app = app
+        self.hosts = hosts
 
     async def __call__(self, scope, receive, send):
         if scope["type"] in ("http", "websocket"):
             headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
-            if not request_allowed(scope["type"], scope.get("method", "GET"), headers):
+            if not request_allowed(scope["type"], scope.get("method", "GET"), headers, self.hosts):
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.close", "code": 1008})
                 else:
@@ -571,6 +572,7 @@ def create_app(
     campaign_dir: Path | None = None,
     dm_command: list[str] | None = None,
     command_factory: Callable[..., list[str]] = default_command,
+    allowed_hosts: Iterable[str] = (),
 ) -> Starlette:
     """Serve the stage. With a campaign, start it at once; without one, open the start menu."""
     table = Table(command_factory)
@@ -1156,7 +1158,7 @@ def create_app(
     async def http_error(request: Request, exc: HTTPException):
         return error(str(exc.detail), exc.status_code)
 
-    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(LocalOnly)],
+    app = Starlette(routes=routes, lifespan=lifespan, middleware=[Middleware(LocalOnly, hosts=frozenset(LOCAL_HOSTS) | {h.lower() for h in allowed_hosts})],
                     exception_handlers={HTTPException: http_error})
     app.state.table = table
     return app
@@ -1167,7 +1169,8 @@ def serve(
     dm_command: list[str] | None = None,
     host: str = "127.0.0.1",
     port: int = 8000,
+    allowed_hosts: Iterable[str] = (),
 ) -> None:
     import uvicorn
 
-    uvicorn.run(create_app(campaign_dir, dm_command), host=host, port=port, log_level="warning")
+    uvicorn.run(create_app(campaign_dir, dm_command, allowed_hosts=allowed_hosts), host=host, port=port, log_level="warning")

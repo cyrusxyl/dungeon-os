@@ -314,6 +314,38 @@ def test_local_only() -> None:
     check("a foreign Host (DNS rebinding) is refused", not request_allowed("http", "GET", {"host": "evil.example:8000"}))
     check("a GET with no Origin (page load, image) is allowed", request_allowed("http", "GET", {"host": "localhost:8000"}))
 
+    # A home server: the owner names the hosts the browser may use (--allow-host).
+    import asyncio
+
+    from stage.server import LOCAL_HOSTS, LocalOnly
+
+    pi = frozenset(LOCAL_HOSTS) | {"192.168.1.217", "pi.example.ts.net"}
+    home = {"host": "192.168.1.217:3842"}
+    check("an allowed host is accepted", request_allowed("http", "GET", home, pi))
+    check("an allowed host is not accepted by default", not request_allowed("http", "GET", home))
+    check("an allowed host is matched in any case", request_allowed("http", "GET", {"host": "PI.example.ts.net"}, pi))
+    check("same-origin websocket on an allowed host is accepted",
+          request_allowed("websocket", "GET", {**home, "origin": "http://192.168.1.217:3842"}, pi))
+    check("an Origin from another allowed host is refused",
+          not request_allowed("websocket", "GET", {**home, "origin": "http://pi.example.ts.net:3842"}, pi))
+    check("a foreign Host is still refused with allowed hosts", not request_allowed("http", "GET", {"host": "evil.example:3842"}, pi))
+
+    async def run_middleware(hosts, host):
+        seen = []
+
+        async def inner(scope, receive, send):
+            seen.append(True)
+
+        async def send(msg):
+            seen.append(msg.get("status"))
+
+        scope = {"type": "http", "method": "GET", "headers": [(b"host", host.encode())]}
+        await LocalOnly(inner, hosts)(scope, None, send)
+        return seen
+
+    check("the middleware passes an allowed host", asyncio.run(run_middleware(pi, "192.168.1.217:3842")) == [True])
+    check("the middleware answers 403 to a foreign host", asyncio.run(run_middleware(pi, "evil.example:3842")) == [403, None])
+
 
 def _site(theme="dungeon", pois=(("altar", "far", "altar"),), seed=7, danger="none"):
     from stage import crawl

@@ -10,6 +10,7 @@ This outer folder is for the development of the Dungeon OS kernel, enter the `du
 uv run dungeon-os            # visual stage in a browser: Resume, Load Game, New Game, Settings
 uv run dungeon-os <slug>     # skip the menu, start that campaign directly
 uv run dungeon-os --classic  # earlier terminal view with the same menu
+uv run dungeon-os --no-browser --host 0.0.0.0 --port 3842 --allow-host 192.168.1.217   # home server: no password, LAN or Tailscale only
 ```
 
 The visual stage runs the DM (`claude` by default) in a terminal that the
