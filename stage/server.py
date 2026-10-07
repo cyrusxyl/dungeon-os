@@ -35,6 +35,7 @@ import json
 import os
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -51,6 +52,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
+from dnd_cli.sheet import GOLD
 from stage import actors, beat, crawl, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
@@ -126,11 +128,16 @@ class Stage:
         self.pty_clients: set[WebSocket] = set()
         self.loop: asyncio.AbstractEventLoop | None = None
         self.seats = Seats()
-        self.creator: str | None = None  # the device that has the character creator open; None: the host
+        self.creators: set[str] = set()  # the devices that have the character creator open (a phone each, at a party start)
+        self.initial = False  # the creator phase is the first party: only the host starts the adventure
+        self.reads: dict[str, int] = {}  # device -> seq of the story line it shows now; the table follows the furthest
+        self.holdings: dict[str, dict[str, int]] = {}  # character id -> item -> quantity, to tell the owner what changed
+        self.sheet_mtimes: dict[Path, int] = {}
         self.pending: list[str] = []  # prompts for the DM, sent one at a time when it is idle
         self.seen_ids = character_ids(campaign_dir)  # sheets that existed when the creator opened
         # Open from the start for a new party; it stays open until the player is done (not when the first sheet lands).
         self.opened = not self.seen_ids and self.party_mode() != "premade"
+        self.initial = self.opened
         env = {
             **os.environ,
             "TERM": "xterm-256color",
@@ -202,9 +209,11 @@ class Stage:
     def snapshot(self, device: str | None = None) -> dict:
         """The stage as one device may see it: whispers and targeted choices only for their player, the DM's log only for the host."""
         state = {**self.state, "creating": self.creating(), "party_mode": self.party_mode(), **self.seats.public(),
-                 "creator": sid(self.creator) if self.creator else None, "awaiting": self.awaiting()}
+                 "creators": [sid(d) for d in sorted(self.creators)], "new_party": self.initial, "awaiting": self.awaiting(),
+                 "shown_seq": self.shown_seq()}
         mine = set(self.seats.mine(device))
         state["private"] = [p for p in self.state["private"] if p["who"] in mine]
+        state["notices"] = [n for n in self.state["notices"] if n["who"] in mine]
         choices = state.get("choices")
         if choices and choices.get("who") and choices["who"] not in mine:
             state["choices"] = None
@@ -217,14 +226,26 @@ class Stage:
         return {"kind": "snapshot", "state": state, "campaign": self.campaign_dir.name}
 
     def open_creator(self, device: str | None = None) -> None:
-        self.opened = True
-        self.creator = device
-        self.seen_ids = character_ids(self.campaign_dir)
+        """Open the creator for a device. The first one to open starts the phase; later ones join it."""
+        if not self.opened:
+            self.opened = True
+            self.seen_ids = character_ids(self.campaign_dir)
+            self.initial = not self.seen_ids
+        if device:
+            self.creators.add(device)
+
+    def leave_creator(self, device: str, is_host: bool, force: bool = False) -> bool:
+        """A device is done with the creator. The first party starts when the host says so; a later joiner closes it when the last creator leaves."""
+        self.creators.discard(device)
+        if force or (not self.creators and (is_host or not self.initial)):
+            self.close_creator()
+            return True
+        return False
 
     def close_creator(self) -> None:
         """Close the creator; queue one prompt that names the characters made since it opened."""
         self.opened = False
-        self.creator = None
+        self.creators.clear()
         now = character_ids(self.campaign_dir)
         new = [i for i in now if i not in self.seen_ids]
         if new:
@@ -232,6 +253,39 @@ class Stage:
             if not self.seen_ids:
                 self.show_start_scene()
         self.seen_ids = now
+
+    def shown_seq(self) -> int | None:
+        """The story line the players read now: the furthest of the seated devices. None until one of them reports."""
+        seen = [seq for d, seq in self.reads.items() if self.seats.mine(d)]
+        return max(seen) if seen else None
+
+    def inventory_notices(self) -> list[dict]:
+        """What each character gained or lost since the last look. A sheet seen for the first time sets the baseline and says nothing."""
+        notices = []
+        for path in sorted((self.campaign_dir / "characters").glob("*.json")):
+            mtime = path.stat().st_mtime_ns
+            if self.sheet_mtimes.get(path) == mtime:
+                continue
+            self.sheet_mtimes[path] = mtime
+            if (sheet := read_json(path)) is None:
+                continue
+            now: dict[str, int] = {}
+            for item in sheet.get("inventory", []):
+                name = item.get("name", "?")
+                now[name] = now.get(name, 0) + item.get("quantity", 1)
+            before = self.holdings.get(path.stem)
+            self.holdings[path.stem] = now
+            if before is None:
+                continue
+            lines = []
+            for name in {**before, **now}:
+                delta = now.get(name, 0) - before.get(name, 0)
+                if delta:
+                    what = f"{abs(delta)} gp" if name == GOLD else name + (f" ×{abs(delta)}" if abs(delta) > 1 else "")
+                    lines.append(("+" if delta > 0 else "−") + what)
+            if lines:
+                notices.append({"type": "notice", "who": path.stem, "lines": lines, "id": time.time_ns()})
+        return notices
 
     def show_start_scene(self) -> None:
         """Put the starting scene and the new party on stage at once, before the DM writes the first beat.
@@ -255,6 +309,7 @@ class Stage:
         while True:
             events = self.read_new_events()
             was_busy = self.state["dm"].get("status") != "idle"
+            events += self.inventory_notices()  # a notice is for the owner's snapshot only (see `snapshot`); it is not in the log
             if self.fold(events):
                 await self.broadcast()
             session = next((e["session"] for e in reversed(events) if e.get("session")), None)
@@ -863,6 +918,8 @@ def create_app(
         # "continue": the DM keeps its conversation. Anything else: a new DM session that reads the files.
         stage = await table.start(campaign, resume=body.get("dm") == "continue")
         stage.seats.ensure_host(device)  # whoever starts the game is the host
+        if body.get("play") == "here" and stage.opened:
+            stage.open_creator(device)  # the host makes a character on this device; "phones" leaves the creator to the phones
         return JSONResponse({"game": campaign.name})
 
     async def api_saves(request: Request):
@@ -1003,21 +1060,34 @@ def create_app(
 
     async def api_creation_open(request: Request):
         stage = need()
-        device = require_device(request)
-        owner = stage.creator or stage.seats.host  # an open creator with no owner belongs to the host
-        if stage.opened and owner != device:
-            return error("Someone else is making a character.", 409)
-        stage.open_creator(device)
+        stage.open_creator(require_device(request))
         await stage.broadcast()
         return JSONResponse({"ok": True})
 
     async def api_creation_done(request: Request):
+        """A device leaves the creator. `force` (host only) closes it for everyone: the host starts the adventure."""
         stage = need()
         device = require_device(request)
-        if not (stage.seats.is_host(device) or device == stage.creator):
-            raise HTTPException(403, "Only the player who opened the creator, or the host, can close it.")
-        stage.close_creator()
+        body = await request.json() if await request.body() else {}
+        host = stage.seats.is_host(device)
+        if not (host or device in stage.creators):
+            raise HTTPException(403, "Only a player who has the creator open, or the host, can close it.")
+        stage.leave_creator(device, host, force=host and bool(body.get("force")))
         await stage.broadcast()
+        return JSONResponse({"ok": True})
+
+    async def api_read(request: Request):
+        """A seated device says which story line it shows. The table screen shows the furthest one."""
+        stage = need()
+        device = require_device(request)
+        if not stage.seats.mine(device):
+            raise HTTPException(403, "Take a seat first.")
+        seq = (await request.json()).get("seq")
+        if not isinstance(seq, int):
+            return error("seq must be a number.", 400)
+        if stage.reads.get(device) != seq:
+            stage.reads[device] = seq
+            await stage.broadcast()
         return JSONResponse({"ok": True})
 
     async def asset_scene(request: Request):
@@ -1397,6 +1467,7 @@ def create_app(
         Route("/api/creation/character", api_creation_character, methods=["POST"]),
         Route("/api/creation/open", api_creation_open, methods=["POST"]),
         Route("/api/creation/done", api_creation_done, methods=["POST"]),
+        Route("/api/read", api_read, methods=["POST"]),
         Route("/asset/look.png", asset_look),
         Route("/asset/scene/{location}.png", asset_scene),
         Route("/api/scene/{location}", api_scene),

@@ -14,6 +14,23 @@ ROLL_LIMIT = 6
 DM_LOG_LIMIT = 30
 ACTIVITY_LIMIT = 12
 PRIVATE_LIMIT = 20
+NOTICE_LIMIT = 20
+FEED_LIMIT = 60
+OUTCOMES = {"success": "success", "fail": "failure", "hit": "hit", "miss": "miss", "crit": "critical hit", "fumble": "critical miss"}
+
+
+def roll_text(event: dict) -> str:
+    """One line for the log from a roll event. It holds only what the roll window shows the players."""
+    detail = event.get("detail")
+    if not detail:
+        return f"Rolled {event['expr']}: {event['total']}"
+    who = ", ".join(f"{r['name']} {r['total']}" + (f" ({OUTCOMES[r['outcome']]})" if r.get("outcome") else "") for r in detail.get("rolls", []))
+    text = detail.get('title', 'Roll') + (f" · {detail['subtitle']}" if detail.get("subtitle") else "") + f": {who}"
+    if target := detail.get("target"):
+        text += f" vs {target['label']} {target['value']}"
+    if damage := detail.get("damage"):
+        text += " — " + " + ".join(f"{d['total']} {d['type']}".strip() for d in damage) + " damage"
+    return text
 AUTO_POSITIONS = ("left", "right", "center", "far-left", "far-right")
 
 
@@ -24,7 +41,9 @@ def empty() -> dict:
         "actors": {},
         "log": [],
         "choices": None,
+        "feed": [],
         "private": [],
+        "notices": [],
         "await": None,
         "roll_request": None,
         "dm": {"status": "starting"},
@@ -106,6 +125,9 @@ def apply(state: dict, event: dict) -> dict:
     elif kind == "whisper":
         # Only the server hands this to the owner of `who` (stage/server.py snapshot); it is never in the public log.
         s["private"] = (s["private"] + [{"who": event["who"], "text": event["text"], "seq": s["seq"]}])[-PRIVATE_LIMIT:]
+    elif kind == "notice":
+        # Like a whisper, only the owner's snapshot has it. `id` lets a browser show each notice once.
+        s["notices"] = (s["notices"] + [{k: event[k] for k in ("who", "lines", "id")}])[-NOTICE_LIMIT:]
     elif kind == "await":
         s["await"] = {"who": event["who"], "seq": s["seq"]}
     elif kind == "roll_request":
@@ -117,7 +139,10 @@ def apply(state: dict, event: dict) -> dict:
         # A short queue: the browser plays each roll it has not shown, in order.
         roll = {k: event[k] for k in ("expr", "total", "dice", "detail") if k in event} | {"seq": s["seq"]}
         s["rolls"] = (s["rolls"] + [roll])[-ROLL_LIMIT:]
-    elif kind == "dm_activity":
+    if kind in ("roll", "feed"):
+        text = roll_text(event) if kind == "roll" else event["text"]
+        s["feed"] = (s["feed"] + [{"seq": s["seq"], "text": text}])[-FEED_LIMIT:]
+    if kind == "dm_activity":
         if not s["activity"] or s["activity"][-1] != event["text"]:
             s["activity"] = (s["activity"] + [event["text"]])[-ACTIVITY_LIMIT:]
     elif kind == "dm_status":

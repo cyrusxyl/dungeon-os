@@ -74,6 +74,14 @@ def stage_roll(expr: str, total: int, groups: list[dict], secret: bool = False, 
             f.write(json.dumps(event) + "\n")
 
 
+def stage_feed(text: str) -> None:
+    """A line for the stage's log (no-op without a running stage). Rolls reach the log by themselves."""
+    log = os.environ.get("DUNGEON_STAGE_LOG")
+    if log:
+        with open(log, "a") as f:
+            f.write(json.dumps({"type": "feed", "text": text}) + "\n")
+
+
 def _d20_groups(faces: list[int], kept: int) -> list[dict]:
     """The kept d20 first (the legacy dice box colours a natural 20 or 1 from it)."""
     rest = list(faces)
@@ -407,7 +415,17 @@ def start(campaign_dir: Path, state: dict, specs: list[str], pcs: list[str] | No
     state["active_encounter"] = enc
     lines = _join(campaign_dir, state, pcs, specs, rng)
     enc["current_turn"] = enc["initiative_order"][0]["name"] if enc["initiative_order"] else None
+    _initiative_feed(campaign_dir, state, enc)
     return lines + [_order_lines(enc), f"Round 1: {enc['current_turn']}'s turn."]
+
+
+def _initiative_feed(campaign_dir: Path, state: dict, enc: dict) -> None:
+    """Tell the stage's log the turn order, by display name."""
+    names = []
+    for o in enc["initiative_order"]:
+        name = combatant(campaign_dir, state, o["name"])["name"]
+        names.append(f"{name}{' ' + o['name'].split('#')[1] if '#' in o['name'] else ''} {o['initiative']}")
+    stage_feed("Initiative: " + ", ".join(names))
 
 
 def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng) -> list[str]:
@@ -436,6 +454,7 @@ def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng
 def add(campaign_dir: Path, state: dict, specs: list[str], rng=None) -> list[str]:
     enc = encounter(state)
     lines = _join(campaign_dir, state, [], specs, rng or random)
+    _initiative_feed(campaign_dir, state, enc)
     return lines + [_order_lines(enc)]
 
 

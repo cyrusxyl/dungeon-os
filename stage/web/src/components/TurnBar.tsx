@@ -43,7 +43,7 @@ function Slot({ o, party, current }: { o: Entrant; party: Party; current: boolea
  * The turn order across the top of a combat, like Baldur's Gate 3's initiative bar. The turn in play is lit;
  * a creature shows how hurt it is as a bar and a word, never as numbers.
  */
-export function TurnBar({ party, dmStatus }: { party: Party; dmStatus: string }) {
+export function TurnBar({ party, dmStatus, feed }: { party: Party; dmStatus: string; feed: { seq: number; text: string }[] }) {
   const combat = party.combat
   if (!combat) return null
   const now = combat.order.find((o) => o.id === combat.current)
@@ -59,11 +59,21 @@ export function TurnBar({ party, dmStatus }: { party: Party; dmStatus: string })
           </p>
         )}
       </div>
-      <ol className="flex min-w-0 gap-1.5 overflow-x-auto">
-        {combat.order.map((o) => (
-          <Slot key={o.id} o={o} party={party} current={o.id === combat.current} />
-        ))}
-      </ol>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <ol className="flex min-w-0 gap-1.5 overflow-x-auto">
+          {combat.order.map((o) => (
+            <Slot key={o.id} o={o} party={party} current={o.id === combat.current} />
+          ))}
+        </ol>
+        {/* What just happened: an enemy's attack and its damage, in words, on every screen. */}
+        <ul aria-label="What just happened" aria-live="polite" className="flex flex-col text-sm leading-tight text-[var(--parchment)]">
+          {feed.slice(-2).map((f) => (
+            <li key={f.seq} className="truncate">
+              {f.text}
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   )
 }

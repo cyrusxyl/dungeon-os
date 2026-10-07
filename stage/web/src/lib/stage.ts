@@ -68,6 +68,12 @@ export interface StoryLine {
   emotion?: string
 }
 
+export interface Notice {
+  who: string
+  lines: string[]
+  id: number
+}
+
 /** One seat: a player at a character. `sid` is a public id for the device; the device token never leaves it. */
 export interface Seat {
   who: string
@@ -97,8 +103,16 @@ export interface StageState {
   /** The `sid` of the host's device, once there is one. */
   host: string | null
   seats: Seat[]
-  /** The `sid` of the device that has the creator open; null while it is the host's. */
-  creator: string | null
+  /** The `sid` of each device that has the creator open. */
+  creators: string[]
+  /** The creator phase is the first party: only the host starts the adventure. */
+  new_party: boolean
+  /** The story line the players read now (the furthest of the seated devices); null until one reports. */
+  shown_seq: number | null
+  /** The log of rolls and combat lines, oldest first. */
+  feed: { seq: number; text: string }[]
+  /** What this device's characters gained or lost. `id` is unique, so a toast shows once. */
+  notices: Notice[]
   /** Whispers from the DM to this device's characters. */
   private: { who: string; text: string; seq: number }[]
   /** The DM waits for answers: `who` is `all` or one character id. Names only, never the answers. */

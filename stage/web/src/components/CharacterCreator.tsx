@@ -162,7 +162,7 @@ function Select({ id, label, value, onChange, children }: { id: string; label: s
   )
 }
 
-export function CharacterCreator({ dmStatus, activity }: { dmStatus: string; activity?: string }) {
+export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus: string; activity?: string; finishLabel: string }) {
   const [options, setOptions] = useState<Options | null>(null)
   const [loadError, setLoadError] = useState('')
   const [attempt, setAttempt] = useState(0)
@@ -368,7 +368,7 @@ export function CharacterCreator({ dmStatus, activity }: { dmStatus: string; act
             Make another character
           </Button>
           <Button disabled={busy} onClick={finish} className="text-[10px]">
-            {hadParty ? 'Join the party' : 'Begin adventure'}
+            {finishLabel}
           </Button>
         </div>
       </div>,

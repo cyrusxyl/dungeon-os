@@ -729,6 +729,19 @@ def test_creator() -> None:
         before = st3.log_path.read_text()
         st3.close_creator()
         check("a joiner does not reset the scene", st3.log_path.read_text() == before)
+        c4 = camp(tmp, {"party": "create"})
+        st4 = Stage(c4, ["cat"])
+        check("a new party is the first-party phase", st4.initial is True and st4.snapshot()["state"]["new_party"] is True)
+        st4.open_creator("a" * 16)
+        (c4 / "characters" / "p.json").write_text("{}")
+        st4.open_creator("b" * 16)
+        (c4 / "characters" / "q.json").write_text("{}")
+        check("a second creator joins the phase without resetting what counts as new", st4.seen_ids == [] and st4.creators == {"a" * 16, "b" * 16})
+        st4.leave_creator("a" * 16, False)
+        st4.leave_creator("b" * 16, False)
+        check("phones finishing do not start the adventure", st4.opened and not st4.pending)
+        check("the host does, with one prompt naming both", st4.leave_creator("h" * 16, True) and len(st4.pending) == 1
+              and "`p`" in st4.pending[0] and "`q`" in st4.pending[0])
         pm = Stage(camp(tmp, {"party": "premade"}), ["cat"])
         check("premade with no sheets: not creating", pm.snapshot()["state"]["creating"] is False
               and pm.snapshot()["state"]["party_mode"] == "premade")
@@ -825,6 +838,34 @@ def test_creator() -> None:
             finally:
                 rules_cmd._api = saved
         asyncio.run(routes())
+
+
+def test_notices() -> None:
+    print("inventory notices: only the owner, never on first sight")
+    from dnd_cli import character, sheet
+    from stage.server import Stage
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = fixture_campaign(tmp)
+        st = Stage(c, ["cat"])
+        check("first sight sets the baseline and says nothing", st.inventory_notices() == [] and set(st.holdings) == {"aragorn", "legolas"})
+        check("an unchanged sheet says nothing", st.inventory_notices() == [])
+        sh = character.load(c, "legolas")
+        sheet.add_item(sh, "Rope", 2)
+        sheet.gold(sh, 15)
+        character.save(c, "legolas", sh)
+        got = st.inventory_notices()
+        check("a gain names the item, the count and the gold", len(got) == 1 and got[0]["who"] == "legolas"
+              and set(got[0]["lines"]) == {"+Rope ×2", "+15 gp"})
+        sh = character.load(c, "legolas")
+        sheet.remove_item(sh, "Rope", 1)
+        character.save(c, "legolas", sh)
+        check("a loss shows a minus", [n["lines"] for n in st.inventory_notices()] == [["−Rope"]])
+        st.fold(got)
+        st.seats.claim("a" * 16, "legolas", "Alex")
+        st.seats.claim("b" * 16, "aragorn", "Sam")
+        check("the owner's snapshot has the notice", st.snapshot("a" * 16)["state"]["notices"][0]["lines"] == got[0]["lines"])
+        check("another player's snapshot does not", st.snapshot("b" * 16)["state"]["notices"] == [] and st.snapshot(None)["state"]["notices"] == [])
 
 
 def test_seats() -> None:
@@ -1001,18 +1042,49 @@ def test_seats() -> None:
             status, r = await post("/api/seat/away", {"who": "aragorn", "away": True}, B)
             check("away shows to everyone", status == 200 and stage.snapshot()["state"]["seats"][0]["away"] is True)
             status, r = await post("/api/creation/open", {}, B)
-            check("the host opens the creator", status == 200 and stage.creator == B)
+            check("the host opens the creator", status == 200 and stage.creators == {B} and stage.opened)
             status, r = await post("/api/creation/open", {}, A)
-            check("a second device cannot open it over the first", status == 409 and stage.creator == B)
+            check("a second device opens it too", status == 200 and stage.creators == {A, B})
+            status, r = await post("/api/creation/done", {}, G)
+            check("a device that is not creating cannot close it", status == 403)
             status, r = await post("/api/creation/done", {}, A)
-            check("and cannot close it", status == 403)
+            check("a joiner who leaves does not close it while another is creating", status == 200 and stage.opened and stage.creators == {B})
             status, r = await post("/api/creation/done", {}, B)
-            check("the opener closes it", status == 200 and not stage.opened and stage.creator is None)
+            check("the last creator closes a joiner phase", status == 200 and not stage.opened and not stage.creators)
             await post("/api/creation/open", {}, A)
-            status, r = await post("/api/creation/open", {}, B)
-            check("the host cannot open it over a player either", status == 409 and stage.creator == A)
-            status, r = await post("/api/creation/done", {}, B)
-            check("but the host can close a creator that a dead phone left open", status == 200 and not stage.opened)
+            status, r = await post("/api/creation/done", {"force": True}, G)
+            check("force is for the host only", status == 403 and stage.opened)
+            status, r = await post("/api/creation/done", {"force": True}, B)
+            check("the host closes a creator that a dead phone left open", status == 200 and not stage.opened and not stage.creators)
+
+            # The first party: phones are creators, only the host starts the adventure.
+            stage.opened, stage.initial = True, True
+            stage.seen_ids = []
+            await post("/api/creation/open", {}, A)
+            await post("/api/creation/open", {}, G)
+            snap = stage.snapshot(B)["state"]
+            check("the snapshot lists the creators by sid and says it is the first party", snap["creators"] == sorted([sid(A), sid(G)]) and snap["new_party"] is True)
+            await post("/api/creation/done", {}, A)
+            await post("/api/creation/done", {}, G)
+            check("in the first party, phones finishing do not start the adventure", stage.opened and not stage.creators)
+            status, r = await post("/api/creation/done", {"force": True}, B)
+            check("the host starts it", not stage.opened)
+            stage.initial = False
+
+            # What a seated device reads: the table follows the furthest.
+            status, r = await post("/api/read", {"seq": 3}, G)
+            check("a device with no seat cannot report a line", status == 403 and stage.shown_seq() is None)
+            await post("/api/seat/claim", {"who": "legolas", "name": "Alex"}, A)
+            await post("/api/read", {"seq": 4}, A)
+            await post("/api/read", {"seq": 9}, B)  # B plays aragorn
+            await post("/api/read", {"seq": 6}, A)
+            check("the table shows the furthest line the seated devices read", stage.snapshot(G)["state"]["shown_seq"] == 9)
+            await post("/api/seat/release", {"who": "aragorn"}, B)
+            check("a device that gave up its seat no longer counts", stage.snapshot(G)["state"]["shown_seq"] == 6)
+            await post("/api/seat/claim", {"who": "aragorn", "name": "Sam"}, B)
+            status, r = await post("/api/read", {"seq": "x"}, A)
+            check("a bad line number is refused", status == 400)
+            await post("/api/seat/release", {"who": "legolas"}, A)
 
             sent.clear()
             await post("/api/input", {"text": "End the session now", "as_host": True}, B)
@@ -1055,6 +1127,19 @@ def test_table_talk() -> None:
     check("an await at the end of a beat stays", [state.apply(state.empty(), e) for e in beat.parse("@narrate Hi\n@await all")][-1]["await"] is not None
           and state.apply(state.apply(state.empty(), {"type": "narrate", "text": "Hi"}), {"type": "await", "who": "all"})["await"]["who"] == "all")
     check("targeted choices keep who", state.apply(state.empty(), {"type": "choices", "who": "sireth", "options": ["a", "b"]})["choices"]["who"] == "sireth")
+    detail = {"kind": "attack", "title": "Scimitar", "subtitle": "Attack Roll · Goblin 1 → Aragorn", "target": {"label": "Armor Class", "value": 15},
+              "rolls": [{"name": "Goblin 1", "total": 17, "outcome": "hit"}], "damage": [{"type": "slashing", "expr": "1d6+2", "faces": [3], "total": 5}]}
+    f = state.apply(state.empty(), {"type": "roll", "expr": "x", "total": 17, "dice": [], "detail": detail})["feed"]
+    check("an attack roll goes to the log with its hit and damage", f[0]["text"] == "Scimitar · Attack Roll · Goblin 1 → Aragorn: Goblin 1 17 (hit) vs Armor Class 15 — 5 slashing damage")
+    f = state.apply(state.empty(), {"type": "roll", "expr": "2d6", "total": 7, "dice": []})["feed"]
+    check("a plain roll goes to the log", f[0]["text"] == "Rolled 2d6: 7")
+    f = state.apply(state.empty(), {"type": "feed", "text": "Initiative: A 12"})["feed"]
+    check("a feed line goes to the log", f[0]["text"] == "Initiative: A 12" and len(f) == 1)
+    hidden = {**detail, "target": None}
+    check("a hidden target (a monster's AC or a hidden DC) is not in the log", "vs" not in state.roll_text({"type": "roll", "detail": hidden}))
+    n = state.apply(state.empty(), {"type": "notice", "who": "cassara", "lines": ["+1 Rope"], "id": 5})
+    check("a notice is private state, capped", n["notices"] == [{"who": "cassara", "lines": ["+1 Rope"], "id": 5}] and n["log"] == []
+          and len(state.apply(n, {"type": "notice", "who": "x", "lines": [], "id": 6}) ["notices"]) == 2)
 
     with tempfile.TemporaryDirectory() as tmp:
         c = fixture_campaign(tmp)
@@ -1486,6 +1571,7 @@ if __name__ == "__main__":
     test_party()
     test_player_actions()
     test_seats()
+    test_notices()
     test_table_talk()
     test_local_only()
     test_crawl()

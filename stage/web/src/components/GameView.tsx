@@ -2,15 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 
 import { CharacterCreator } from '@/components/CharacterCreator'
 import { ConsoleDrawer } from '@/components/Console'
+import { DiceOverlay } from '@/components/DiceOverlay'
 import { CrawlView } from '@/components/CrawlView'
 import { DialogueBox } from '@/components/DialogueBox'
 import { JoinQr } from '@/components/JoinQr'
 import { HostControls } from '@/components/HostControls'
+import { Lobby } from '@/components/Lobby'
 import { LogDrawer } from '@/components/LogDrawer'
 import { MapOverlay } from '@/components/MapOverlay'
+import { NoticeToasts } from '@/components/NoticeToasts'
 import { Card, PartyPanel } from '@/components/PartyPanel'
 import { RoleScreen } from '@/components/RoleScreen'
 import { RollRequest } from '@/components/RollRequest'
+import { SceneTitle } from '@/components/SceneTitle'
 import { SeatPicker } from '@/components/SeatPicker'
 import { SheetDrawer } from '@/components/SheetDrawer'
 import { StageView } from '@/components/StageView'
@@ -47,7 +51,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const [mapOpen, setMapOpen] = useState(false)
   const [showParty, setShowParty] = useState(true)
   const [sheet, setSheet] = useState<string | null>(null)
-  const { party, refresh } = useParty(state?.dm.status ?? 'starting')
+  const { party, refresh } = useParty(`${state?.dm.status ?? 'starting'}:${state?.seats.length ?? 0}`)
   const me = useMe(state)
   const { mode, setMode, chosen: roleChosen, hand, setHand } = useView()
   const [viewOpen, setViewOpen] = useState(false)
@@ -68,6 +72,12 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   useEffect(() => {
     if (me && restored.current && me.mine.length) rememberSeats(campaign, me.mine)
   }, [me?.mine, campaign])
+
+  // The table screen follows the phones: each seated device says which line it shows now.
+  const shownLine = readSeq === null || !state ? undefined : (state.log.find((l) => l.seq > readSeq) ?? state.log.at(-1))?.seq
+  useEffect(() => {
+    if (shownLine !== undefined && me?.mine.length && mode !== 'table') postJson('/api/read', { seq: shownLine })
+  }, [shownLine, me?.mine.length, mode])
 
   // On first load (or reload) everything already on record counts as read.
   useEffect(() => {
@@ -101,8 +111,10 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
 
   const log = state.log
   const unread = log.filter((l) => l.seq > (readSeq ?? 0))
-  const current = unread[0] ?? log.at(-1)
-  const pending = Math.max(0, unread.length - 1)
+  // The table shows the line the phones show, and has no backlog of its own.
+  const followed = state.shown_seq === null ? undefined : log.findLast((l) => l.seq <= state.shown_seq!)
+  const current = mode === 'table' ? (followed ?? log.at(-1)) : (unread[0] ?? log.at(-1))
+  const pending = mode === 'table' ? 0 : Math.max(0, unread.length - 1)
   const caughtUp = unread.length <= 1
   const speaker = current?.type === 'say' ? current.actor : undefined
   const mine = me?.mine ?? NO_SEATS
@@ -111,10 +123,13 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const canType = state.dm.status === 'idle' && (isHost || mine.length > 0) && mode !== 'table'
   // Several seats on one device: the line goes to the DM as this character (the one on turn, if it is yours).
   const who = mine.includes(chosen ?? '') ? chosen! : mine.includes(party?.combat?.current ?? '') ? party!.combat!.current! : mine[0]
-  const showCreator = state.creating && (state.creator === me?.sid || (state.creator === null && isHost))
+  const showCreator = state.creating && mode !== 'table' && Boolean(me && state.creators.includes(me.sid))
+  // The first party is gathering: the table and the phones that are not making a character show who has joined.
+  const lobby = Boolean(me) && state.creating && state.new_party && !showCreator
   // The device that started the game, with no seat and no saved choice, says first what it is: the table or a place to play.
   const needsRole = Boolean(me) && isHost && !showCreator && !roleChosen && mine.length === 0 && recallSeats(campaign).length === 0
   const picking = Boolean(me) && !showCreator && !needsRole && ((mine.length === 0 && mode !== 'table') || seatOpen)
+  const finishLabel = state.new_party ? (isHost ? 'Begin adventure' : 'I am ready') : 'Join the party'
   const choices = caughtUp ? state.choices?.options : undefined
   const nameOf = (id: string) => party?.characters.find((c) => c.id === id)?.name ?? titleCase(id)
 
@@ -308,9 +323,11 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           onNew={() => postJson('/api/creation/open')}
         />
       )}
+      <DiceOverlay rolls={state.rolls} />
+      <NoticeToasts notices={state.notices} nameOf={nameOf} />
       {sheet && party && <SheetDrawer party={party} who={sheet} onWho={setSheet} onClose={() => setSheet(null)} />}
       <MapOverlay open={mapOpen} onClose={() => setMapOpen(false)} state={state} canAct={canAct} />
-      <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} log={state.log} />
+      <LogDrawer open={logOpen} onClose={() => setLogOpen(false)} log={state.log} feed={state.feed} />
       <ConsoleDrawer open={consoleOpen} onClose={() => setConsoleOpen(false)} dmLog={state.dm_log} />
     </>
   )
@@ -392,15 +409,18 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           {sharedButtons}
         </header>
         {viewPanel}
-        <main className={`min-h-0 flex-1 gap-3 overflow-y-auto ${showCreator ? '' : layout}`}>
-          {showCreator ? (
-            <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} />
+        <main className={`min-h-0 flex-1 gap-3 overflow-y-auto ${showCreator || lobby ? '' : layout}`}>
+          {lobby && me ? (
+            <Lobby state={state} party={party} me={me} table={false} status={statusText} />
+          ) : showCreator ? (
+            <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} finishLabel={finishLabel} />
           ) : (
             <>
               <section className="flex min-w-0 flex-col gap-2">
-                {party && <TurnBar party={party} dmStatus={state.dm.status} />}
+                {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
                 {hand.scene && (
-                  <div className="aspect-[320/192] w-full border-4 border-[var(--border)] bg-black">
+                  <div className="relative aspect-[320/192] w-full border-4 border-[var(--border)] bg-black">
+                    <SceneTitle state={state} />
                     {state.explore ? <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} /> : <StageView state={state} speaker={speaker} />}
                   </div>
                 )}
@@ -447,15 +467,15 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         <Button size="sm" variant="outline" onClick={() => setShowParty((v) => !v)} className="hidden text-[10px] lg:inline-flex">
           Party
         </Button>
-        {!state.creating && (
+        {!showCreator && !lobby && (
           <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/open')} className="text-[10px]">
             New character
           </Button>
         )}
         {sharedButtons}
         {me && <HostControls me={me} />}
-        {isHost && state.creating && !showCreator && (
-          <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/done')} title="Close the character creator that another device left open." className="text-[10px]">
+        {isHost && state.creating && !state.new_party && !showCreator && (
+          <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/done', { force: true })} title="Close the character creator that another device left open." className="text-[10px]">
             Close creator
           </Button>
         )}
@@ -534,14 +554,19 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       {viewPanel}
 
       <main className={`grid min-h-0 flex-1 gap-4 ${showParty ? 'lg:grid-cols-[1fr_22rem]' : ''}`}>
-        {showCreator ? (
+        {lobby && me ? (
           <section className="flex min-h-0 flex-col">
-            <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} />
+            <Lobby state={state} party={party} me={me} table={mode === 'table'} status={statusText} />
+          </section>
+        ) : showCreator ? (
+          <section className="flex min-h-0 flex-col">
+            <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} finishLabel={finishLabel} />
           </section>
         ) : (
         <section className="flex min-h-0 flex-col gap-3">
-          {party && <TurnBar party={party} dmStatus={state.dm.status} />}
-          <div className="min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
+          {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
+          <div className="relative min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
+            <SceneTitle state={state} />
             {state.explore ? (
               <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
             ) : (
@@ -555,7 +580,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         )}
         {showParty && (
           <div className="hidden min-h-0 flex-col gap-3 lg:flex">
-            {mode === 'table' && <JoinQr />}
+            {mode === 'table' && !lobby && <JoinQr />}
             <div className="flex min-h-0 flex-1">
               <PartyPanel party={party} refresh={refresh} onSheet={setSheet} canAct={canAct && !state.roll_request} seats={state.seats} mine={mine} />
             </div>

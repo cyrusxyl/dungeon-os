@@ -229,7 +229,8 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="visual-"))
     c = campaign(tmp)
     port, debug = free_port(), free_port()
-    server = uvicorn.Server(uvicorn.Config(create_app(campaign_dir=c, dm_command=["sleep", "3600"]), host="127.0.0.1", port=port, log_level="warning"))
+    app = create_app(campaign_dir=c, dm_command=["sleep", "3600"])
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
     threading.Thread(target=server.run, daemon=True).start()
     chrome = subprocess.Popen(
         ["google-chrome", "--headless=new", f"--remote-debugging-port={debug}", "--no-sandbox", "--window-size=1500,950", "--hide-scrollbars",
@@ -300,6 +301,55 @@ def main() -> int:
                 check("the hand screen shows only this player's cards", await page.eval("document.querySelectorAll('main section h2').length") >= 1
                       and "Where" not in await page.eval("document.body.innerText"))
 
+                print("scene title, notices, the table follows the phone")
+                from dnd_cli import character, sheet as dnd_sheet
+                beat.append(c, [{"type": "scene", "location": "mossy-crypt", "party": ["aragorn", "legolas"]},
+                                {"type": "narrate", "text": "First line zzz."}, {"type": "narrate", "text": "Second line yyy."}, {"type": "dm_status", "status": "idle"}])
+                await asyncio.sleep(1.5)
+                log = app.state.table.stage.state["log"]
+                first, second = next(l for l in log if "zzz" in l["text"])["seq"], next(l for l in log if "yyy" in l["text"])["seq"]
+                post_read = lambda seq: page.eval("fetch('/api/read', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Device': localStorage.getItem('dungeon-device')}, body: JSON.stringify({seq: %d})})" % seq)
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/?view=table")
+                await asyncio.sleep(2.5)
+                title = "(document.querySelector('h2.absolute') || {}).innerText || ''"
+                check("the scene has a title on top", await page.eval(title) == "Mossy Crypt", await page.eval(title))
+                await post_read(first)
+                await asyncio.sleep(2)
+                text = await page.eval("document.body.innerText")
+                check("the table shows the line the phone shows, not the backlog", "First line zzz" in text and "Second line yyy" not in text and "▶" not in text)
+                await post_read(second)
+                await asyncio.sleep(2)
+                check("and moves on when the phone does", "Second line yyy" in await page.eval("document.body.innerText"))
+                await page.call("Emulation.setDeviceMetricsOverride", width=390, height=800, deviceScaleFactor=2, mobile=True)
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/?view=hand")
+                await asyncio.sleep(2.5)
+                sh = character.load(c, "aragorn")
+                dnd_sheet.add_item(sh, "Silver Key", 1)
+                character.save(c, "aragorn", sh)
+                await asyncio.sleep(1.5)
+                await page.shot("notice")
+                check("a gained item shows as a notice on the owner's phone", "Silver Key" in await page.eval("(document.querySelector('[role=status]') || {}).innerText || ''"))
+                await page.call("Emulation.setDeviceMetricsOverride", width=1500, height=950, deviceScaleFactor=1, mobile=False)
+
+                print("rolls show on the phone and in its log")
+                await page.call("Emulation.setDeviceMetricsOverride", width=390, height=800, deviceScaleFactor=2, mobile=True)
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/?view=hand")
+                await asyncio.sleep(2.5)
+                check("the phone has no scene here (so the result must not depend on it)", not await page.eval("Boolean(document.querySelector('h2.absolute'))"))
+                detail = {"kind": "attack", "title": "Scimitar", "subtitle": "Attack Roll · Goblin 1 → Aragorn", "target": {"label": "Armor Class", "value": 15},
+                          "rolls": [{"who": "goblin#1", "name": "Goblin 1", "d20": [17], "kept": 0, "mode": "normal", "mods": [{"label": "Attack Bonus", "value": 4}],
+                                     "bonus": [], "total": 21, "outcome": "hit"}],
+                          "damage": [{"type": "slashing", "expr": "1d6+2", "faces": [3], "total": 5}]}
+                beat.append(c, [{"type": "roll", "expr": "Goblin 1: Scimitar", "total": 21, "dice": [], "detail": detail}])
+                await asyncio.sleep(4)
+                await page.shot("phone-roll-result")
+                text = await page.eval("(document.querySelector('[role=status]') || {}).innerText || ''")
+                check("an enemy attack plays on the phone with its result and damage", "Hit" in text and "slashing" in text.lower() and "Goblin 1" in text, text)
+                await page.click("Log")
+                await asyncio.sleep(0.5)
+                check("the log has the roll line", "Goblin 1 21 (hit) vs Armor Class 15" in await page.eval("document.body.innerText"))
+                await page.call("Emulation.setDeviceMetricsOverride", width=1500, height=950, deviceScaleFactor=1, mobile=False)
+
                 print("the table role")
                 await page.eval("""(async () => {
                     const h = {'Content-Type': 'application/json', 'X-Device': localStorage.getItem('dungeon-device')}
@@ -321,6 +371,16 @@ def main() -> int:
                 await asyncio.sleep(2.5)
                 check("a joining device is not asked what it is: it goes straight to the seat picker",
                       not await page.eval(role) and await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
+
+                print("the first party is gathering")
+                stage = app.state.table.stage
+                stage.opened = stage.initial = True
+                await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/?view=table")
+                await asyncio.sleep(2.5)
+                await page.shot("lobby")
+                text = await page.eval("document.body.innerText")
+                check("the table shows a lobby with the join code and the party", "Gather the party" in text and "Join" in text and "Aragorn" in text)
+                check("a guest table has no start button, and no input", "Start the adventure" not in text and not await page.eval("Boolean(document.querySelector('#player-input'))"))
 
         asyncio.run(run())
     finally:

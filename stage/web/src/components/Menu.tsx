@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
+import { write } from '@/lib/local'
 import { postJson } from '@/lib/stage'
+import { defaultMode } from '@/lib/view'
 
 const CUSTOM = '__custom__' // the model dropdown's "type your own" entry
 
@@ -61,6 +63,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   const [newName, setNewName] = useState('')
   const [pitch, setPitch] = useState('')
   const [party, setParty] = useState<'create' | 'premade'>('create')
+  const [play, setPlay] = useState<'here' | 'phones'>('here')
   const [framework, setFramework] = useState(data.settings.agent_framework)
   const [model, setModel] = useState(data.settings.model)
   const [picked, setPicked] = useState<Campaign | null>(null)
@@ -74,7 +77,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   useEffect(() => setError(''), [panel])
 
   const start = async (
-    body: { campaign?: string; dm?: 'continue' | 'fresh'; save?: string; new_name?: string; pitch?: string; party?: string },
+    body: { campaign?: string; dm?: 'continue' | 'fresh'; save?: string; new_name?: string; pitch?: string; party?: string; play?: 'here' | 'phones' },
     url = '/api/game/start',
   ) => {
     setBusy(true)
@@ -111,6 +114,12 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
       onChanged(res as unknown as MenuData)
       setPanel('main')
     }
+  }
+
+  // The screen that starts a game says what it is: a place to play, or the shared table that phones join.
+  const begin = () => {
+    write('dungeon-view', play === 'phones' ? 'table' : defaultMode())
+    start({ new_name: newName.trim(), pitch: pitch.trim(), party, play })
   }
 
   const needsPitch = party === 'premade' && !pitch.trim()
@@ -251,7 +260,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
               className="flex flex-col gap-4"
               onSubmit={(e) => {
                 e.preventDefault()
-                if (newName.trim() && !needsPitch) start({ new_name: newName.trim(), pitch: pitch.trim(), party })
+                if (newName.trim() && !needsPitch) begin()
               }}
             >
               <label htmlFor="new-name" className="text-lg">
@@ -277,6 +286,18 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
                     {label}
                   </label>
                 ))}
+              </fieldset>
+              <fieldset className="flex flex-col gap-2">
+                <legend className="mb-2 text-lg">Who plays</legend>
+                {([['here', 'I play on this screen'], ['phones', 'Friends join on their phones. This screen is the shared table.']] as const).map(([v, label]) => (
+                  <label key={v} className="flex items-center gap-3 text-lg">
+                    <input type="radio" name="play" value={v} checked={play === v} onChange={() => setPlay(v)} className="accent-[var(--gold)]" />
+                    {label}
+                  </label>
+                ))}
+                {play === 'phones' && ['localhost', '127.0.0.1'].includes(location.hostname) && (
+                  <p className="text-sm text-[var(--ember)]">Phones cannot open this address. Open this page by the server's network address (start it with --lan).</p>
+                )}
               </fieldset>
               {needsPitch && <p className="text-sm text-[var(--ember)]">Write a pitch so the DM knows which characters to make.</p>}
               <Button type="submit" disabled={busy || !newName.trim() || needsPitch} className="text-[10px]">

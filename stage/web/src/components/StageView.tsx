@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { DiceOverlay } from '@/components/DiceOverlay'
 import { DmTable } from '@/components/DmTable'
 import { type Position, type StageState, titleCase, useIntegerScale, useJson } from '@/lib/stage'
 
@@ -85,7 +84,6 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
 
   return (
     <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
-      <DiceOverlay rolls={state.rolls} />
       <div
         className="relative shrink-0 overflow-hidden"
         style={{ width: STAGE_W, height: STAGE_H, transform: `scale(${scale})`, transformOrigin: 'center' }}

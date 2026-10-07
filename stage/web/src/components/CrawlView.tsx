@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { DiceOverlay } from '@/components/DiceOverlay'
 import { Button } from '@/components/ui/8bit/button'
 import { focusTakesText, postJson, type StageState, useIntegerScale, useJson } from '@/lib/stage'
 
@@ -236,7 +235,6 @@ export function CrawlView({ state, siteId, canAct }: { state: StageState; siteId
 
   return (
     <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
-      <DiceOverlay rolls={state.rolls} />
       <canvas
         ref={canvas}
         width={W}

@@ -172,6 +172,9 @@ def test_effects(c: Path) -> None:
           and d["title"] == "Athletics" and d["subtitle"] == "Strength Check" and ev[0]["total"] == r["total"])
     check("the tiles add up to the skill bonus", sum(t["value"] for t in r["mods"]) == skill)
     check("guidance is spent by the check", effects.active(c, "aragorn") == [])
+    ev = staged(c, lambda: combat._initiative_feed(c, state, state["active_encounter"]))
+    check("the initiative goes to the stage log by name", ev and ev[0]["type"] == "feed" and ev[0]["text"].startswith("Initiative: Aragorn 20")
+          and "Goblin 1 18" in ev[0]["text"] and "#" not in ev[0]["text"])
     ev = staged(c, lambda: combat.check(c, state, ["aragorn"], "athletics", dc=12, hide_dc=True, rng=Fixed(10)))
     check("--hide-dc keeps the DC off the stage", "target" not in ev[0]["detail"] and ev[0]["detail"]["rolls"][0]["bonus"] == [])
     check("a check with no DC has no outcome", staged(c, lambda: combat.check(
