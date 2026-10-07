@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { D20 } from '@/components/D20'
+import { Die } from '@/components/Die'
 import { Shell, Tile } from '@/components/DiceOverlay'
 import { GiveBonus } from '@/components/PartyPanel'
 import { act, type Party, signed, TONE } from '@/lib/party'
@@ -42,7 +42,7 @@ export function RollRequest({ request, party, refresh, canRoll }: { request: Req
             <span className="pixel-font text-xl tabular-nums">{request.dc}</span>
           </div>
         )}
-        <D20 value="?" className="size-24" />
+        <Die face={20} label="?" settled size={96} />
         <div className="flex flex-wrap justify-center gap-2">
           {request.mods.map((m, i) => (
             <Tile key={i} label={m.label} value={signed(m.value)} tone="plain" shown />

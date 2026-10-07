@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { D20 } from '@/components/D20'
+import { Die, DIE_MS } from '@/components/Die'
+import type { Tone } from '@/lib/d20'
 import type { Roll, RollDetail, RollEntry } from '@/lib/stage'
 
 // The roll window plays like the one in Baldur's Gate 3: the dice tumble and land, advantage drops the lower die,
 // then each tile adds to the total, one by one, and the result lands last.
-const TUMBLE_MS = 900
-const SETTLE_MS = 700
+// A click while the dice still roll skips to the landed dice.
+const TUMBLE_MS = DIE_MS
+const SETTLE_MS = 400
 const TILE_MS = 280
 const HOLD_MS = 4500
 // When more rolls wait (a round of attacks), each window gives way sooner.
@@ -33,27 +35,17 @@ const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)'
 
 /**
  * Where the roll animation is. `settled`: the dice have landed. `shown`: how many of `count` tiles have landed.
- * `done`: everything is on screen. With reduced motion it starts done.
+ * `done`: everything is on screen. With reduced motion it starts done. `skip` ends the tumble now.
  */
-function useReveal(count: number): { settled: boolean; shown: number; done: boolean } {
+function useReveal(count: number): { settled: boolean; shown: number; done: boolean; skip: () => void } {
   const [step, setStep] = useState(() => (reducedMotion() ? count + 2 : 0))
   useEffect(() => {
     if (step >= count + 2) return
     const t = window.setTimeout(() => setStep(step + 1), step === 0 ? TUMBLE_MS : step === 1 ? SETTLE_MS : TILE_MS)
     return () => window.clearTimeout(t)
   }, [step, count])
-  return { settled: step >= 1, shown: Math.min(Math.max(step - 1, 0), count), done: step >= count + 2 }
-}
-
-/** Random faces for `n` dice, changing a dozen times a second while `on`. */
-function useShuffle(n: number, on: boolean): number[] {
-  const [faces, setFaces] = useState<number[]>(() => Array.from({ length: n }, () => 1 + Math.floor(Math.random() * 20)))
-  useEffect(() => {
-    if (!on) return
-    const t = window.setInterval(() => setFaces(Array.from({ length: n }, () => 1 + Math.floor(Math.random() * 20))), 80)
-    return () => window.clearInterval(t)
-  }, [n, on])
-  return faces
+  const skip = () => setStep((s) => Math.max(s, 1))
+  return { settled: step >= 1, shown: Math.min(Math.max(step - 1, 0), count), done: step >= count + 2, skip }
 }
 
 const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`)
@@ -126,15 +118,13 @@ export function Shell({ children, className = '' }: { children: React.ReactNode;
 function RollWindow({ detail, hold, onDone }: { detail: RollDetail; hold: number; onDone: () => void }) {
   const group = detail.rolls.length > 1
   const tileCount = group ? detail.rolls.length : detail.rolls[0].mods.length + detail.rolls[0].bonus.length
-  const { settled, shown, done } = useReveal(tileCount)
+  const { settled, shown, done, skip } = useReveal(tileCount)
   useDismiss(done, hold, onDone)
-  const dice = group ? detail.rolls.reduce((n, r) => n + r.d20.length, 0) : detail.rolls[0].d20.length
-  const shuffle = useShuffle(dice, !settled)
 
   const summary = detail.rolls.map((r) => `${r.name} ${r.total}${r.outcome ? ` ${OUTCOME_TEXT[r.outcome]}` : ''}`).join(', ')
   return (
     <Shell className={group ? 'w-[28rem] max-w-[94vw]' : 'w-[22rem] max-w-[94vw]'}>
-      <div role="status" aria-live="polite" onClick={onDone} className="flex cursor-pointer flex-col items-center gap-2">
+      <div role="status" aria-live="polite" onClick={settled ? onDone : skip} className="flex cursor-pointer flex-col items-center gap-2">
         <span className="sr-only">{`${detail.title}. ${summary}`}</span>
         {!group && <span className="text-sm text-[var(--dim)]">{detail.rolls[0].name}</span>}
         <h2 className="pixel-font text-sm text-[var(--parchment)]">{detail.title}</h2>
@@ -146,9 +136,9 @@ function RollWindow({ detail, hold, onDone }: { detail: RollDetail; hold: number
           </div>
         )}
         {group ? (
-          <RollRows rolls={detail.rolls} shuffle={shuffle} settled={settled} shown={shown} />
+          <RollRows rolls={detail.rolls} settled={settled} shown={shown} />
         ) : (
-          <SingleRoll entry={detail.rolls[0]} shuffle={shuffle} settled={settled} shown={shown} done={done} />
+          <SingleRoll entry={detail.rolls[0]} settled={settled} shown={shown} done={done} />
         )}
         {done && !group && detail.rolls[0].outcome && <Result outcome={detail.rolls[0].outcome} d20={detail.rolls[0].d20[detail.rolls[0].kept]} />}
         {done && detail.damage && (
@@ -180,7 +170,7 @@ function Result({ outcome, d20 }: { outcome: NonNullable<RollEntry['outcome']>; 
   )
 }
 
-function SingleRoll({ entry, shuffle, settled, shown, done }: { entry: RollEntry; shuffle: number[]; settled: boolean; shown: number; done: boolean }) {
+function SingleRoll({ entry, settled, shown, done }: { entry: RollEntry; settled: boolean; shown: number; done: boolean }) {
   const kept = entry.d20[entry.kept]
   const tiles = [
     ...entry.mods.map((m) => ({ label: m.label, value: signed(m.value), sub: undefined, tone: 'plain' as const })),
@@ -189,22 +179,16 @@ function SingleRoll({ entry, shuffle, settled, shown, done }: { entry: RollEntry
   const running = kept + tiles.slice(0, shown).reduce((n, t) => n + Number(t.value), 0)
   const two = entry.d20.length > 1
   const flair = done && kept === 20 ? 'burst' : done && kept === 1 ? 'shake' : ''
-  const tone = (face: number, counts: boolean) => (!counts ? 'plain' : face === 20 ? 'gold' : face === 1 ? 'red' : 'plain')
+  const tone = (face: number, counts: boolean): Tone => (!counts ? 'plain' : face === 20 ? 'gold' : face === 1 ? 'red' : 'plain')
   return (
     <>
       <div className={`relative flex items-end justify-center gap-3 py-2 ${flair}`}>
         {entry.d20.map((face, i) => {
           const counts = i === entry.kept
-          const motion = !settled ? 'die-tumble' : two ? (counts ? 'die-kept' : 'die-dropped') : ''
+          const motion = settled && two ? (counts ? 'die-kept' : 'die-dropped') : ''
           const glow = entry.mode === 'advantage' ? 'var(--good)' : entry.mode === 'disadvantage' ? 'var(--bad)' : 'var(--gold)'
           return (
-            <D20
-              key={i}
-              value={settled ? face : shuffle[i]}
-              tone={settled ? tone(face, counts) : 'plain'}
-              className={`${two ? 'size-20' : 'size-24'} ${motion}`}
-              glow={glow}
-            />
+            <Die key={i} face={face} tone={tone(face, counts)} settled={settled} size={two ? 80 : 96} className={motion} glow={glow} />
           )
         })}
       </div>
@@ -222,24 +206,23 @@ function SingleRoll({ entry, shuffle, settled, shown, done }: { entry: RollEntry
 }
 
 /** A group roll (a fireball save): one row per creature. */
-function RollRows({ rolls, shuffle, settled, shown }: { rolls: RollEntry[]; shuffle: number[]; settled: boolean; shown: number }) {
-  // Where each row's dice start in the shuffled faces.
-  const starts = rolls.map((_, i) => rolls.slice(0, i).reduce((n, r) => n + r.d20.length, 0))
+function RollRows({ rolls, settled, shown }: { rolls: RollEntry[]; settled: boolean; shown: number }) {
   return (
     <ul className="flex w-full flex-col gap-1">
       {rolls.map((r, i) => {
-        const first = starts[i]
         const revealed = i < shown
         return (
           <li key={r.who} className={`flex items-center gap-2 border-2 border-[var(--border)] bg-[var(--panel-2)] px-2 py-1 ${revealed ? 'tile-in' : settled ? 'opacity-50' : ''}`}>
             <span className="min-w-0 flex-1 truncate">{r.name}</span>
             <span className="flex gap-1">
               {r.d20.map((face, j) => (
-                <D20
+                <Die
                   key={j}
-                  value={settled ? face : shuffle[first + j]}
-                  tone={settled && j === r.kept ? (face === 20 ? 'gold' : face === 1 ? 'red' : 'plain') : 'plain'}
-                  className={`size-8 ${!settled ? 'die-tumble' : r.d20.length > 1 && j !== r.kept ? 'die-dropped' : ''}`}
+                  face={face}
+                  tone={j === r.kept ? (face === 20 ? 'gold' : face === 1 ? 'red' : 'plain') : 'plain'}
+                  settled={settled}
+                  size={32}
+                  className={settled && r.d20.length > 1 && j !== r.kept ? 'die-dropped' : ''}
                 />
               ))}
             </span>
@@ -260,21 +243,22 @@ function RollRows({ rolls, shuffle, settled, shown }: { rolls: RollEntry[]; shuf
 
 /** A plain `uv run roll` (no breakdown): the dice and the total. */
 function PlainRoll({ roll, hold, onDone }: { roll: Roll; hold: number; onDone: () => void }) {
-  const { settled, done } = useReveal(0)
+  const { settled, done, skip } = useReveal(0)
   useDismiss(done, hold, onDone)
-  const face = useShuffle(1, !settled)[0]
   const d20 = roll.dice.find((d) => d.die.endsWith('d20') && d.faces.length === 1)?.faces[0]
-  const tone = settled && d20 === 20 ? 'gold' : settled && d20 === 1 ? 'red' : 'plain'
+  // The die lands on the d20 that was rolled (any face if the roll has none) and grows the total.
+  const [face] = useState(() => d20 ?? 1 + Math.floor(Math.random() * 20))
+  const tone: Tone = d20 === 20 ? 'gold' : d20 === 1 ? 'red' : 'plain'
   return (
     <Shell className="flex items-center gap-3 !py-2">
-      <div role="status" aria-live="polite" onClick={onDone} className="flex cursor-pointer items-center gap-3">
-        <D20 value={settled ? roll.total : face} tone={tone} className={`size-14 ${settled ? '' : 'die-tumble'}`} />
+      <div role="status" aria-live="polite" onClick={settled ? onDone : skip} className="flex cursor-pointer items-center gap-3">
+        <Die face={face} label={roll.total} tone={tone} settled={settled} size={56} />
         <div className="flex flex-col">
           <span className="text-sm text-[var(--dim)]">
             {roll.expr}
             {settled && roll.dice.length > 0 && ` · ${roll.dice.map((d) => (d.die.endsWith('dropped') ? `dropped [${d.faces.join(', ')}]` : `[${d.faces.join(', ')}]`)).join(' ')}`}
-            {tone === 'gold' && ' · critical!'}
-            {tone === 'red' && ' · fumble'}
+            {settled && tone === 'gold' && ' · critical!'}
+            {settled && tone === 'red' && ' · fumble'}
           </span>
         </div>
       </div>

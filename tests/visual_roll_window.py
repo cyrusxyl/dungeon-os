@@ -101,9 +101,15 @@ async def scenarios(page: Page, c: Path) -> None:
     print("advantage: one die drops, one is kept")
     effects.add(c, "aragorn", "advantage")
     combat.check(c, state, ["aragorn"], "athletics", dc=14, rng=Fixed(6, 17))
-    await asyncio.sleep(2.2)
+    await asyncio.sleep(0.5)
+    count = "[document.querySelectorAll('.die-dropped').length, document.querySelectorAll('.die-kept').length]"
+    check("the dice are still rolling after 0.5 s", await page.eval(count) == [0, 0])
+    await page.shot("rolling")
+    await page.eval("document.querySelector('[role=status]').click()")  # a click skips the tumble
+    await asyncio.sleep(0.3)
     await page.shot("advantage")
-    check("two dice, one dropped, one kept", await page.eval("[document.querySelectorAll('.die-dropped').length, document.querySelectorAll('.die-kept').length]") == [1, 1])
+    check("a click skips to the landed dice: one dropped, one kept", await page.eval(count) == [1, 1])
+    check("the window stays open after the skip", await page.window_open())
 
     print("the window closes on time while the DM keeps sending events")
     start = time.time()
