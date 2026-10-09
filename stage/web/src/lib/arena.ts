@@ -34,5 +34,6 @@ export interface ArenaView {
   walk: Cell[]
   feet_left: number
   /** A player is asked whether to take a reaction attack. */
-  pending: { who: string; against: string } | null
+  pending: { who: string; against: string; seconds_left: number | null } | null
+  settings: { reaction_seconds: number; round_summary: boolean }
 }

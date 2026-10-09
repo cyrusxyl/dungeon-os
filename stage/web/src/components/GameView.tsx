@@ -147,7 +147,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const canAct = canType && caughtUp
   // The picture of the world: the board of a fight, the site the party walks, or the scene.
   const sceneView = state.arena ? (
-    <ArenaView state={state} arenaId={state.arena} actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null} mine={mine} />
+    <ArenaView state={state} arenaId={state.arena} actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null} mine={mine} isHost={isHost} />
   ) : state.explore ? (
     <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
   ) : (

@@ -97,11 +97,43 @@ function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number]
   }
 }
 
+/** The seconds left to answer a reaction question, counted down on this screen. The server decides when the time is up. */
+function Countdown({ from }: { from: number | null }) {
+  const [left, setLeft] = useState(from)
+  useEffect(() => {
+    if (from === null) return
+    const id = window.setInterval(() => setLeft((n) => (n === null ? n : Math.max(0, n - 1))), 1000)
+    return () => window.clearInterval(id)
+  }, [from])
+  return left === null ? null : <> ({left})</>
+}
+
+const REACTION_TIMES = [0, 5, 10, 20, 30, 60]
+
+/** The host's controls during play: how long a player has to answer a reaction question, and the DM's one beat for each round. */
+function CombatSettings({ settings }: { settings: { reaction_seconds: number; round_summary: boolean } }) {
+  const set = (body: Record<string, unknown>) => postJson('/api/combat/settings', body)
+  const next = REACTION_TIMES[(REACTION_TIMES.indexOf(settings.reaction_seconds) + 1) % REACTION_TIMES.length]
+  return (
+    <div className="absolute top-2 right-2 flex flex-col items-end gap-1 text-[10px]">
+      <Button size="sm" variant="outline" className="text-[10px]" onClick={() => set({ reaction_seconds: next })} title="Time to answer a reaction question (click to change)">
+        Reaction time: {settings.reaction_seconds ? `${settings.reaction_seconds} s` : 'no limit'}
+      </Button>
+      <Button size="sm" variant="outline" className="text-[10px]" onClick={() => set({ round_summary: !settings.round_summary })} title="The DM tells one beat after each round">
+        Round summary: {settings.round_summary ? 'on' : 'off'}
+      </Button>
+      <Button size="sm" variant="outline" className="text-[10px]" onClick={() => set({ ...settings, make_default: true })} title="Keep these for every game on this machine">
+        Make default
+      </Button>
+    </div>
+  )
+}
+
 /**
  * The board of a fight. The server owns the rules: a click on a blue cell walks, a click on a creature attacks with the
  * weapon that reaches it. A refusal comes back as words ("The goblin is 25 ft away"), which show over the board.
  */
-export function ArenaView({ state, arenaId, actingAs, mine }: { state: StageState; arenaId: string; actingAs: string | null; mine: string[] }) {
+export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: StageState; arenaId: string; actingAs: string | null; mine: string[]; isHost: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const view = useJson<View>(`/api/arena/${encodeURIComponent(arenaId)}`, state.versions?.[`arena:${arenaId}`] ?? 0)
@@ -173,6 +205,7 @@ export function ArenaView({ state, arenaId, actingAs, mine }: { state: StageStat
         </span>
         {note && <span className="pixel-font bg-black/70 px-2 py-1 text-[8px] text-[var(--bad)]">{note}</span>}
       </div>
+      {isHost && <CombatSettings settings={state.combat_settings ?? view.settings} />}
       {view.pending && (
         <div className="absolute inset-x-2 bottom-2 flex flex-wrap items-center justify-center gap-2 border-2 border-[var(--border)] bg-black/80 p-2">
           {asked ? (
@@ -182,7 +215,7 @@ export function ArenaView({ state, arenaId, actingAs, mine }: { state: StageStat
                 Attack
               </Button>
               <Button size="sm" variant="outline" onClick={() => call('/api/arena/react', { take: false })} className="text-[10px]">
-                Skip
+                Skip<Countdown key={view.pending?.seconds_left} from={view.pending?.seconds_left ?? null} />
               </Button>
             </>
           ) : (

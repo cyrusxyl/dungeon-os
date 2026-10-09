@@ -138,6 +138,10 @@ class Stage:
         self.pending: list[str] = []  # prompts for the DM, sent one at a time when it is idle
         self.pumping = False  # a pump of the creatures on a board is running (see pump_board)
         self.pump_due = False  # something changed that a pump may act on
+        from view.settings import load_settings
+
+        self.combat = load_settings()["combat"]  # reaction_seconds and round_summary: the machine's defaults, changed live by the host
+        self.react_deadline: float | None = None  # when a reaction question times out (wakes the pump)
         self.seen_ids = character_ids(campaign_dir)  # sheets that existed when the creator opened
         # Open from the start for a new party; it stays open until the player is done (not when the first sheet lands).
         self.opened = not self.seen_ids and self.party_mode() != "premade"
@@ -155,16 +159,25 @@ class Stage:
     def board_step(self) -> dict | None:
         """One engine step of the fight on the board, under the rules lock (the DM's commands write the same files)."""
         def step(state, a):
-            if (p := a.get("pending")) and (p["who"] not in self.seats.owners or p["who"] in self.seats.away):
-                # Nobody is there to answer: no reaction attack.
+            settings = board.effective_settings(a, self.combat)
+            if (p := a.get("pending")) and (p["who"] not in self.seats.owners or p["who"] in self.seats.away or board.expired(p, settings)):
+                # Nobody is there to answer, or the time is up: no reaction attack.
                 out = board.answer(self.campaign_dir, state, a, False)
-                return {"kind": "turn", "who": p["against"], "lines": out["lines"], "pending": bool(out["pending"])}
-            return board.pump_step(self.campaign_dir, state, a)
+                done = {"kind": "turn", "who": p["against"], "lines": out["lines"], "pending": bool(out["pending"])}
+            else:
+                done = board.pump_step(self.campaign_dir, state, a, settings=settings)
+            self.watch_reaction(a)
+            return done
         try:
             arena_id, done = with_board(self, step, keep=lambda out: out is not None)
         except board.BoardError:
             return None  # no fight on a board
         return done and {**done, "arena": arena_id}
+
+    def watch_reaction(self, a: dict) -> None:
+        """Remember when the open reaction question times out, so the tail loop wakes the pump then."""
+        p, limit = a.get("pending"), board.effective_settings(a, self.combat)["reaction_seconds"]
+        self.react_deadline = p["asked_at"] + limit if p and limit else None
 
     async def pump_board(self) -> None:
         """Play the creatures of a fight on a board until a player character or the DM is up. One pump at a time.
@@ -181,7 +194,7 @@ class Stage:
                 if step is None:
                     break
                 await self._local_event({"type": "arena_updated", "arena": step["arena"]})
-                if step["kind"] == "dm":
+                if step["kind"] in ("dm", "summary"):
                     await self.submit(step["prompt"])
                     break
                 if step["kind"] == "over":
@@ -255,7 +268,7 @@ class Stage:
 
     def snapshot(self, device: str | None = None) -> dict:
         """The stage as one device may see it: whispers and targeted choices only for their player, the DM's log only for the host."""
-        state = {**self.state, "creating": self.creating(), "party_mode": self.party_mode(), **self.seats.public(),
+        state = {**self.state, "combat_settings": self.combat, "creating": self.creating(), "party_mode": self.party_mode(), **self.seats.public(),
                  "creators": [sid(d) for d in sorted(self.creators)], "new_party": self.initial, "awaiting": self.awaiting(),
                  "shown_seq": self.shown_seq()}
         mine = set(self.seats.mine(device))
@@ -367,6 +380,8 @@ class Stage:
                 await asyncio.to_thread(self.autosave)
             if self.pending and self.dm_ready():
                 await self.submit(self.pending.pop(0))  # busy at once: the next loop waits
+            if self.react_deadline and time.time() >= self.react_deadline:
+                self.react_deadline, self.pump_due = None, True
             await self.pump_board()
             await asyncio.sleep(0.15)
 
@@ -1276,12 +1291,41 @@ def create_app(
 
     async def board_run(stage: Stage, fn) -> JSONResponse:
         """Run fn(state, arena) on the running fight. A refusal of the rules comes back as words; browsers fetch the board again."""
+        def go(st, a):
+            out = fn(st, a)
+            stage.watch_reaction(a)
+            return out
         try:
-            arena_id, out = await run_in_threadpool(with_board, stage, fn)
+            arena_id, out = await run_in_threadpool(with_board, stage, go)
         except (combat.RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         await stage._local_event({"type": "arena_updated", "arena": arena_id})
         return JSONResponse(out)
+
+    async def api_combat_settings(request: Request):
+        """The host changes the reaction time or the round summary during play. `make_default` keeps it for later games."""
+        from view.settings import save_combat_defaults
+
+        stage = host_only(request)
+        body = await request.json()
+        try:
+            values = arena.check_settings(body)
+        except arena.ArenaError as e:
+            return error(str(e), 400)
+        stage.combat = {**stage.combat, **values}
+        if body.get("make_default") is True:
+            await run_in_threadpool(save_combat_defaults, values)
+
+        def drop_overrides(st, a):  # the host's word at the table wins over what the DM set when the fight began
+            for key in values:
+                a["spec"].get("settings", {}).pop(key, None)
+            stage.watch_reaction(a)
+        try:
+            arena_id, _ = await run_in_threadpool(with_board, stage, drop_overrides)
+            await stage._local_event({"type": "arena_updated", "arena": arena_id})
+        except board.BoardError:
+            await stage.broadcast()  # no fight: the new values show in the stage state
+        return JSONResponse(stage.combat)
 
     async def board_action(stage: Stage, who: str, body: dict) -> JSONResponse:
         """An action from the character card in a fight on a board: the board's rules decide, and the DM is not called."""
@@ -1490,7 +1534,7 @@ def create_app(
             a = arena.load(stage.campaign_dir, arena_id)
             if a is None or board.arena_id_of(state) != arena_id:
                 return None
-            return board.view(stage.campaign_dir, state, arena_id, a)
+            return board.view(stage.campaign_dir, state, arena_id, a, board.effective_settings(a, stage.combat))
         view = await run_in_threadpool(build)
         return JSONResponse(view) if view else error("No such fight.", 404)
 
@@ -1647,6 +1691,7 @@ def create_app(
         Route("/api/arena/move", api_arena_move, methods=["POST"]),
         Route("/api/arena/attack", api_arena_attack, methods=["POST"]),
         Route("/api/arena/react", api_arena_react, methods=["POST"]),
+        Route("/api/combat/settings", api_combat_settings, methods=["POST"]),
         Route("/api/arena/{arena_id}", api_arena),
         Route("/asset/arena/{arena_id}.png", asset_arena),
         Route("/asset/prop/{kind}.png", asset_prop),

@@ -32,7 +32,7 @@ from dnd_cli import combat  # noqa: E402
 from stage import arena, beat, board  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import campaign, fight  # noqa: E402
-from visual_roll_window import Page, check, free_port  # noqa: E402
+from visual_roll_window import Page, check, click_starting, free_port  # noqa: E402
 import visual_roll_window as base  # noqa: E402
 
 
@@ -89,14 +89,14 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
 
     # a reaction question for aragorn
     a = arena.load(c, arena_id)
-    a["pending"] = {"type": "react", "who": "aragorn", "against": "goblin#1", "path": [[free[0], free[1]]]}
+    a["pending"] = {"type": "react", "who": "aragorn", "against": "goblin#1", "path": [[free[0], free[1]]], "asked_at": time.time()}
     arena.save(c, arena_id, a)
     beat.append(c, [{"type": "arena_updated", "arena": arena_id}])
     await asyncio.sleep(1.2)
     await page.shot("arena-reaction")
     text = await page.eval("document.body.innerText")
     check("the player is asked about a reaction attack", "opportunity attack" in text and "Skip" in text)
-    await page.click("Skip")
+    await click_starting(page, "Skip")  # the button counts down: "Skip (10)"
     await asyncio.sleep(1.2)
     check("the answer closes the question", arena.load(c, arena_id)["pending"] is None and "opportunity attack" not in await page.eval("document.body.innerText"))
 

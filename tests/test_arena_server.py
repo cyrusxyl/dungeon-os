@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -41,6 +42,8 @@ def prepare(tmp: Path):
 
 
 async def routes(c: Path, state: dict) -> None:
+    import view.settings as saved_settings
+    saved_settings.SETTINGS_PATH = Path(tempfile.mkdtemp()) / "settings.json"  # never the real settings of this machine
     server.BOARD_PACE = 0
     app = create_app(None)
     stage = await app.state.table.start(c, ["cat"])
@@ -49,6 +52,7 @@ async def routes(c: Path, state: dict) -> None:
     stage.state["dm"] = {"status": "idle"}
     arena_id = state["active_encounter"]["arena"]
     stage.state["arena"] = arena_id  # the arena event, as the stage log would have folded it
+    stage.seats.ensure_host(HOST_DEVICE)
 
     status, view = await api(app, "GET", f"/api/arena/{arena_id}")
     check("the view has the grid, the units and the turn", status == 200 and view["w"] == 12 and len(view["units"]) == 5 and view["current"] == "aragorn")
@@ -97,18 +101,42 @@ async def routes(c: Path, state: dict) -> None:
 
     # a reaction question: legolas is asked
     a = arena.load(c, arena_id)
-    a["pending"] = {"type": "react", "who": "legolas", "against": "goblin#1", "path": [[a["units"]["goblin#1"]["x"], a["units"]["goblin#1"]["y"]]]}
+    a["pending"] = {"type": "react", "who": "legolas", "against": "goblin#1", "path": [[a["units"]["goblin#1"]["x"], a["units"]["goblin#1"]["y"]]],
+                    "asked_at": time.time()}
     arena.save(c, arena_id, a)
     status, view3 = await api(app, "GET", f"/api/arena/{arena_id}")
-    check("the view shows who is asked", view3["pending"] == {"who": "legolas", "against": "goblin#1"} and view3["walk"] == [])
+    check("the view shows who is asked", view3["pending"]["who"] == "legolas" and view3["pending"]["against"] == "goblin#1" and view3["walk"] == [], str(view3["pending"]))
     status, r = await api(app, "POST", "/api/arena/move", {"who": "aragorn", "to": target})
     check("nobody walks while a question waits", status == 400)
+    # the time is up: nobody answered, so there is no reaction attack
+    a = arena.load(c, arena_id)
+    a["pending"]["asked_at"] = time.time() - 30
+    arena.save(c, arena_id, a)
+    before = combat.load_state(c)["active_encounter"].get("resources", {}).get("legolas", {}).get("reaction")
+    step = await asyncio.to_thread(stage.board_step)
+    check("an unanswered question times out: no attack, the reaction is spent, the question is gone",
+          arena.load(c, arena_id)["pending"] is None and step["kind"] == "turn" and combat.turn_used(combat.load_state(c), "legolas")["reaction"] and not before)
+    a = arena.load(c, arena_id)
+    a["pending"] = {"type": "react", "who": "legolas", "against": "goblin#1", "path": [], "asked_at": time.time()}
+    arena.save(c, arena_id, a)
     status, r = await api(app, "POST", "/api/arena/react", {"take": False}, device=OTHER)
     check("only the player who is asked may answer", status == 403)
     status, r = await api(app, "POST", "/api/arena/react", {"take": False})
     check("the answer clears the question", status == 200 and arena.load(c, arena_id)["pending"] is None)
     status, r = await api(app, "POST", "/api/arena/react", {"take": True})
     check("an answer with no question is refused", status == 400)
+
+    # settings: only the host changes them; a fight's own values give way to the host's
+    status, r = await api(app, "POST", "/api/combat/settings", {"reaction_seconds": 20}, device=OTHER)
+    check("only the host changes the combat settings", status == 403)
+    status, r = await api(app, "POST", "/api/combat/settings", {"reaction_seconds": 99})
+    check("a bad value is refused", status == 400, str(r))
+    status, r = await api(app, "POST", "/api/combat/settings", {"reaction_seconds": 20, "round_summary": False})
+    check("the host's values apply at once", status == 200 and stage.combat == {"reaction_seconds": 20, "round_summary": False}
+          and stage.snapshot(HOST_DEVICE)["state"]["combat_settings"]["reaction_seconds"] == 20, f"{status} {r}")
+    status, view4 = await api(app, "GET", f"/api/arena/{arena_id}")
+    check("the board view carries them", view4["settings"] == {"reaction_seconds": 20, "round_summary": False})
+    await api(app, "POST", "/api/combat/settings", {"reaction_seconds": 10, "round_summary": True})
 
     # the card's actions and End turn on a board: the board decides, the DM is not called
     sent = []
@@ -126,6 +154,7 @@ async def routes(c: Path, state: dict) -> None:
     check("End turn moves the tracker and does not call the DM", status == 200 and not sent and combat.load_state(c)["active_encounter"]["current_turn"] == "legolas")
     await api(app, "POST", "/api/end-turn", {"who": "legolas"})
     check("the turn is a goblin's now", combat.load_state(c)["active_encounter"]["current_turn"] in ("goblin#1", "goblin#2"))
+    stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
     now = combat.load_state(c)["active_encounter"]
     check("the pump played both goblins and stopped at the creature the DM plays, with a prompt",
@@ -133,21 +162,26 @@ async def routes(c: Path, state: dict) -> None:
     check("the goblins' turns used the board (they moved)", now["resources"].get("goblin#1", {}).get("moved", 0) > 0 or now["resources"].get("goblin#2", {}).get("moved", 0) > 0
           or any(x for x in stage.state["feed"]))
     stage.state["dm"] = {"status": "busy"}
+    stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
     check("a busy DM holds the pump", combat.load_state(c)["active_encounter"]["current_turn"] == "boss")
     stage.state["dm"] = {"status": "idle"}
+    stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
     now = combat.load_state(c)["active_encounter"]
-    check("when the DM is idle and has not ended its creature's turn, the stage ends it", now["current_turn"] == "aragorn" and now["round"] == 2 and len(sent) == 1)
+    check("when the DM is idle and has not ended its creature's turn, the stage ends it", now["current_turn"] == "aragorn" and now["round"] == 2)
+    check("then the DM hears the round once, in one line", len(sent) == 2 and "Round 1 is over" in sent[1])
     st = combat.load_state(c)
     for foe in ("goblin#1", "goblin#2", "boss"):
         st["active_encounter"]["monsters"][foe]["hp"]["current"] = 0
     st["active_encounter"]["current_turn"] = "goblin#1"
     combat.save_state(c, st)
+    stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
-    check("with every creature down, the DM is told once to end the fight", len(sent) == 2 and "encounter end" in sent[1])
+    check("with every creature down, the DM is told once to end the fight", len(sent) == 3 and "encounter end" in sent[2])
+    stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
-    check("and is not told again", len(sent) == 2)
+    check("and is not told again", len(sent) == 3)
 
     status, kind, body = await call(app, "GET", f"/asset/arena/{arena_id}.png")
     check("the tile atlas of the arena is a PNG", status == 200 and body[:4] == b"\x89PNG" and kind == "image/png")

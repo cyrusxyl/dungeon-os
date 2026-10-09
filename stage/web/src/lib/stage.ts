@@ -98,6 +98,8 @@ export interface StageState {
   explore: string | null
   /** The id of the fight on a board (stage/arena.py), or null. The board replaces the scene and the site until the fight ends. */
   arena: string | null
+  /** Combat settings the host can change during play: seconds to answer a reaction (0: no limit), and the DM's one beat for each round. */
+  combat_settings: { reaction_seconds: number; round_summary: boolean }
   place: { map: string; place: string } | null
   creating: boolean
   party_mode: 'create' | 'premade'

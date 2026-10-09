@@ -25,9 +25,12 @@ from dnd_cli.campaign import GAME_DIR
 
 SETTINGS_PATH = GAME_DIR / "settings.json"
 
+COMBAT_DEFAULTS: dict = {"reaction_seconds": 10, "round_summary": True}  # see combat-board.md, "Settings"
+
 DEFAULTS: dict = {
     "agent_framework": "claude",
     "model": "sonnet",
+    "combat": COMBAT_DEFAULTS,
 }
 
 # One entry per framework the menu can offer. `binary` is what must be on PATH
@@ -59,11 +62,13 @@ def framework_available(key: str) -> bool:
 
 def load_settings() -> dict:
     """Return the saved settings merged over the defaults."""
-    data = dict(DEFAULTS)
+    data = {**DEFAULTS, "combat": dict(COMBAT_DEFAULTS)}
     try:
         saved = json.loads(SETTINGS_PATH.read_text())
         if isinstance(saved, dict):
-            data.update({k: v for k, v in saved.items() if k in DEFAULTS})
+            data.update({k: v for k, v in saved.items() if k in DEFAULTS and k != "combat"})
+            if isinstance(saved.get("combat"), dict):
+                data["combat"].update({k: v for k, v in saved["combat"].items() if k in COMBAT_DEFAULTS})
             if isinstance(saved.get("sessions"), dict):
                 data["sessions"] = saved["sessions"]
     except (FileNotFoundError, json.JSONDecodeError, OSError):
@@ -81,6 +86,13 @@ def save_settings(values: dict) -> None:
     )
     current["model"] = values.get("model", current["model"]).strip()
     _write(current)
+
+
+def save_combat_defaults(values: dict) -> None:
+    """Make combat settings (reaction_seconds, round_summary) the default for every game on this machine."""
+    data = load_settings()
+    data["combat"] = {**data["combat"], **{k: v for k, v in values.items() if k in COMBAT_DEFAULTS}}
+    _write(data)
 
 
 def get_session(campaign_slug: str) -> dict | None:
@@ -133,6 +145,7 @@ def _write(data: dict) -> None:
         "agent_framework": data.get("agent_framework", DEFAULTS["agent_framework"]),
         "model": data.get("model", DEFAULTS["model"]),
         "sessions": data.get("sessions", {}),
+        "combat": data.get("combat", COMBAT_DEFAULTS),
     }
     SETTINGS_PATH.write_text(json.dumps(payload, indent=2) + "\n")
 

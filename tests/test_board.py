@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -43,7 +44,7 @@ def setup(tmp: Path, props=(), grid=ROOM, at=None):
     where = {"aragorn": (2, 3), "legolas": (2, 5), "goblin#1": (8, 3), "goblin#2": (8, 5), "boss": (9, 4)} | (at or {})
     a = {"w": 12, "h": 8, "grid": list(grid), "props": [dict(p, id=f"{p['kind']}#{i}") for i, p in enumerate(props)], "items": [],
          "starts": {"party": [[2, 3], [2, 5]], "foes": [[8, 3], [8, 5], [9, 4]]}, "units": {k: {"x": x, "y": y} for k, (x, y) in where.items()},
-         "look": arena.look_of("tavern"), "spec": {"decor": "tavern"}}
+         "look": arena.look_of("tavern"), "spec": {"decor": "tavern", "light": "lit"}}
     state["active_encounter"]["arena"] = "arena-1"
     return c, state, a
 
@@ -197,7 +198,7 @@ def test_foes() -> None:
         check("the DM prompt names the party members and their distance, and nothing about hidden things",
               "aragorn" in step["prompt"] and "tiles" in step["prompt"] and "legolas" in step["prompt"])
         enc["current_turn"] = "aragorn"
-        check("pump: a player's turn is left alone", board.pump_step(c, state, a) is None)
+        check("pump: a player's turn is left alone", board.pump_step(c, state, a, settings={"round_summary": False, "reaction_seconds": 10}) is None)
         enc["current_turn"] = "goblin#1"
         a["pending"] = {"type": "react", "who": "aragorn", "against": "goblin#1", "path": []}
         check("pump: nothing happens while a question waits", board.pump_step(c, state, a) is None)
@@ -226,6 +227,39 @@ def test_foes() -> None:
         check("a creature next to two heroes attacks the closer, lower one without walking", any("Scimitar" in ln for ln in out["lines"]) and not out["pending"])
 
 
+def test_summary_and_time() -> None:
+    print("board: the round summary and the reaction time")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3)})
+        a["control"] = {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"}
+        enc = state["active_encounter"]
+        board.attack(c, state, a, "aragorn", "longsword", "goblin#1", rng=Fixed(15, 4))
+        check("an attack leaves a line for the summary, with no numbers and no AC",
+              len(a["log"]) == 1 and "Aragorn hit Goblin" in a["log"][0] and not any(ch.isdigit() for ch in a["log"][0].replace("Goblin 1", "")))
+        enc["current_turn"], enc["round"] = "aragorn", 2
+        step = board.pump_step(c, state, a, settings={"round_summary": True, "reaction_seconds": 10})
+        check("the round over, the DM hears it once", step["kind"] == "summary" and "Round 1 is over" in step["prompt"] and "Aragorn hit Goblin" in step["prompt"]
+              and "Down: Goblin" in step["prompt"] and a["log"] == [] and a["summarized"] == 2)
+        check("and not again", board.pump_step(c, state, a, settings={"round_summary": True, "reaction_seconds": 10}) is None)
+        board.note(a, "something")
+        enc["round"] = 3
+        check("the setting off: nothing is said, and the log is cleared",
+              board.pump_step(c, state, a, settings={"round_summary": False, "reaction_seconds": 10}) is None and a["log"] == [] and a["summarized"] == 3)
+        enc["round"] = 4
+        check("a round with nothing to tell is not told", board.pump_step(c, state, a, settings={"round_summary": True, "reaction_seconds": 10}) is None)
+        check("a fight setting wins over the default",
+              board.effective_settings({"spec": {"settings": {"round_summary": False}}}, {"reaction_seconds": 10, "round_summary": True}) == {"reaction_seconds": 10, "round_summary": False})
+        p = {"asked_at": time.time() - 11}
+        check("a question is out of time after the limit", board.expired(p, {"reaction_seconds": 10}) and not board.expired(p, {"reaction_seconds": 0})
+              and not board.expired({"asked_at": time.time()}, {"reaction_seconds": 10}))
+        c2, state2, a2 = setup(Path(tmp) / "t", at={"goblin#1": (3, 3)})
+        board.walk(c2, state2, a2, "goblin#1", [(4, 3)])
+        check("a reaction question has the time it was asked", abs(a2["pending"]["asked_at"] - time.time()) < 5)
+        v = board.view(c2, state2, "arena-1", a2, {"reaction_seconds": 10, "round_summary": True})
+        check("the view says how many seconds are left (or none when there is no limit)", 8 <= v["pending"]["seconds_left"] <= 10
+              and board.view(c2, state2, "arena-1", a2, {"reaction_seconds": 0, "round_summary": True})["pending"]["seconds_left"] is None)
+
+
 def test_sync_and_start() -> None:
     print("board: new creatures")
     with tempfile.TemporaryDirectory() as tmp:
@@ -249,7 +283,7 @@ def test_sync_and_start() -> None:
 
 
 if __name__ == "__main__":
-    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_foes, test_sync_and_start):
+    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_foes, test_summary_and_time, test_sync_and_start):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

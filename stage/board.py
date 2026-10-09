@@ -8,6 +8,7 @@ See combat-board.md.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from dnd_cli import combat, dice
@@ -55,6 +56,16 @@ class BoardError(combat.RulesError):
 def arena_id_of(state: dict) -> str | None:
     """The id of the arena of the running combat, if the fight is on a board. The one place that says so."""
     return (state.get("active_encounter") or {}).get("arena")
+
+
+def effective_settings(a: dict, defaults: dict) -> dict:
+    """The combat settings in force: the stage's (or the machine's default), with what the DM set for this fight on top."""
+    return {**defaults, **a["spec"].get("settings", {})}
+
+
+def note(a: dict, text: str) -> None:
+    """Keep a short line of what happened this round, for the one summary the DM hears."""
+    a["log"] = (a.get("log", []) + [text])[-40:]
 
 
 def running(campaign_dir: Path, state: dict) -> tuple[str, dict]:
@@ -162,8 +173,9 @@ def provokers(campaign_dir: Path, state: dict, a: dict, cid: str, to: tuple[int,
 
 def _react(campaign_dir: Path, state: dict, a: dict, who: str, against: str, rng) -> list[str]:
     weapon = melee_attack(combat.combatant(campaign_dir, state, who))
-    return [f"{who} takes a reaction attack as {against} leaves its reach."] + combat.attack(
-        campaign_dir, state, who, weapon["name"], against, rng=rng, cost="reaction", catch_up=False)
+    lines = combat.attack(campaign_dir, state, who, weapon["name"], against, rng=rng, cost="reaction", catch_up=False)
+    note(a, brief(campaign_dir, state, lines, who, weapon["name"], against, " as a reaction"))
+    return [f"{who} takes a reaction attack as {against} leaves its reach."] + lines
 
 
 def walk(campaign_dir: Path, state: dict, a: dict, cid: str, path: list, rng=None) -> dict:
@@ -174,7 +186,7 @@ def walk(campaign_dir: Path, state: dict, a: dict, cid: str, path: list, rng=Non
         cell = tuple(cell)
         for foe in provokers(campaign_dir, state, a, cid, cell):
             if not is_foe(state, foe):
-                a["pending"] = {"type": "react", "who": foe, "against": cid, "path": [list(c) for c in path[i:]]}
+                a["pending"] = {"type": "react", "who": foe, "against": cid, "path": [list(c) for c in path[i:]], "asked_at": time.time()}
                 return {"steps": steps, "lines": lines, "pending": a["pending"]}
             lines += _react(campaign_dir, state, a, foe, cid, rng)
             if not standing(combat.combatant(campaign_dir, state, cid)):
@@ -242,6 +254,14 @@ def attack_check(campaign_dir: Path, state: dict, a: dict, attacker: str, entry:
     return {"mode": "ranged", "cover": arena.cover_between(here, there, arena.cover_cells(a)), "dis": near}
 
 
+def brief(campaign_dir: Path, state: dict, lines: list[str], attacker: str, weapon: str, target: str, how: str = "") -> str:
+    """One line for the round summary: who used what on whom, hit or miss, and whether it is down. No numbers."""
+    names = [combat.combatant(campaign_dir, state, c)["name"] for c in (attacker, target)]
+    head = next((ln for ln in lines if ln.startswith(f"{attacker} ") and " → " in ln), "")
+    down = not standing(combat.combatant(campaign_dir, state, target))
+    return f"{names[0]} {'missed' if 'miss' in head else 'hit'} {names[1]} with {weapon}{how}" + (f"; {names[1]} is down" if down else "")
+
+
 def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str, target: str, rng=None, cost: str | None = "action",
            adv: bool = False, dis: bool = False, bonus: int = 0, secret: bool = False, own_turn_only: bool = False,
            catch_up: bool = True) -> list[str]:
@@ -256,6 +276,7 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
     check = attack_check(campaign_dir, state, a, attacker, entry, target)
     lines = combat.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
                           bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up)
+    note(a, brief(campaign_dir, state, lines, attacker, entry["name"], target))
     notes = [f"{target} has {check['cover']} cover: -{arena.COVER_BONUS[check['cover']]} to hit."] if check["cover"] != "none" else []
     return notes + (["An enemy is next to the archer: disadvantage."] if check["dis"] else []) + lines
 
@@ -271,7 +292,7 @@ def approach(campaign_dir: Path, state: dict, a: dict, cid: str, target: str) ->
 # -- what the browser may know ------------------------------------------------
 
 
-def view(campaign_dir: Path, state: dict, arena_id: str, a: dict) -> dict:
+def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict) -> dict:
     """The arena as a player sees it. A creature shows how hurt it is as a band, never as numbers.
 
     The party sees a lit room whole. The cells a player cannot see never leave the server (light and fog come with
@@ -302,7 +323,10 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict) -> dict:
         "props": [{"id": p["id"], "kind": p["kind"], "x": p["x"], "y": p["y"]} for p in a["props"]],
         "items": [{"id": i["id"], "name": i["name"], "x": i["x"], "y": i["y"]} for i in a["items"]],
         "units": units, "current": current, "round": enc.get("round", 1), "walk": walk, "feet_left": left,
-        "pending": {"who": pending["who"], "against": pending["against"]} if pending else None,
+        "pending": {"who": pending["who"], "against": pending["against"], "seconds_left": (
+            max(0, round(settings["reaction_seconds"] - (time.time() - pending.get("asked_at", 0)))) if settings["reaction_seconds"] else None)}
+        if pending else None,
+        "settings": settings,
     }
 
 
@@ -397,9 +421,23 @@ def dm_prompt(campaign_dir: Path, state: dict, a: dict, cid: str) -> str:
             "(the board checks reach, sight and cover), narrate it in one beat, then run `uv run dnd-cli encounter next`.")
 
 
-def pump_step(campaign_dir: Path, state: dict, a: dict, rng=None) -> dict | None:
+def expired(pending: dict, settings: dict) -> bool:
+    """The player did not answer a reaction question in time (a limit of 0 seconds means no limit)."""
+    limit = settings["reaction_seconds"]
+    return bool(limit) and time.time() - pending.get("asked_at", 0) >= limit
+
+
+def summary_prompt(campaign_dir: Path, state: dict, a: dict, rnd: int, lines: list[str]) -> str:
+    """The one line the DM hears for a round: what happened, without numbers, and who is down."""
+    down = [combat.combatant(campaign_dir, state, c)["name"] for c in a["units"] if not standing(combat.combatant(campaign_dir, state, c))]
+    return (f"[combat] Round {rnd} is over. What happened: {'; '.join(lines)}." + (f" Down: {', '.join(down)}." if down else "")
+            + " Tell it in one short beat (two sentences at most) and wait: the stage runs the next round.")
+
+
+def pump_step(campaign_dir: Path, state: dict, a: dict, rng=None, settings: dict | None = None) -> dict | None:
     """One step of a fight on a board when it is not a player's turn. None when there is nothing to do now.
 
+    - {"kind": "summary", "prompt"}: a round is over; the DM hears it once, if the setting is on.
     - {"kind": "over"}: no creature or no party member is standing (the DM ends the fight and tells it).
     - {"kind": "dm", "prompt"}: a creature the DM plays is up; send the prompt once. When the DM is idle again and the
       turn is still its, the stage ends it.
@@ -407,6 +445,10 @@ def pump_step(campaign_dir: Path, state: dict, a: dict, rng=None) -> dict | None
     """
     enc = state["active_encounter"]
     cid = enc.get("current_turn")
+    if (rnd := enc.get("round", 1)) > a.get("summarized", 1):
+        lines, a["log"], a["summarized"] = a.get("log", []), [], rnd
+        if lines and (settings or {}).get("round_summary", True):
+            return {"kind": "summary", "prompt": summary_prompt(campaign_dir, state, a, rnd - 1, lines)}
     if a.get("pending") or cid not in a["units"] or not is_foe(state, cid):
         return None
     if not standing_foes(campaign_dir, state, a) or not standing_pcs(campaign_dir, state, a):

@@ -89,6 +89,12 @@ def test_parse() -> None:
     spec = arena.parse(["layout=chokepoint", "size=small", "light=dark", "ambush=yes", "seed=7", "feature=cover@foes", "hazard=lava@center"])
     check("tokens become a spec", spec["layout"] == "chokepoint" and spec["size"] == "small" and spec["light"] == "dark"
           and spec["ambush"] is True and spec["seed"] == 7 and spec["features"] == [["cover", "foes"]] and spec["hazards"] == [["lava", "center"]])
+    spec = arena.parse(["summary=off", "reaction_seconds=15"])
+    check("per-fight settings are in the spec", spec["settings"] == {"round_summary": False, "reaction_seconds": 15})
+    check("no settings by default", arena.parse([])["settings"] == {})
+    check("settings are checked", all(raises(lambda b=bad: arena.parse([b])) for bad in ("summary=maybe", "reaction_seconds=99", "reaction_seconds=x")))
+    check("the host's settings are checked the same way", arena.check_settings({"reaction_seconds": 0, "round_summary": True}) == {"reaction_seconds": 0, "round_summary": True}
+          and all(raises(lambda v=v: arena.check_settings(v)) for v in ({"reaction_seconds": 61}, {"reaction_seconds": True}, {"reaction_seconds": "5"}, {"round_summary": "yes"})))
     check("a prop of the catalog is a feature", arena.parse(["feature=barrel@party"])["features"] == [["barrel", "party"]])
     for bad in ("layout=maze", "size=huge", "light=blind", "ambush=maybe", "seed=x", "theme=nope", "feature=cover", "feature=cover@moon",
                 "feature=dragon@foes", "hazard=acid@foes", "colour=red", "layout"):

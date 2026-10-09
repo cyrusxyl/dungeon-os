@@ -212,6 +212,7 @@ COVER_BONUS = {"none": 0, "half": 2, "three-quarters": 5}
 DEFAULT_BOARD = {"blocks_move": True, "blocks_sight": False, "cover": "none", "hp": None, "tags": []}
 ZONE_ROWS = ("back", "mid", "front")
 MAX_TRIES = 60
+SETTING_KEYS = ("reaction_seconds", "round_summary")
 
 
 class ArenaError(ValueError):
@@ -307,6 +308,21 @@ def path_from(prev: dict, start, target) -> list[tuple[int, int]]:
 # -- the spec from the DM's tokens ------------------------------------------
 
 
+def check_settings(values: dict) -> dict:
+    """The combat settings in `values` (reaction_seconds: 0 to 60, 0 for no limit; round_summary: true or false), checked."""
+    out = {}
+    if "reaction_seconds" in values:
+        n = values["reaction_seconds"]
+        if isinstance(n, bool) or not isinstance(n, int) or not 0 <= n <= 60:
+            raise ArenaError("reaction_seconds is a whole number from 0 to 60 (0 is no limit).")
+        out["reaction_seconds"] = n
+    if "round_summary" in values:
+        if not isinstance(values["round_summary"], bool):
+            raise ArenaError("round_summary is true or false.")
+        out["round_summary"] = values["round_summary"]
+    return out
+
+
 def _where(word: str, what: str) -> tuple[str, str]:
     thing, at, where = word.partition("@")
     if not at or where not in WHERES:
@@ -318,7 +334,7 @@ def parse(tokens: list[str]) -> dict:
     """A spec from `key=value` tokens: layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=."""
     from stage import scenes
 
-    spec: dict = {"features": [], "hazards": []}
+    spec: dict = {"features": [], "hazards": [], "settings": {}}
     for token in tokens:
         key, eq, value = token.partition("=")
         key = key.strip().lower()
@@ -348,6 +364,12 @@ def parse(tokens: list[str]) -> dict:
             if value not in themes():
                 raise ArenaError(f"no theme {value!r}. Themes: {', '.join(themes())}.")
             spec["theme"] = value
+        elif key == "reaction_seconds":
+            spec["settings"] |= check_settings({"reaction_seconds": int(value) if value.isdigit() else value})
+        elif key == "summary":
+            if value not in ("on", "off"):
+                raise ArenaError("summary= is on or off.")
+            spec["settings"]["round_summary"] = value == "on"
         elif key == "feature":
             thing, where = _where(value, "feature")
             if thing not in ("cover", "pillar", "barrels") and thing not in scenes.catalog()["props"]:
@@ -359,7 +381,7 @@ def parse(tokens: list[str]) -> dict:
                 raise ArenaError(f"hazard={value}: the hazard is lava or water.")
             spec["hazards"].append([thing, where])
         else:
-            raise ArenaError(f"unknown setting {key!r}. Use layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=.")
+            raise ArenaError(f"unknown setting {key!r}. Use layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=, summary=, reaction_seconds=.")
     return spec
 
 
