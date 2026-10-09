@@ -19,6 +19,7 @@ from collections import deque
 from functools import cache, lru_cache
 from pathlib import Path
 
+from stage import arena
 from stage.beat import SLUG_RE, title
 from stage.files import read_json, write_json
 
@@ -129,7 +130,7 @@ def _gen_rooms(rng: random.Random, w: int, h: int):
         ring = [(xx, ry - 1) for xx in range(rx, rx + rw)] + [(xx, ry + rh) for xx in range(rx, rx + rw)]
         ring += [(rx - 1, yy) for yy in range(ry, ry + rh)] + [(rx + rw, yy) for yy in range(ry, ry + rh)]
         for xx, yy in ring:
-            if grid[yy][xx] != FLOOR or any(grid[ny][nx] == DOOR for nx, ny in _around4(xx, yy, w, h)):
+            if grid[yy][xx] != FLOOR or any(grid[ny][nx] == DOOR for nx, ny in arena.around4(xx, yy, w, h)):
                 continue
             # A door only in a gap of the wall, never in an open side.
             if (grid[yy][xx - 1] == WALL and grid[yy][xx + 1] == WALL) or (grid[yy - 1][xx] == WALL and grid[yy + 1][xx] == WALL):
@@ -229,7 +230,7 @@ def _gen_cave(rng: random.Random, w: int, h: int):
     queue = deque(seeds)
     while queue:
         cx, cy = queue.popleft()
-        for n in _around4(cx, cy, w, h):
+        for n in arena.around4(cx, cy, w, h):
             if n in keep and n not in owner:
                 owner[n] = owner[(cx, cy)]
                 queue.append(n)
@@ -244,42 +245,9 @@ GENERATORS = {"rooms": _gen_rooms, "building": _gen_building, "cave": _gen_cave}
 # -- grid helpers ----------------------------------------------------------
 
 
-def _around4(x: int, y: int, w: int, h: int):
-    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        if 0 <= x + dx < w and 0 <= y + dy < h:
-            yield x + dx, y + dy
-
-
 def _flood(grid, start: tuple[int, int]) -> dict[tuple[int, int], int]:
     """Walking distance from start to every reachable cell."""
-    h, w = len(grid), len(grid[0])
-    dist = {start: 0}
-    queue = deque([start])
-    while queue:
-        x, y = queue.popleft()
-        for n in _around4(x, y, w, h):
-            if n not in dist and grid[n[1]][n[0]] in WALKABLE:
-                dist[n] = dist[(x, y)] + 1
-                queue.append(n)
-    return dist
-
-
-def _line(x0: int, y0: int, x1: int, y1: int):
-    """Bresenham: the cells from (x0, y0) to (x1, y1)."""
-    dx, dy = abs(x1 - x0), -abs(y1 - y0)
-    sx, sy = (1 if x1 > x0 else -1), (1 if y1 > y0 else -1)
-    err = dx + dy
-    while True:
-        yield x0, y0
-        if (x0, y0) == (x1, y1):
-            return
-        e2 = 2 * err
-        if e2 >= dy:
-            err += dy
-            x0 += sx
-        if e2 <= dx:
-            err += dx
-            y0 += sy
+    return arena.flood(grid, start, WALKABLE)
 
 
 def visible(grid, x: int, y: int, radius: int = RADIUS) -> set[tuple[int, int]]:
@@ -288,35 +256,11 @@ def visible(grid, x: int, y: int, radius: int = RADIUS) -> set[tuple[int, int]]:
     In a doorway (a gap in a wall line), the party also sees what the floor
     cells next to it see; else every line along the inside of the wall is cut.
     """
-    seen = _sight(grid, x, y, radius)
+    seen = arena.sight(grid, x, y, radius, OPAQUE)
     if grid[y][x] in (OPEN, EXIT):
-        for nx, ny in _around4(x, y, len(grid[0]), len(grid)):
+        for nx, ny in arena.around4(x, y, len(grid[0]), len(grid)):
             if grid[ny][nx] == FLOOR:
-                seen |= _sight(grid, nx, ny, radius - 1)
-    return seen
-
-
-def _sight(grid, x: int, y: int, radius: int) -> set[tuple[int, int]]:
-    h, w = len(grid), len(grid[0])
-    limit = radius * radius + radius
-    seen = {(x, y)}
-    edge = [(x + d, y - radius) for d in range(-radius, radius + 1)] + [(x + d, y + radius) for d in range(-radius, radius + 1)]
-    edge += [(x - radius, y + d) for d in range(-radius, radius + 1)] + [(x + radius, y + d) for d in range(-radius, radius + 1)]
-    for tx, ty in edge:
-        for cx, cy in _line(x, y, tx, ty):
-            if not (0 <= cx < w and 0 <= cy < h) or (cx - x) ** 2 + (cy - y) ** 2 > limit:
-                break
-            seen.add((cx, cy))
-            if (cx, cy) != (x, y) and grid[cy][cx] in OPAQUE:
-                break
-    # Walls next to a seen floor cell: without this, room corners stay dark.
-    for cx, cy in list(seen):
-        if grid[cy][cx] not in OPAQUE:
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    nx, ny = cx + dx, cy + dy
-                    if 0 <= nx < w and 0 <= ny < h and grid[ny][nx] in OPAQUE:
-                        seen.add((nx, ny))
+                seen |= arena.sight(grid, nx, ny, radius - 1, OPAQUE)
     return seen
 
 
@@ -483,7 +427,7 @@ def _path(site: dict, target: tuple[int, int]) -> list[tuple[int, int]] | None:
                 out.append(cur)
                 cur = prev[cur]
             return out[::-1]
-        for n in _around4(cur[0], cur[1], w, h):
+        for n in arena.around4(cur[0], cur[1], w, h):
             if n not in prev and grid[n[1]][n[0]] in WALKABLE and seen[n[1]][n[0]] == "1":
                 prev[n] = cur
                 queue.append(n)

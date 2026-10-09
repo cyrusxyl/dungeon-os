@@ -394,7 +394,7 @@ def _site(theme="dungeon", pois=(("altar", "far", "altar"),), seed=7, danger="no
 
 def test_crawl() -> None:
     print("sites: generator, sight, walking")
-    from stage import crawl
+    from stage import arena, crawl
 
     ok = True
     for theme in ("dungeon", "house", "cave"):
@@ -432,7 +432,7 @@ def test_crawl() -> None:
     dist = crawl._flood(site["grid"], (altar["x"], altar["y"]))
     path, cur = [], tuple(site["party"])
     while dist[cur]:
-        cur = min((n for n in crawl._around4(*cur, len(site["grid"][0]), len(site["grid"])) if n in dist), key=dist.get)
+        cur = min((n for n in arena.around4(*cur, len(site["grid"][0]), len(site["grid"])) if n in dist), key=dist.get)
         path.append(cur)
     result = crawl.walk(site, path)
     check("a newly seen POI stops the walk", result["stopped"] == "poi" and result["pois"] == ["altar"]
@@ -451,7 +451,7 @@ def test_crawl() -> None:
     d = crawl._flood(grid, door)
     path, cur = [], tuple(site["party"])
     while d[cur]:
-        cur = min((n for n in crawl._around4(*cur, len(grid[0]), len(grid)) if n in d), key=d.get)
+        cur = min((n for n in arena.around4(*cur, len(grid[0]), len(grid)) if n in d), key=d.get)
         path.append(cur)
     result = crawl.walk(site, path, roll=lambda n: 1)
     check("walking into a closed door opens it", result["stopped"] is None and site["grid"][door[1]][door[0]] == crawl.OPEN)
@@ -463,7 +463,7 @@ def test_crawl() -> None:
     d = crawl._flood(site2["grid"], target)
     path, cur = [], tuple(site2["party"])
     while d[cur]:
-        cur = min((n for n in crawl._around4(*cur, len(site2["grid"][0]), len(site2["grid"])) if n in d), key=d.get)
+        cur = min((n for n in arena.around4(*cur, len(site2["grid"][0]), len(site2["grid"])) if n in d), key=d.get)
         path.append(cur)
     result = crawl.walk(site2, path, roll=lambda n: hits.append(n) or 0)
     check("only first entry into a new area rolls (not the entrance area); a hit stops the walk",
