@@ -75,7 +75,8 @@ def _conditions(st: dict, cid: str) -> list[dict]:
     return [{"name": n, "stance": n in combat.STANCES} for n in names]
 
 
-def view(campaign_dir: Path) -> dict:
+def view(campaign_dir: Path, hidden: frozenset[str] = frozenset()) -> dict:
+    """`hidden`: creatures the party cannot see (a fight in the dark). They are in the turn bar as "Unseen", with no name or picture."""
     st = read_json(campaign_dir / "state.json") or {}
     enc = st.get("active_encounter") or {}
     fight = enc if enc.get("type") == "combat" else {}
@@ -97,12 +98,19 @@ def view(campaign_dir: Path) -> dict:
         out["combat"] = {
             "round": fight.get("round", 1),
             "current": fight.get("current_turn"),
-            "order": [_entrant(campaign_dir, st, o, pcs) for o in fight.get("initiative_order", [])],
+            "order": [_entrant(campaign_dir, st, o, pcs, n) if o["name"] not in hidden else _unseen(o, n)
+                      for n, o in enumerate(fight.get("initiative_order", []))],
         }
+        if fight.get("current_turn") in hidden:
+            out["combat"]["current"] = f"unseen-{next(n for n, o in enumerate(fight['initiative_order']) if o['name'] == fight['current_turn'])}"
     return out
 
 
-def _entrant(campaign_dir: Path, st: dict, entry: dict, pcs: dict[str, str]) -> dict:
+def _unseen(entry: dict, n: int) -> dict:
+    return {"id": f"unseen-{n}", "name": "Unseen", "initiative": entry["initiative"], "pc": False, "health": "unhurt", "conditions": []}
+
+
+def _entrant(campaign_dir: Path, st: dict, entry: dict, pcs: dict[str, str], n: int = 0) -> dict:
     """One place in the turn order. How hurt it is comes as a band; a creature's numbers stay behind the screen."""
     cid = entry["name"]
     rec = combat.combatant(campaign_dir, st, cid)

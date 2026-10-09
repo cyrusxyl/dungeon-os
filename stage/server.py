@@ -1225,7 +1225,15 @@ def create_app(
         return JSONResponse({"id": actor_id, "name": name, "has_look": bool(spec)})
 
     async def api_party(request: Request):
-        return JSONResponse(await run_in_threadpool(party.view, need().campaign_dir))
+        stage = need()
+
+        def build():
+            state = combat.load_state(stage.campaign_dir)
+            arena_id = board.arena_id_of(state)
+            a = arena.load(stage.campaign_dir, arena_id) if arena_id else None
+            hidden = board.hidden_foes(stage.campaign_dir, state, a) if a else set()
+            return party.view(stage.campaign_dir, frozenset(hidden))
+        return JSONResponse(await run_in_threadpool(build))
 
     # -- the player's own bonuses, actions and rolls (only while the DM is idle) ----
 

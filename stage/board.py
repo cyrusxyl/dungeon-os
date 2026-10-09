@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from dnd_cli import combat, dice
+from dnd_cli import character, combat, dice
 from stage import arena
 
 
@@ -33,6 +33,7 @@ def start(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> li
     a["units"] = {cid: {"x": x, "y": y} for cid, (x, y) in zip(pcs, a["starts"]["party"])}
     a["units"] |= {cid: {"x": x, "y": y} for cid, (x, y) in zip(foes, a["starts"]["foes"])}
     a["control"] = {cid: controlled_by(enc["monsters"][cid]) for cid in foes}
+    refresh_sight(campaign_dir, state, a)
     arena_id = arena.new_id(campaign_dir)
     arena.save(campaign_dir, arena_id, a)
     enc["arena"] = arena_id
@@ -122,6 +123,61 @@ def sync_units(campaign_dir: Path, state: dict, a: dict) -> list[str]:
     return added
 
 
+# -- light and sight ----------------------------------------------------------------
+
+DIM_TILES, TORCH_TILES, LIT_PROP_TILES = 8, 6, 4
+
+
+def sight_radius(campaign_dir: Path, state: dict, a: dict, cid: str) -> int:
+    """How far a party member sees in tiles. A lit room is seen whole. In dim light everyone sees 8 tiles (or their darkvision).
+    In the dark: darkvision, else a carried torch (6 tiles), else the next cell."""
+    if a["spec"]["light"] == "lit":
+        return max(a["w"], a["h"])
+    sheet = character.load(campaign_dir, cid)
+    race = sheet.get("race", "").lower()
+    dv = max((ft for word, ft in arena.arena_data()["darkvision_ft"].items() if word in race), default=0) // TILE_FT
+    if a["spec"]["light"] == "dim":
+        return max(DIM_TILES, dv)
+    torch = TORCH_TILES if any("torch" in i["name"].lower() for i in sheet.get("inventory", [])) else 0
+    return max(dv, torch, 1)
+
+
+def visible_cells(campaign_dir: Path, state: dict, a: dict) -> set[tuple[int, int]] | None:
+    """The cells the party sees now (None: a lit room, everything). Lines stop at walls and tall props; a light-source prop
+    lights the cells within 4 tiles of it."""
+    if a["spec"]["light"] == "lit":
+        return None
+    opaque = arena.opaque_cells(a)
+    cells = {(x, y) for y in range(a["h"]) for x in range(a["w"])}
+    lamps = [(p["x"], p["y"]) for p in a["props"] if "light-source" in arena.board_of(p["kind"])["tags"]]
+    vis: set[tuple[int, int]] = set()
+    for cid in standing_pcs(campaign_dir, state, a):
+        here, radius = pos(a, cid), sight_radius(campaign_dir, state, a, cid)
+        for cell in cells:
+            if cell in vis or not arena.clear_line(here, cell, opaque):
+                continue
+            if arena.cheb(here, cell) <= radius or any(arena.cheb(lamp, cell) <= LIT_PROP_TILES for lamp in lamps):
+                vis.add(cell)
+    return vis
+
+
+def refresh_sight(campaign_dir: Path, state: dict, a: dict) -> None:
+    """Remember what the party has seen (the cells that stay on the map when they are out of sight)."""
+    if (vis := visible_cells(campaign_dir, state, a)) is None:
+        return
+    rows = [list(r) for r in a["seen"]]
+    for x, y in vis:
+        rows[y][x] = "1"
+    a["seen"] = ["".join(r) for r in rows]
+
+
+def hidden_foes(campaign_dir: Path, state: dict, a: dict) -> set[str]:
+    """The creatures the party cannot see now. They stay out of the board view, the turn bar and the summary."""
+    if (vis := visible_cells(campaign_dir, state, a)) is None:
+        return set()
+    return {c for c in a["units"] if is_foe(state, c) and pos(a, c) not in vis}
+
+
 # -- walking ---------------------------------------------------------------------
 
 
@@ -174,7 +230,7 @@ def provokers(campaign_dir: Path, state: dict, a: dict, cid: str, to: tuple[int,
 def _react(campaign_dir: Path, state: dict, a: dict, who: str, against: str, rng) -> list[str]:
     weapon = melee_attack(combat.combatant(campaign_dir, state, who))
     lines = combat.attack(campaign_dir, state, who, weapon["name"], against, rng=rng, cost="reaction", catch_up=False)
-    note(a, brief(campaign_dir, state, lines, who, weapon["name"], against, " as a reaction"))
+    note(a, brief(campaign_dir, state, a, lines, who, weapon["name"], against, " as a reaction"))
     return [f"{who} takes a reaction attack as {against} leaves its reach."] + lines
 
 
@@ -194,6 +250,8 @@ def walk(campaign_dir: Path, state: dict, a: dict, cid: str, path: list, rng=Non
         a["units"][cid] = {"x": cell[0], "y": cell[1]}
         resources(state, cid)["moved"] = resources(state, cid).get("moved", 0) + 1
         steps.append(list(cell))
+    if not is_foe(state, cid):
+        refresh_sight(campaign_dir, state, a)
     return {"steps": steps, "lines": lines, "pending": None}
 
 
@@ -254,9 +312,10 @@ def attack_check(campaign_dir: Path, state: dict, a: dict, attacker: str, entry:
     return {"mode": "ranged", "cover": arena.cover_between(here, there, arena.cover_cells(a)), "dis": near}
 
 
-def brief(campaign_dir: Path, state: dict, lines: list[str], attacker: str, weapon: str, target: str, how: str = "") -> str:
+def brief(campaign_dir: Path, state: dict, a: dict, lines: list[str], attacker: str, weapon: str, target: str, how: str = "") -> str:
     """One line for the round summary: who used what on whom, hit or miss, and whether it is down. No numbers."""
-    names = [combat.combatant(campaign_dir, state, c)["name"] for c in (attacker, target)]
+    unseen = hidden_foes(campaign_dir, state, a)
+    names = ["Something unseen" if c in unseen else combat.combatant(campaign_dir, state, c)["name"] for c in (attacker, target)]
     head = next((ln for ln in lines if ln.startswith(f"{attacker} ") and " → " in ln), "")
     down = not standing(combat.combatant(campaign_dir, state, target))
     return f"{names[0]} {'missed' if 'miss' in head else 'hit'} {names[1]} with {weapon}{how}" + (f"; {names[1]} is down" if down else "")
@@ -276,7 +335,7 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
     check = attack_check(campaign_dir, state, a, attacker, entry, target)
     lines = combat.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
                           bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up)
-    note(a, brief(campaign_dir, state, lines, attacker, entry["name"], target))
+    note(a, brief(campaign_dir, state, a, lines, attacker, entry["name"], target))
     notes = [f"{target} has {check['cover']} cover: -{arena.COVER_BONUS[check['cover']]} to hit."] if check["cover"] != "none" else []
     return notes + (["An enemy is next to the archer: disadvantage."] if check["dis"] else []) + lines
 
@@ -295,14 +354,20 @@ def approach(campaign_dir: Path, state: dict, a: dict, cid: str, target: str) ->
 def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict) -> dict:
     """The arena as a player sees it. A creature shows how hurt it is as a band, never as numbers.
 
-    The party sees a lit room whole. The cells a player cannot see never leave the server (light and fog come with
-    the `light` setting).
+    In dim or dark light the browser gets only what the party has seen: cells never seen are blank, creatures out of sight
+    are left out, and props and items show only on cells seen before.
     """
     enc = state["active_encounter"]
+    vis = visible_cells(campaign_dir, state, a)
+    fog = vis is not None
+    hidden = {c for c in a["units"] if is_foe(state, c) and pos(a, c) not in vis} if fog else set()
+    seen = ({(x, y) for y, row in enumerate(a["seen"]) for x, c in enumerate(row) if c == "1"} | vis) if fog else None
     units = []
     for cid in a["units"]:
         rec = combat.combatant(campaign_dir, state, cid)
         x, y = pos(a, cid)
+        if cid in hidden:
+            continue
         u = {"id": cid, "name": rec["name"], "x": x, "y": y, "pc": not is_foe(state, cid), "down": not standing(rec),
              "health": combat.health_band(rec), "conditions": [c["condition"] for c in enc.get("conditions", {}).get(cid, [])]}
         if u["pc"]:
@@ -316,13 +381,17 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict
         walk = [list(c) for c, n in dist.items() if n > 0]
         left = tiles_left(state, combat.combatant(campaign_dir, state, current)) * TILE_FT
     pending = a.get("pending")
+    known = (lambda x, y: (x, y) in seen) if fog else (lambda x, y: True)
     return {
-        "id": arena_id, "w": a["w"], "h": a["h"], "grid": a["grid"], "light": a["spec"]["light"],
+        "id": arena_id, "w": a["w"], "h": a["h"], "light": a["spec"]["light"],
+        "grid": ["".join(c if known(x, y) else " " for x, c in enumerate(row)) for y, row in enumerate(a["grid"])],
+        "visible": ["".join("1" if (x, y) in vis else "0" for x in range(a["w"])) for y in range(a["h"])] if fog else None,
         "hazard": "water" if a["spec"]["decor"] == "forest" else "lava",
         "tiles": arena.look_counts(a["look"]),
-        "props": [{"id": p["id"], "kind": p["kind"], "x": p["x"], "y": p["y"]} for p in a["props"]],
-        "items": [{"id": i["id"], "name": i["name"], "x": i["x"], "y": i["y"]} for i in a["items"]],
-        "units": units, "current": current, "round": enc.get("round", 1), "walk": walk, "feet_left": left,
+        "props": [{"id": p["id"], "kind": p["kind"], "x": p["x"], "y": p["y"]} for p in a["props"] if known(p["x"], p["y"])],
+        "items": [{"id": i["id"], "name": i["name"], "x": i["x"], "y": i["y"]} for i in a["items"] if known(i["x"], i["y"])],
+        "units": units, "current": None if current in hidden else current, "round": enc.get("round", 1),
+        "walk": walk, "feet_left": left,
         "pending": {"who": pending["who"], "against": pending["against"], "seconds_left": (
             max(0, round(settings["reaction_seconds"] - (time.time() - pending.get("asked_at", 0)))) if settings["reaction_seconds"] else None)}
         if pending else None,
@@ -429,7 +498,8 @@ def expired(pending: dict, settings: dict) -> bool:
 
 def summary_prompt(campaign_dir: Path, state: dict, a: dict, rnd: int, lines: list[str]) -> str:
     """The one line the DM hears for a round: what happened, without numbers, and who is down."""
-    down = [combat.combatant(campaign_dir, state, c)["name"] for c in a["units"] if not standing(combat.combatant(campaign_dir, state, c))]
+    unseen = hidden_foes(campaign_dir, state, a)
+    down = [combat.combatant(campaign_dir, state, c)["name"] for c in a["units"] if c not in unseen and not standing(combat.combatant(campaign_dir, state, c))]
     return (f"[combat] Round {rnd} is over. What happened: {'; '.join(lines)}." + (f" Down: {', '.join(down)}." if down else "")
             + " Tell it in one short beat (two sentences at most) and wait: the stage runs the next round.")
 
@@ -476,4 +546,6 @@ def player_attack(campaign_dir: Path, state: dict, a: dict, who: str, target: st
     """An attack a player makes from the stage: on their own turn, with the weapon they name or the one that reaches."""
     if target not in a["units"]:
         raise BoardError("pick a target on the board.")
+    if target in hidden_foes(campaign_dir, state, a):
+        raise BoardError("you cannot see that target.")
     return attack(campaign_dir, state, a, who, weapon or default_weapon(campaign_dir, state, a, who, target), target, own_turn_only=True)

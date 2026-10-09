@@ -20,8 +20,10 @@ export interface ArenaView {
   id: string
   w: number
   h: number
-  /** `#` wall, `.` floor, `d` door gap, `~` hazard. */
+  /** `#` wall, `.` floor, `d` door gap, `~` hazard, ` ` a cell never seen (dim or dark light). */
   grid: string[]
+  /** The cells in sight now (`1`), in dim or dark light; null in a lit room. */
+  visible: string[] | null
   light: 'lit' | 'dim' | 'dark'
   hazard: 'lava' | 'water'
   tiles: { walls: number; floors: number; pattern: boolean }

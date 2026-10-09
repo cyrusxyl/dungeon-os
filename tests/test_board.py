@@ -7,6 +7,7 @@ Plain asserts so no test runner is needed.
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import time
@@ -260,6 +261,83 @@ def test_summary_and_time() -> None:
               and board.view(c2, state2, "arena-1", a2, {"reaction_seconds": 0, "round_summary": True})["pending"]["seconds_left"] is None)
 
 
+def dark(a: dict, light: str = "dark") -> dict:
+    a["spec"]["light"] = light
+    a["seen"] = ["0" * a["w"] for _ in range(a["h"])]
+    return a
+
+
+def test_light() -> None:
+    from dnd_cli import character
+    from stage import party
+
+    print("board: light and fog")
+    settings = {"reaction_seconds": 10, "round_summary": True}
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp))
+        check("a lit room is seen whole: no fog, nothing hidden", board.visible_cells(c, state, a) is None and board.hidden_foes(c, state, a) == set())
+        dark(a)
+        check("a human with a torch sees 6 tiles, an elf 12 (darkvision 60 ft)",
+              board.sight_radius(c, state, a, "aragorn") == 6 and board.sight_radius(c, state, a, "legolas") == 12)
+        dark(a, "dim")
+        check("in dim light everyone sees 8 tiles, or their darkvision",
+              board.sight_radius(c, state, a, "aragorn") == 8 and board.sight_radius(c, state, a, "legolas") == 12)
+        dark(a)
+        sheet = character.load(c, "aragorn")
+        sheet["inventory"] = [i for i in sheet["inventory"] if "Torch" not in i["name"]]
+        character.save(c, "aragorn", sheet)
+        check("a human with no light sees the next cell only", board.sight_radius(c, state, a, "aragorn") == 1)
+        sheet["inventory"].append({"name": "Torch", "quantity": 1})
+        character.save(c, "aragorn", sheet)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # only Aragorn (torch, 6 tiles) is up: Legolas is down
+        c, state, a = setup(Path(tmp), at={"goblin#1": (5, 3), "goblin#2": (10, 5), "boss": (9, 1)})
+        sheet = character.load(c, "legolas")
+        sheet["hp"]["current"] = 0
+        character.save(c, "legolas", sheet)
+        dark(a)
+        vis = board.visible_cells(c, state, a)
+        check("the torch lights 6 tiles with a clear line", (2, 3) in vis and (8, 3) in vis and (9, 3) not in vis and (8, 6) not in vis or (8, 5) in vis)
+        check("a downed hero sees nothing", all(arena.cheb(cell, (2, 3)) <= 6 for cell in vis))
+        hidden = board.hidden_foes(c, state, a)
+        check("a creature beyond the light is hidden, one inside it is not", hidden == {"goblin#2", "boss"})
+        a["grid"][3] = a["grid"][3][:4] + "#" + a["grid"][3][5:]
+        check("a wall on the line hides the creature behind it", "goblin#1" in board.hidden_foes(c, state, a))
+        a["grid"][3] = ROOM[3]
+        a["props"] = [{"id": "hearth#1", "kind": "hearth", "x": 10, "y": 6}]
+        check("a lit prop lights the cells around it, if the party has a line to them", board.hidden_foes(c, state, a) == {"boss"})
+        a["props"] = []
+
+        v = board.view(c, state, "arena-1", a, settings)
+        shown = {u["id"] for u in v["units"]}
+        check("the view keeps the party and the creature in the light, and leaves out the rest",
+              shown == {"aragorn", "legolas", "goblin#1"} and "goblin#2" not in json.dumps(v) and "boss" not in json.dumps(v["units"]))
+        check("cells never seen are blank; the shade rows say what is in sight",
+              v["grid"][1][11] == " " and v["grid"][3][5] != " " and v["visible"][3][5] == "1" and v["visible"][3][10] == "0")
+        board.refresh_sight(c, state, a)
+        check("what the party saw stays on the map", a["seen"][3][8] == "1" and a["seen"][1][11] == "0")
+        a["units"]["aragorn"] = {"x": 1, "y": 6}
+        v2 = board.view(c, state, "arena-1", a, settings)
+        check("cells seen before stay known when out of sight, but are not lit", v2["grid"][1][8] != " " and v2["visible"][1][8] == "0")
+        check("a hidden creature cannot be targeted", raises(lambda: board.player_attack(c, state, a, "aragorn", "boss", "longbow")))
+        state["active_encounter"]["current_turn"] = "boss"
+        check("the view does not say whose turn it is when that creature is hidden", board.view(c, state, "arena-1", a, settings)["current"] is None)
+
+        combat.save_state(c, state)  # party.view reads state.json
+        order = party.view(c, frozenset(board.hidden_foes(c, state, a)))["combat"]
+        unseen = [o for o in order["order"] if o["name"] == "Unseen"]
+        check("the turn bar shows a hidden creature as Unseen, with no id or name", len(unseen) == 2 and not any("goblin#2" in json.dumps(o) or "boss" in json.dumps(o) for o in unseen)
+              and order["current"].startswith("unseen-"))
+        a["units"]["goblin#2"] = {"x": 10, "y": 5}
+        line = ["goblin#2 Scimitar → aragorn: 12+4 = 16 vs AC 15 — hit, 5 slashing damage"]
+        brief = board.brief(c, state, a, line, "goblin#2", "Scimitar", "aragorn")
+        check("the round summary does not name an attacker the party cannot see, and has no numbers",
+              brief.startswith("Something unseen hit Aragorn") and not any(ch.isdigit() for ch in brief))
+        state["active_encounter"]["monsters"]["boss"]["hp"]["current"] = 0
+        check("the summary leaves a hidden creature out of its list of those down", "boss" not in board.summary_prompt(c, state, a, 1, ["x"]).lower())
+
+
 def test_sync_and_start() -> None:
     print("board: new creatures")
     with tempfile.TemporaryDirectory() as tmp:
@@ -283,7 +361,7 @@ def test_sync_and_start() -> None:
 
 
 if __name__ == "__main__":
-    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_foes, test_summary_and_time, test_sync_and_start):
+    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_foes, test_summary_and_time, test_light, test_sync_and_start):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

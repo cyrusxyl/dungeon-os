@@ -17,6 +17,7 @@ function drawTiles(ctx: CanvasRenderingContext2D, view: View, image: Image) {
       const c = view.grid[y][x]
       const px = x * T
       const py = y * T
+      if (c === ' ') continue // never seen (fog): stays black
       if (c === '#') {
         tile(variant(x, y, view.tiles.walls), 0, px, py)
         continue
@@ -93,6 +94,13 @@ function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number]
     } else if (t.prop) {
       const img = image(`/asset/prop/${t.prop.kind}.png`)
       if (img) stand(ctx, img, t.prop.x, t.prop.y)
+    }
+  }
+  if (view.visible) {
+    // The shade over what the party has seen but cannot see now.
+    ctx.fillStyle = 'rgba(8, 6, 14, 0.62)'
+    for (let y = 0; y < view.h; y++) {
+      for (let x = 0; x < view.w; x++) if (view.grid[y][x] !== ' ' && view.visible[y][x] === '0') ctx.fillRect(x * T, y * T, T, T)
     }
   }
 }

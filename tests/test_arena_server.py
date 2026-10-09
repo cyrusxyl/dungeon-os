@@ -8,6 +8,7 @@ Plain asserts so no test runner is needed.
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 import tempfile
 import time
@@ -137,6 +138,29 @@ async def routes(c: Path, state: dict) -> None:
     status, view4 = await api(app, "GET", f"/api/arena/{arena_id}")
     check("the board view carries them", view4["settings"] == {"reaction_seconds": 20, "round_summary": False})
     await api(app, "POST", "/api/combat/settings", {"reaction_seconds": 10, "round_summary": True})
+
+    # light: a creature out of sight is not in the board view or the turn bar
+    from dnd_cli import character
+    arena_data = arena.load(c, arena_id)
+    sheet = character.load(c, "legolas")
+    saved_hp = sheet["hp"]["current"]
+    sheet["hp"]["current"] = 0
+    character.save(c, "legolas", sheet)
+    arena_data["spec"]["light"] = "dark"
+    arena_data["seen"] = ["0" * arena_data["w"] for _ in range(arena_data["h"])]
+    ax, ay = board.pos(arena_data, "aragorn")
+    arena_data["units"]["goblin#2"] = {"x": min(arena_data["w"] - 2, ax + 9), "y": ay}
+    arena.save(c, arena_id, arena_data)
+    status, dark_view = await api(app, "GET", f"/api/arena/{arena_id}")
+    check("in the dark the board view has no creature out of sight", "goblin#2" not in json.dumps(dark_view) and dark_view["visible"] is not None)
+    status, party_view = await api(app, "GET", "/api/party")
+    check("and the turn bar shows it as Unseen", any(o["name"] == "Unseen" for o in party_view["combat"]["order"]) and "goblin#2" not in json.dumps(party_view["combat"]))
+    status, r = await api(app, "POST", "/api/arena/attack", {"who": "aragorn", "target": "goblin#2", "weapon": "longbow"})
+    check("a creature out of sight cannot be attacked", status == 400 and "cannot see" in r["error"])
+    arena_data["spec"]["light"] = "lit"
+    arena.save(c, arena_id, arena_data)
+    sheet["hp"]["current"] = saved_hp
+    character.save(c, "legolas", sheet)
 
     # the card's actions and End turn on a board: the board decides, the DM is not called
     sent = []

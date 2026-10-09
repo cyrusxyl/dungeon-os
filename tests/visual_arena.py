@@ -121,6 +121,20 @@ async def foe_turns(page: Page, c: Path, arena_id: str) -> None:
     check("the feed shows what the goblins did", len(await page.eval("[...document.querySelectorAll('[aria-label=\"What just happened\"] li')].map(l => l.innerText)")) >= 1)
 
 
+async def dark_room(page: Page, c: Path, arena_id: str) -> None:
+    a = arena.load(c, arena_id)
+    a["spec"]["light"] = "dark"
+    a["seen"] = ["0" * a["w"] for _ in range(a["h"])]
+    arena.save(c, arena_id, a)
+    board.refresh_sight(c, combat.load_state(c), a)
+    arena.save(c, arena_id, a)
+    beat.append(c, [{"type": "arena_updated", "arena": arena_id}])
+    await asyncio.sleep(1.5)
+    await page.shot("arena-dark")
+    view = await page.eval(f"fetch('/api/arena/{arena_id}', {{headers: {{'X-Device': localStorage.getItem('dungeon-device')}}}}).then(r => r.json()).then(v => JSON.stringify({{blank: v.grid.join('').split(' ').length - 1, units: v.units.length}}))")
+    check("a fight in the dark: part of the map is blank and the board still shows", json.loads(view)["blank"] > 0 and await page.eval("Boolean(document.querySelector('canvas'))"))
+
+
 def main() -> int:
     if not shutil.which("google-chrome"):
         print("skipped: Google Chrome is not installed")
@@ -167,6 +181,7 @@ def main() -> int:
                 os.environ["DUNGEON_STAGE_LOG"] = str(beat.log_path(c))
                 await board_checks(page, c, arena_id)
                 await foe_turns(page, c, arena_id)
+                await dark_room(page, c, arena_id)
         asyncio.run(run())
     finally:
         chrome.terminate()

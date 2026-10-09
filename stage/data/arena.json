@@ -1,5 +1,5 @@
 {
-  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees).",
+  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees). darkvision_ft: the darkvision of a race word (the longest match wins); a character without one sees only by light.",
   "decor": {
     "tavern": {
       "obstacles": [
@@ -152,5 +152,14 @@
     "frozen_lake",
     "haunted_woods",
     "battlefield"
-  ]
+  ],
+  "darkvision_ft": {
+    "drow": 120,
+    "elf": 60,
+    "dwarf": 60,
+    "gnome": 60,
+    "half-elf": 60,
+    "half-orc": 60,
+    "tiefling": 60
+  }
 }
