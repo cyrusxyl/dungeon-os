@@ -21,6 +21,25 @@ uv run dnd-cli encounter start bandit:2 cassara-whitmore --pcs sireth
 - No API monster fits? `uv run dnd-cli search monsters --name <word>` for the index.
 - Reinforcements: `uv run dnd-cli encounter add wolf:2`.
 
+## A fight on a board
+
+Add `--arena` (last) to get a board: the players walk their characters, and the stage plays the creatures. Use it for any fight where position matters: a room, a field, an ambush.
+
+```bash
+uv run dnd-cli encounter start goblin:2 boss=bugbear --arena layout=pillars size=medium light=lit
+uv run dnd-cli encounter start wolf:3 --arena ambush=yes feature=barrels@party hazard=water@center
+```
+
+- `layout=` is `open`, `chokepoint`, `pillars` or `chasm`; `size=` is `small` (12 x 8) or `medium` (16 x 10); `light=` is `lit`, `dim` or `dark`; `ambush=yes` puts creatures on the flanks; `theme=` takes the tiles of a site theme; `seed=` repeats a layout.
+- `feature=<thing>@<where>` adds an object: `cover`, `pillar`, `barrels`, or any prop of the scene catalog. `hazard=lava@center` or `hazard=water@foes` adds a pool. `where` is `party`, `center` or `foes`. **Never give coordinates**: the stage places everything, and a layout never changes after the start.
+- The arena is built from where the party is: the room of the site they explore, the scene on the stage, or an empty field. You do not need `@scene` for it. `@scene` or `@explore` after the fight shows the story again.
+- The command prints who you play: a creature with its own id (`boss=bugbear`) or an NPC file. **The stage plays every other creature.** Do not run their turns, and do not call `encounter next` for them.
+- When a creature you play is up, you get `[combat] Round 1: Grukk (boss) acts, and you play it. ...`. Then: `uv run dnd-cli encounter move boss --toward aragorn` (or `--to 7,4`), `uv run dnd-cli attack boss morningstar aragorn`, narrate one beat, `uv run dnd-cli encounter next`. The board checks speed, blocked cells, reach, sight and cover, and prints why it refuses. A player gets a reaction question when a creature leaves their reach: the walk waits for the answer.
+- `uv run dnd-cli arena show` lists the props, items and who stands where. `uv run dnd-cli arena preview` makes a picture for you (not for the players). Describe positions in words (the pillar on the left, the pool in the middle).
+- Card actions and End turn do not reach you on a board. You hear when a creature you play is up, and when no creature is left standing (`[combat] Every creature is down ...`): narrate the end, then `uv run dnd-cli encounter end`.
+- **Props.** Only 15 props have board stats (barrel, barrel_pile, bush, chair, chests, column_broken, dresser, hearth, mushroom, oak, pine, stones, stool, stump, tree). Any other prop still works in a fight: it blocks movement and gives no cover. Give it stats on the fly when the story needs them (cover behind a table, a chandelier that falls) and rule it from the 5e rules with the commands you have (`attack ... --damage`, `encounter condition`, `encounter use`). A player may try anything with the props, the items and the room: decide, say what it costs (action, bonus action or free object interaction), roll with the commands, and narrate.
+- `encounter add wolf:2` puts reinforcements on a free cell near the creatures' side.
+
 ## Each turn
 
 ```bash

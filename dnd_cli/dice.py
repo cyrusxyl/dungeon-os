@@ -35,6 +35,12 @@ def parse(expr: str) -> tuple[list[tuple[int, int, int]], int]:
     return dice, flat
 
 
+def average(expr: str) -> float:
+    """The average of a dice expression like 2d8+2."""
+    terms, flat = parse(expr)
+    return flat + sum(sign * count * (sides + 1) / 2 for sign, count, sides in terms)
+
+
 def roll(expr: str, rng: random.Random | None = None, crit: bool = False) -> tuple[int, list[dict]]:
     """Total and the faces per die group. A critical hit rolls each die group twice."""
     rng = rng or random

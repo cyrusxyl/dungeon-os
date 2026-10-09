@@ -84,10 +84,17 @@ function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number]
   }
   // Props and creatures in depth order: one lower on the screen stands in front.
   const things = [
-    ...view.props.map((p) => ({ y: p.y, draw: () => { const img = image(`/asset/prop/${p.kind}.png`); if (img) stand(ctx, img, p.x, p.y) } })),
-    ...view.units.map((u) => ({ y: u.y + 0.5, draw: () => drawUnit(ctx, u, image, u.id === view.current) })),
-  ]
-  for (const t of things.sort((a, b) => a.y - b.y)) t.draw()
+    ...view.props.map((p) => ({ y: p.y, prop: p, unit: undefined })),
+    ...view.units.map((u) => ({ y: u.y + 0.5, prop: undefined, unit: u })),
+  ].sort((a, b) => a.y - b.y)
+  for (const t of things) {
+    if (t.unit) {
+      drawUnit(ctx, t.unit, image, t.unit.id === view.current)
+    } else if (t.prop) {
+      const img = image(`/asset/prop/${t.prop.kind}.png`)
+      if (img) stand(ctx, img, t.prop.x, t.prop.y)
+    }
+  }
 }
 
 /**
@@ -150,7 +157,10 @@ export function ArenaView({ state, arenaId, actingAs, mine }: { state: StageStat
         width={view.w * T}
         height={view.h * T}
         onClick={click}
-        onMouseMove={(e) => setHover(cellAt(e))}
+        onMouseMove={(e) => {
+          const [x, y] = cellAt(e)
+          setHover((prev) => (prev && prev[0] === x && prev[1] === y ? prev : [x, y])) // one redraw per cell crossed
+        }}
         onMouseLeave={() => setHover(null)}
         aria-label="The board of the fight. Click a blue cell to walk. Click a creature to attack it."
         className={`pixelated shrink-0 ${canWalk ? 'cursor-pointer' : 'cursor-default'}`}

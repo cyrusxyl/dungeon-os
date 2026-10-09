@@ -4,13 +4,13 @@ import sys
 
 from dnd_cli import combat
 from dnd_cli.commands.show_cmd import preview_path, run_stage
-from stage import arena
+from stage import arena, board
 
 
 def _arena_of(campaign_dir, arena_id: str | None):
     """(id, arena): the one named, else the arena of the running fight."""
     if arena_id is None:
-        arena_id = (combat.load_state(campaign_dir).get("active_encounter") or {}).get("arena")
+        arena_id = board.arena_id_of(combat.load_state(campaign_dir))
         if arena_id is None:
             raise arena.ArenaError("no fight on a board is running. Start one with: uv run dnd-cli encounter start goblin:3 --arena")
     a = arena.load(campaign_dir, arena_id)

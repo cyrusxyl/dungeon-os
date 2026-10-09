@@ -7,7 +7,6 @@ Plain asserts so no test runner is needed.
 
 from __future__ import annotations
 
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -17,7 +16,7 @@ sys.path.insert(0, str(REPO))
 
 from dnd_cli import combat  # noqa: E402
 from stage import arena, board  # noqa: E402
-from tests.test_arena import fight  # noqa: E402
+from tests.test_arena import fight_with_boss  # noqa: E402
 from tests.test_rules import Fixed  # noqa: E402
 
 PASS = FAIL = 0
@@ -40,7 +39,7 @@ def raises(fn) -> bool:
 
 def setup(tmp: Path, props=(), grid=ROOM, at=None):
     """The fixture fight (aragorn, legolas, goblin#1, goblin#2, boss) on a plain room; `at` places units."""
-    c, state = fight(tmp)
+    c, state = fight_with_boss(tmp)
     where = {"aragorn": (2, 3), "legolas": (2, 5), "goblin#1": (8, 3), "goblin#2": (8, 5), "boss": (9, 4)} | (at or {})
     a = {"w": 12, "h": 8, "grid": list(grid), "props": [dict(p, id=f"{p['kind']}#{i}") for i, p in enumerate(props)], "items": [],
          "starts": {"party": [[2, 3], [2, 5]], "foes": [[8, 3], [8, 5], [9, 4]]}, "units": {k: {"x": x, "y": y} for k, (x, y) in where.items()},
@@ -173,6 +172,60 @@ def test_attacks() -> None:
         check("an attack on a creature that is down is refused", raises(lambda: board.attack(c, state, a, "aragorn", "longbow", "goblin#2")))
 
 
+def test_foes() -> None:
+    print("board: the stage plays the creatures")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (10, 5)})
+        a["control"] = {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"}
+        enc = state["active_encounter"]
+        enc["current_turn"] = "goblin#1"
+        out = board.play_foe(c, state, a, "goblin#1", rng=Fixed(15, 3))
+        check("a goblin next to a hero attacks it", any("Scimitar" in ln for ln in out["lines"]) and combat.turn_used(state, "goblin#1")["action"])
+        check("the nearest hero is the target", any("→ aragorn" in ln for ln in out["lines"]))
+        enc["current_turn"] = "goblin#2"
+        out = board.play_foe(c, state, a, "goblin#2", rng=Fixed(15, 3))
+        x, y = board.pos(a, "goblin#2")
+        check("a far goblin walks 30 ft toward the party", min(arena.cheb((x, y), (2, 3)), arena.cheb((x, y), (2, 5))) == 2 and board.resources(state, "goblin#2")["moved"] == 6 and not out["pending"])
+        check("it cannot attack if it is still out of reach", not any("Scimitar" in ln for ln in out["lines"]) and not combat.turn_used(state, "goblin#2")["action"])
+        step = board.pump_step(c, state, a, rng=Fixed(15, 3))
+        check("pump: a creature the stage plays takes its turn and the tracker moves on",
+              step["kind"] == "turn" and step["who"] == "goblin#2" and enc["current_turn"] != "goblin#2")
+        enc["current_turn"] = "boss"
+        step = board.pump_step(c, state, a)
+        check("pump: a creature the DM plays gets a prompt, once", step["kind"] == "dm" and "[combat]" in step["prompt"] and "encounter move boss" in step["prompt"]
+              and board.pump_step(c, state, a)["kind"] == "turn")
+        check("the DM prompt names the party members and their distance, and nothing about hidden things",
+              "aragorn" in step["prompt"] and "tiles" in step["prompt"] and "legolas" in step["prompt"])
+        enc["current_turn"] = "aragorn"
+        check("pump: a player's turn is left alone", board.pump_step(c, state, a) is None)
+        enc["current_turn"] = "goblin#1"
+        a["pending"] = {"type": "react", "who": "aragorn", "against": "goblin#1", "path": []}
+        check("pump: nothing happens while a question waits", board.pump_step(c, state, a) is None)
+        a["pending"] = None
+        for foe in ("goblin#1", "goblin#2", "boss"):
+            enc["monsters"][foe]["hp"]["current"] = 0
+        step = board.pump_step(c, state, a)
+        check("pump: no creature left standing ends the fight, and says so once", step == {"kind": "over", "won": True} and board.pump_step(c, state, a) is None)
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (8, 3)})
+        a["control"] = {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"}
+        state["active_encounter"]["current_turn"] = "goblin#1"
+        state["active_encounter"]["monsters"]["goblin#1"]["hp"]["current"] = 0
+        step = board.pump_step(c, state, a)
+        check("pump: a creature that is down loses its turn", step["kind"] == "turn" and state["active_encounter"]["current_turn"] != "goblin#1")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3)})
+        a["control"] = {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"}
+        state["active_encounter"]["current_turn"] = "goblin#1"
+        out = board.play_foe(c, state, a, "goblin#1", rng=Fixed(15, 3))
+        board.walk(c, state, a, "goblin#2", [(8, 4)])  # a far goblin walking away from nobody: no question
+        a["units"]["goblin#2"] = {"x": 3, "y": 4}
+        state["active_encounter"]["current_turn"] = "goblin#2"
+        a["units"]["goblin#1"] = {"x": 8, "y": 3}
+        out = board.play_foe(c, state, a, "goblin#2", rng=Fixed(15, 3))
+        check("a creature next to two heroes attacks the closer, lower one without walking", any("Scimitar" in ln for ln in out["lines"]) and not out["pending"])
+
+
 def test_sync_and_start() -> None:
     print("board: new creatures")
     with tempfile.TemporaryDirectory() as tmp:
@@ -196,7 +249,7 @@ def test_sync_and_start() -> None:
 
 
 if __name__ == "__main__":
-    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_sync_and_start):
+    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_foes, test_sync_and_start):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

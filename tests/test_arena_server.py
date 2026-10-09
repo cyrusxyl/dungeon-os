@@ -17,35 +17,38 @@ sys.path.insert(0, str(REPO))
 
 from dnd_cli import combat  # noqa: E402
 from stage import arena, board  # noqa: E402
+from stage import server  # noqa: E402
 from stage.server import create_app  # noqa: E402
-from tests.test_arena import fight  # noqa: E402
+from tests.test_arena import fight_with_boss  # noqa: E402
 from tests.test_stage import HOST_DEVICE, api, call  # noqa: E402
 
 PASS = FAIL = 0
 OTHER = "other-device-00000000"
 
 
-def check(label: str, cond: bool) -> None:
+def check(label: str, cond: bool, detail: str = "") -> None:
     global PASS, FAIL
     PASS, FAIL = PASS + bool(cond), FAIL + (not cond)
-    print(f"  {'ok  ' if cond else 'FAIL'} {label}")
+    print(f"  {'ok  ' if cond else 'FAIL'} {label}{'' if cond or not detail else f'  ({detail})'}")
 
 
 def prepare(tmp: Path):
     """A fight on a board in a campaign copy: the arena on disk, the state saved."""
-    c, state = fight(tmp)
+    c, state = fight_with_boss(tmp)
     board.start(c, state, ["layout=open", "size=small", "seed=3"], {})
     combat.save_state(c, state)
     return c, state
 
 
 async def routes(c: Path, state: dict) -> None:
+    server.BOARD_PACE = 0
     app = create_app(None)
     stage = await app.state.table.start(c, ["cat"])
     for who in ("aragorn", "legolas"):
         stage.seats.claim(HOST_DEVICE, who, "Alex")
     stage.state["dm"] = {"status": "idle"}
     arena_id = state["active_encounter"]["arena"]
+    stage.state["arena"] = arena_id  # the arena event, as the stage log would have folded it
 
     status, view = await api(app, "GET", f"/api/arena/{arena_id}")
     check("the view has the grid, the units and the turn", status == 200 and view["w"] == 12 and len(view["units"]) == 5 and view["current"] == "aragorn")
@@ -105,7 +108,46 @@ async def routes(c: Path, state: dict) -> None:
     status, r = await api(app, "POST", "/api/arena/react", {"take": False})
     check("the answer clears the question", status == 200 and arena.load(c, arena_id)["pending"] is None)
     status, r = await api(app, "POST", "/api/arena/react", {"take": True})
-    check("an answer with no question is refused", status == 409)
+    check("an answer with no question is refused", status == 400)
+
+    # the card's actions and End turn on a board: the board decides, the DM is not called
+    sent = []
+
+    async def fake(text):
+        sent.append(text)
+    stage.submit = fake
+    status, r = await api(app, "POST", "/api/action", {"who": "aragorn", "action": "attack", "target": "goblin#2", "weapon": "Longsword"})
+    check("an attack from the card follows the board's rules", status == 400 and "ft away" in r["error"])
+    status, r = await api(app, "POST", "/api/action", {"who": "aragorn", "action": "shove", "target": "goblin#2"})
+    check("an action the board does not run yet says so", status == 400 and "board" in r["error"], str(r))
+    status, r = await api(app, "POST", "/api/action", {"who": "aragorn", "action": "feature:Second Wind"})
+    check("a class feature from the card works and is not sent to the DM", status == 200 and not sent and r["lines"])
+    status, r = await api(app, "POST", "/api/end-turn", {"who": "aragorn"})
+    check("End turn moves the tracker and does not call the DM", status == 200 and not sent and combat.load_state(c)["active_encounter"]["current_turn"] == "legolas")
+    await api(app, "POST", "/api/end-turn", {"who": "legolas"})
+    check("the turn is a goblin's now", combat.load_state(c)["active_encounter"]["current_turn"] in ("goblin#1", "goblin#2"))
+    await stage.pump_board()
+    now = combat.load_state(c)["active_encounter"]
+    check("the pump played both goblins and stopped at the creature the DM plays, with a prompt",
+          now["current_turn"] == "boss" and len(sent) == 1 and "[combat]" in sent[0] and "(boss)" in sent[0])
+    check("the goblins' turns used the board (they moved)", now["resources"].get("goblin#1", {}).get("moved", 0) > 0 or now["resources"].get("goblin#2", {}).get("moved", 0) > 0
+          or any(x for x in stage.state["feed"]))
+    stage.state["dm"] = {"status": "busy"}
+    await stage.pump_board()
+    check("a busy DM holds the pump", combat.load_state(c)["active_encounter"]["current_turn"] == "boss")
+    stage.state["dm"] = {"status": "idle"}
+    await stage.pump_board()
+    now = combat.load_state(c)["active_encounter"]
+    check("when the DM is idle and has not ended its creature's turn, the stage ends it", now["current_turn"] == "aragorn" and now["round"] == 2 and len(sent) == 1)
+    st = combat.load_state(c)
+    for foe in ("goblin#1", "goblin#2", "boss"):
+        st["active_encounter"]["monsters"][foe]["hp"]["current"] = 0
+    st["active_encounter"]["current_turn"] = "goblin#1"
+    combat.save_state(c, st)
+    await stage.pump_board()
+    check("with every creature down, the DM is told once to end the fight", len(sent) == 2 and "encounter end" in sent[1])
+    await stage.pump_board()
+    check("and is not told again", len(sent) == 2)
 
     status, kind, body = await call(app, "GET", f"/asset/arena/{arena_id}.png")
     check("the tile atlas of the arena is a PNG", status == 200 and body[:4] == b"\x89PNG" and kind == "image/png")

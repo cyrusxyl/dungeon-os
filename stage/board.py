@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dnd_cli import combat
+from dnd_cli import combat, dice
 from stage import arena
 
 
@@ -52,9 +52,14 @@ class BoardError(combat.RulesError):
     """A move or an attack the board refuses. The message says why."""
 
 
+def arena_id_of(state: dict) -> str | None:
+    """The id of the arena of the running combat, if the fight is on a board. The one place that says so."""
+    return (state.get("active_encounter") or {}).get("arena")
+
+
 def running(campaign_dir: Path, state: dict) -> tuple[str, dict]:
     """The id and the arena of the running combat."""
-    arena_id = (state.get("active_encounter") or {}).get("arena")
+    arena_id = arena_id_of(state)
     a = arena.load(campaign_dir, arena_id) if arena_id else None
     if a is None:
         raise BoardError("no fight on a board is running. Start one with: uv run dnd-cli encounter start goblin:3 --arena")
@@ -96,12 +101,12 @@ def sync_units(campaign_dir: Path, state: dict, a: dict) -> list[str]:
             continue
         starts = a["starts"]["foes" if is_foe(state, cid) else "party"]
         w, h = a["w"], a["h"]
-        cells = sorted(((x, y) for y in range(h) for x in range(w) if (x, y) not in blocked and (x, y) not in taken),
-                       key=lambda c: min(arena.cheb(c, s) for s in starts) * 100 + abs(c[1] - h // 2))
+        cells = [(x, y) for y in range(h) for x in range(w) if (x, y) not in blocked and (x, y) not in taken]
         if not cells:
             raise BoardError("no free cell is left in the arena.")
-        a["units"][cid] = {"x": cells[0][0], "y": cells[0][1]}
-        taken.add(cells[0])
+        cell = min(cells, key=lambda c: min(arena.cheb(c, s) for s in starts) * 100 + abs(c[1] - h // 2))
+        a["units"][cid] = {"x": cell[0], "y": cell[1]}
+        taken.add(cell)
         added.append(cid)
     return added
 
@@ -126,9 +131,14 @@ def reachable(campaign_dir: Path, state: dict, a: dict, cid: str) -> tuple[dict,
     return arena.reach(pos(a, cid), tiles_left(state, rec), arena.blocked_cells(a), (a["w"], a["h"]), others)
 
 
+def attack_rolls(rec: dict) -> list[dict]:
+    """The attacks of a creature that roll to hit and do damage (not saving throws, not a spell with no dice)."""
+    return [x for x in rec["attacks"] if x["damage"] and "dc" not in x]
+
+
 def melee_attack(rec: dict) -> dict | None:
     """The attack a creature makes with a reaction: its equipped melee weapon, else any melee attack."""
-    melee = [x for x in rec["attacks"] if x.get("reach_ft") and x["damage"]]
+    melee = [x for x in attack_rolls(rec) if x.get("reach_ft")]
     return next((x for x in melee if x.get("equipped")), melee[0] if melee else None)
 
 
@@ -153,7 +163,7 @@ def provokers(campaign_dir: Path, state: dict, a: dict, cid: str, to: tuple[int,
 def _react(campaign_dir: Path, state: dict, a: dict, who: str, against: str, rng) -> list[str]:
     weapon = melee_attack(combat.combatant(campaign_dir, state, who))
     return [f"{who} takes a reaction attack as {against} leaves its reach."] + combat.attack(
-        campaign_dir, state, who, weapon["name"], against, rng=rng, cost="reaction")
+        campaign_dir, state, who, weapon["name"], against, rng=rng, cost="reaction", catch_up=False)
 
 
 def walk(campaign_dir: Path, state: dict, a: dict, cid: str, path: list, rng=None) -> dict:
@@ -233,7 +243,8 @@ def attack_check(campaign_dir: Path, state: dict, a: dict, attacker: str, entry:
 
 
 def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str, target: str, rng=None, cost: str | None = "action",
-           adv: bool = False, dis: bool = False, bonus: int = 0, secret: bool = False, own_turn_only: bool = False) -> list[str]:
+           adv: bool = False, dis: bool = False, bonus: int = 0, secret: bool = False, own_turn_only: bool = False,
+           catch_up: bool = True) -> list[str]:
     """An attack with the board's rules: reach or range, line of sight, cover (-2 or -5 to hit), and an enemy next to an archer.
 
     `own_turn_only`: the stage refuses an attack out of turn. The DM's `attack` command keeps its way of moving the tracker.
@@ -244,7 +255,7 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
     entry = combat._find_attack(rec, weapon)
     check = attack_check(campaign_dir, state, a, attacker, entry, target)
     lines = combat.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
-                          bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"])
+                          bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up)
     notes = [f"{target} has {check['cover']} cover: -{arena.COVER_BONUS[check['cover']]} to hit."] if check["cover"] != "none" else []
     return notes + (["An enemy is next to the archer: disadvantage."] if check["dis"] else []) + lines
 
@@ -306,7 +317,121 @@ def default_weapon(campaign_dir: Path, state: dict, a: dict, attacker: str, targ
     """The attack a click on a creature means: an equipped weapon that reaches it, else any attack that does."""
     rec = combat.combatant(campaign_dir, state, attacker)
     dist = arena.cheb(pos(a, attacker), pos(a, target))
-    armed = [x for x in rec["attacks"] if x["damage"]]
+    armed = attack_rolls(rec)
     reaching = [x for x in armed if dist <= max(x.get("reach_ft", 0), x.get("range_ft", 0)) // TILE_FT]
     pool = reaching or armed
     return next((x for x in pool if x.get("equipped")), pool[0])["name"]
+
+
+# -- the stage plays the creatures ------------------------------------------------
+
+
+def standing_pcs(campaign_dir: Path, state: dict, a: dict) -> list[str]:
+    return [c for c in a["units"] if not is_foe(state, c) and standing(combat.combatant(campaign_dir, state, c))]
+
+
+def standing_foes(campaign_dir: Path, state: dict, a: dict) -> list[str]:
+    return [c for c in a["units"] if is_foe(state, c) and standing(combat.combatant(campaign_dir, state, c))]
+
+
+def best_attack(campaign_dir: Path, state: dict, a: dict, cid: str, target: str) -> dict | None:
+    """The attack of `cid` that can hit `target` from where it stands and does the most damage on average."""
+    rec = combat.combatant(campaign_dir, state, cid)
+    best, top = None, -1.0
+    for entry in attack_rolls(rec):
+        try:
+            attack_check(campaign_dir, state, a, cid, entry, target)
+        except BoardError:
+            continue
+        score = sum(dice.average(expr) for expr, _ in entry["damage"])
+        if score > top:
+            best, top = entry, score
+    return best
+
+
+def play_foe(campaign_dir: Path, state: dict, a: dict, cid: str, rng=None) -> dict:
+    """The stage plays one creature's turn the plain way: attack the nearest party member, walking toward it first if it must.
+
+    Returns {"lines", "pending"}; `pending` is True when a player is asked for a reaction, and the turn waits for the answer.
+    """
+    lines: list[str] = []
+    walked = False
+    for _ in range(3):
+        pcs = standing_pcs(campaign_dir, state, a)
+        if not pcs:
+            break
+        here = pos(a, cid)
+        target = min(pcs, key=lambda p: (arena.cheb(here, pos(a, p)), combat.combatant(campaign_dir, state, p)["hp"]["current"]))
+        if combat.turn_used(state, cid)["action"]:
+            break
+        if (entry := best_attack(campaign_dir, state, a, cid, target)) is not None:
+            lines += attack(campaign_dir, state, a, cid, entry["name"], target, rng=rng)
+            break
+        dest = approach(campaign_dir, state, a, cid, target)
+        if dest is None:
+            if not walked:
+                lines.append(f"{cid} cannot get nearer to {target}.")
+            break
+        walked = True
+        result = move(campaign_dir, state, a, cid, dest, rng=rng)
+        lines += result["lines"]
+        if result["pending"]:
+            return {"lines": lines, "pending": True}
+        if not standing(combat.combatant(campaign_dir, state, cid)):
+            break
+    return {"lines": lines, "pending": False}
+
+
+def dm_prompt(campaign_dir: Path, state: dict, a: dict, cid: str) -> str:
+    """What the DM is told when a creature it plays is up. It names only what the party can see (the console is public)."""
+    rec = combat.combatant(campaign_dir, state, cid)
+    here = pos(a, cid)
+    near = ", ".join(f"{combat.combatant(campaign_dir, state, p)['name']} ({p}) {arena.cheb(here, pos(a, p))} tiles, "
+                     f"{combat.health_band(combat.combatant(campaign_dir, state, p))}" for p in standing_pcs(campaign_dir, state, a))
+    attacks = "; ".join(f"{x['name']} +{x.get('bonus', 0)} " + ", ".join(e for e, _ in x["damage"])
+                        + (f" (reach {x['reach_ft']} ft)" if x.get("reach_ft") else f" (range {x['range_ft']} ft)") for x in rec["attacks"] if x["damage"])
+    walk = tiles_left(state, rec) * TILE_FT
+    return (f"[combat] Round {state['active_encounter'].get('round', 1)}: {rec['name']} ({cid}) acts, and you play it. "
+            f"It has {walk} ft of walking. Party: {near}. Its attacks: {attacks}. Move it with "
+            f"`uv run dnd-cli encounter move {cid} --toward <id>`, attack with `uv run dnd-cli attack {cid} \"<attack>\" <id>` "
+            "(the board checks reach, sight and cover), narrate it in one beat, then run `uv run dnd-cli encounter next`.")
+
+
+def pump_step(campaign_dir: Path, state: dict, a: dict, rng=None) -> dict | None:
+    """One step of a fight on a board when it is not a player's turn. None when there is nothing to do now.
+
+    - {"kind": "over"}: no creature or no party member is standing (the DM ends the fight and tells it).
+    - {"kind": "dm", "prompt"}: a creature the DM plays is up; send the prompt once. When the DM is idle again and the
+      turn is still its, the stage ends it.
+    - {"kind": "turn", "who", "lines", "pending"}: the stage played a creature's turn (and ended it unless a reaction question waits).
+    """
+    enc = state["active_encounter"]
+    cid = enc.get("current_turn")
+    if a.get("pending") or cid not in a["units"] or not is_foe(state, cid):
+        return None
+    if not standing_foes(campaign_dir, state, a) or not standing_pcs(campaign_dir, state, a):
+        if a.get("announced_end"):
+            return None
+        a["announced_end"] = True
+        return {"kind": "over", "won": bool(standing_pcs(campaign_dir, state, a))}
+    if not standing(combat.combatant(campaign_dir, state, cid)):
+        return {"kind": "turn", "who": cid, "lines": combat.next_turn(campaign_dir, state), "pending": False}
+    asked = a.get("asked")
+    if a["control"].get(cid) == "dm":
+        if asked != [cid, enc.get("round", 1)]:
+            a["asked"] = [cid, enc.get("round", 1)]
+            return {"kind": "dm", "prompt": dm_prompt(campaign_dir, state, a, cid)}
+        # The DM answered and did not end the turn: the stage ends it.
+        a["asked"] = None
+        return {"kind": "turn", "who": cid, "lines": combat.next_turn(campaign_dir, state), "pending": False}
+    played = play_foe(campaign_dir, state, a, cid, rng)
+    if played["pending"]:
+        return {"kind": "turn", "who": cid, "lines": played["lines"], "pending": True}
+    return {"kind": "turn", "who": cid, "lines": played["lines"] + combat.next_turn(campaign_dir, state), "pending": False}
+
+
+def player_attack(campaign_dir: Path, state: dict, a: dict, who: str, target: str | None, weapon: str | None = None) -> list[str]:
+    """An attack a player makes from the stage: on their own turn, with the weapon they name or the one that reaches."""
+    if target not in a["units"]:
+        raise BoardError("pick a target on the board.")
+    return attack(campaign_dir, state, a, who, weapon or default_weapon(campaign_dir, state, a, who, target), target, own_turn_only=True)

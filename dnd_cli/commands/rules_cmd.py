@@ -46,7 +46,7 @@ def execute_encounter(campaign, action: str, args) -> int:
             return lines
         if action == "add":
             lines = combat.add(campaign_dir, state, args.specs)
-            if arena_id := state["active_encounter"].get("arena"):
+            if arena_id := board.arena_id_of(state):
                 a = arena.load(campaign_dir, arena_id)
                 if board.sync_units(campaign_dir, state, a):
                     arena.save(campaign_dir, arena_id, a)
@@ -69,7 +69,7 @@ def execute_encounter(campaign, action: str, args) -> int:
             combat.spend_turn(state, args.target, args.kind, not args.free)
             return [f"{args.target}: {args.kind} {'free' if args.free else 'used'}."]
         if action == "end":
-            on_board = (state.get("active_encounter") or {}).get("arena")
+            on_board = board.arena_id_of(state)
             lines = combat.end(campaign_dir, state, award_xp=not args.no_xp)
             if on_board:
                 notify_stage(campaign_dir, {"type": "arena_end"})
@@ -120,14 +120,15 @@ def _amount(text: str, label: str) -> tuple[int, str]:
 def execute_attack(campaign, args) -> int:
     def fn(campaign_dir, state):
         cost = None if args.cost == "free" else args.cost
-        if (state.get("active_encounter") or {}).get("arena") and not args.damage:
+        if board.arena_id_of(state) and not args.damage:
             # On a board, reach, sight and cover decide (an improvised attack with --damage is the DM's own ruling).
             _, a = board.running(campaign_dir, state)
             return board.attack(campaign_dir, state, a, args.attacker, args.weapon, args.target, cost=cost,
-                                adv=args.adv, dis=args.dis, bonus=args.bonus, secret=args.secret)
+                                adv=args.adv, dis=args.dis, bonus=args.bonus, secret=args.secret, catch_up=args.cost != "reaction")
         return combat.attack(
             campaign_dir, state, args.attacker, args.weapon, args.target, adv=args.adv, dis=args.dis,
-            damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret, cost=cost)
+            damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret, cost=cost,
+            catch_up=args.cost != "reaction")
     return _with_state(campaign, fn)
 
 

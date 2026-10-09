@@ -10,7 +10,6 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import shutil
 import sys
 
 REPO = Path(__file__).resolve().parents[1]
@@ -18,7 +17,7 @@ sys.path.insert(0, str(REPO))
 
 from dnd_cli import combat  # noqa: E402
 from stage import arena, board, crawl, scenes, state as stage_state  # noqa: E402
-from tests.test_rules import GOBLIN  # noqa: E402
+from tests.test_rules import GOBLIN, campaign, fight  # noqa: E402
 
 PASS = FAIL = 0
 BOARD_PROPS = ["barrel", "barrel_pile", "bush", "chair", "chests", "column_broken", "dresser", "hearth", "mushroom",
@@ -162,26 +161,21 @@ def test_source_and_files() -> None:
         check("a bad id loads nothing", arena.load(campaign, "../x") is None and arena.load(campaign, "nope") is None)
 
 
-def fight(tmp: Path) -> tuple[Path, dict]:
-    """A running combat on a copy of the example campaign: the party, two goblins and a named bugbear."""
-    c = tmp / "camp"
-    shutil.copytree(REPO / "tests" / "fixtures" / "example-campaign", c, ignore=shutil.ignore_patterns("stage", ".cache"))
-    state = combat.load_state(c)
-    enc = state["active_encounter"] = {"type": "combat", "round": 1, "participants": [], "initiative_order": [], "current_turn": None,
-                                       "conditions": {}, "monsters": {}}
-    for i, cid in enumerate(["aragorn", "legolas", "goblin#1", "goblin#2", "boss"]):
-        if cid != "aragorn" and cid != "legolas":
-            enc["monsters"][cid] = combat.monster_record(GOBLIN, cid)
-        enc["participants"].append(cid)
-        enc["initiative_order"].append({"name": cid, "initiative": 20 - i, "bonus": 0})
-    enc["current_turn"] = "aragorn"
+def fight_with_boss(tmp: Path) -> tuple[Path, dict]:
+    """The fixture fight of test_rules (the party, two goblins), plus a creature the DM named: `boss`."""
+    c = campaign(tmp)
+    state = fight(c)
+    enc = state["active_encounter"]
+    enc["monsters"]["boss"] = combat.monster_record(GOBLIN, "boss")
+    enc["participants"].append("boss")
+    enc["initiative_order"].append({"name": "boss", "initiative": 16, "bonus": 0})
     return c, state
 
 
 def test_start() -> None:
     print("arena: encounter start --arena")
     with tempfile.TemporaryDirectory() as tmp:
-        c, state = fight(Path(tmp))
+        c, state = fight_with_boss(Path(tmp))
         lines = board.start(c, state, ["layout=chokepoint", "size=small", "light=dark", "seed=5", "feature=cover@foes"], {})
         enc = state["active_encounter"]
         a = arena.load(c, enc["arena"])
@@ -197,7 +191,7 @@ def test_start() -> None:
               board.controlled_by({"id": "goblin#2", "index": "goblin"}) == "engine" and board.controlled_by({"id": "boss", "index": "bugbear"}) == "dm"
               and board.controlled_by({"id": "cassara", "index": "cassara", "kind": "npc"}) == "dm")
     with tempfile.TemporaryDirectory() as tmp:
-        c, state = fight(Path(tmp))
+        c, state = fight_with_boss(Path(tmp))
         check("a bad token is refused and nothing is written",
               raises(lambda: board.start(c, state, ["layout=maze"], {})) and "arena" not in state["active_encounter"]
               and not arena.arenas_dir(c).exists())

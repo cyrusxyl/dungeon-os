@@ -149,6 +149,10 @@ uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=me
 - `leaves by the entrance`: show where they go next with `@scene`.
 - `[map] The party travels ...`: run the journey (roll for encounters on the way), then show the arrival with the `@scene` it names.
 
+## Fights on a board
+
+A fight with `--arena` (see the `combat` skill) replaces the scene or the site on the stage with a board until `encounter end`. The players walk and attack on it, and the stage plays the creatures. You are called only for the creatures you play, and at the end. Keep narrating with beats as usual; do not describe the layout or give movement choices. `@scene` or `@explore` after the fight shows the story again.
+
 ## Rules
 
 1. **Each reply is a beat.** Follow the Narration Budget in AGENTS.md: at most 3 sentences of narration, at most 2 sentences per NPC line, then a prompt to the player.

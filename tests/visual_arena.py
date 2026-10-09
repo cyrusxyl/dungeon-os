@@ -101,6 +101,26 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     check("the answer closes the question", arena.load(c, arena_id)["pending"] is None and "opportunity attack" not in await page.eval("document.body.innerText"))
 
 
+async def foe_turns(page: Page, c: Path, arena_id: str) -> None:
+    before = {u: board.pos(arena.load(c, arena_id), u) for u in ("goblin#1", "goblin#2")}
+    await page.click("End turn")
+    await asyncio.sleep(1)
+    await page.click("End turn")
+    await asyncio.sleep(1)
+    check("End turn passes the turn to the next character, then to the creatures",
+          combat.load_state(c)["active_encounter"]["current_turn"] in ("goblin#1", "goblin#2", "aragorn"))
+    for _ in range(40):
+        enc = combat.load_state(c)["active_encounter"]
+        if enc["current_turn"] == "aragorn" and enc["round"] == 2:
+            break
+        await asyncio.sleep(0.5)
+    await page.shot("arena-foes-played")
+    now = {u: board.pos(arena.load(c, arena_id), u) for u in ("goblin#1", "goblin#2")}
+    check("the stage played the goblins: at least one walked", now != before, f"{before} -> {now}")
+    check("the stage stopped at the next player character, in round 2", enc["current_turn"] == "aragorn" and enc["round"] == 2)
+    check("the feed shows what the goblins did", len(await page.eval("[...document.querySelectorAll('[aria-label=\"What just happened\"] li')].map(l => l.innerText)")) >= 1)
+
+
 def main() -> int:
     if not shutil.which("google-chrome"):
         print("skipped: Google Chrome is not installed")
@@ -146,6 +166,7 @@ def main() -> int:
                 await asyncio.sleep(1.2)
                 os.environ["DUNGEON_STAGE_LOG"] = str(beat.log_path(c))
                 await board_checks(page, c, arena_id)
+                await foe_turns(page, c, arena_id)
         asyncio.run(run())
     finally:
         chrome.terminate()

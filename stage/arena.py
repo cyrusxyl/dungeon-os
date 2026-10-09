@@ -1,9 +1,9 @@
-"""The tile grid that the crawl and the combat board share: lines, sight and walking distance.
+"""The tile grid that the crawl and the combat board share, and the arena a fight is played in.
 
-A grid is a list of rows of one-character tiles. This module does not know what a tile means:
-each caller passes the tiles that block sight or that can be walked on. `crawl.py` walks 4
-directions over its own tiles. The combat board (below, added later) walks 8 directions over its
-own tiles. See combat-board.md.
+A grid is a list of rows of one-character tiles. The shared helpers (lines, sight, walking distance,
+tile atlas) do not know what a tile means: each caller passes the tiles that block sight or that can be
+walked on. `crawl.py` walks 4 directions over its own tiles. The arena (below) walks 8 directions over
+its own tiles, and `stage/board.py` runs the rules on it. See combat-board.md.
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ WALL, FLOOR, DOOR, HAZARD = "#", ".", "d", "~"
 STAND = {FLOOR, DOOR}  # tiles a unit can stand on; a prop on one may still block it
 COVER_BONUS = {"none": 0, "half": 2, "three-quarters": 5}
 DEFAULT_BOARD = {"blocks_move": True, "blocks_sight": False, "cover": "none", "hp": None, "tags": []}
-ZONE_ROW = {"back": "top", "mid": "middle", "front": "bottom"}
+ZONE_ROWS = ("back", "mid", "front")
 MAX_TRIES = 60
 
 
@@ -223,6 +223,7 @@ def arena_data() -> dict:
     return json.loads(ARENA_DATA_PATH.read_text())
 
 
+@cache
 def board_of(kind: str) -> dict:
     """What a prop does on the board: from its `board` entry in scenery.json, else the default (blocks movement, no cover)."""
     from stage import scenes
@@ -406,6 +407,7 @@ def generate(spec: dict, source: dict, n_party: int = 2, n_foes: int = 3) -> dic
     spec.setdefault("seed", random.randrange(1, 10**6))
     w, h = SIZES[spec["size"]]
     cx, my = w // 2, h // 2
+    anchor = {"party": 3, "center": cx, "foes": w - 4}  # the column a feature's `where` means
     decor = arena_data()["decor"][source["decor"]]
     prop_catalog = scenes.catalog()["props"]
     for attempt in range(MAX_TRIES):
@@ -419,7 +421,7 @@ def generate(spec: dict, source: dict, n_party: int = 2, n_foes: int = 3) -> dic
         taken: set[tuple[int, int]] = set()
 
         def free(x, y):
-            return 1 <= x <= w - 2 and 1 <= y <= h - 2 and 3 <= x <= w - 4 and grid[y][x] == FLOOR and (x, y) not in taken
+            return 1 <= y <= h - 2 and 3 <= x <= w - 4 and grid[y][x] == FLOOR and (x, y) not in taken
 
         def put(kind, x, y):
             if free(x, y):
@@ -455,7 +457,7 @@ def generate(spec: dict, source: dict, n_party: int = 2, n_foes: int = 3) -> dic
             put(rng.choice(decor["small"]), rng.randint(3, w - 4), rng.randint(1, h - 2))
         for name, slot in source.get("props", []):
             entry = prop_catalog.get(name) or {}
-            if entry.get("on") == "wall" or entry.get("flat") or "_" not in slot or slot.split("_")[0] not in ZONE_ROW:
+            if entry.get("on") == "wall" or entry.get("flat") or "_" not in slot or slot.split("_")[0] not in ZONE_ROWS:
                 continue
             row, col = slot.split("_", 1)
             y = {"back": 2, "mid": my, "front": h - 3}[row]
@@ -465,12 +467,12 @@ def generate(spec: dict, source: dict, n_party: int = 2, n_foes: int = 3) -> dic
                     put(name, x + dx, y)
                     break
         for thing, where in features:
-            ax = {"party": 3, "center": cx, "foes": w - 4}[where]
+            ax = anchor[where]
             kind = rng.choice(decor["cover"]) if thing == "cover" else decor["pillar"] if thing == "pillar" else "barrel" if thing == "barrels" else thing
             for x, y in nearest(ax, my + rng.randint(-1, 1), 2 if thing == "barrels" else 1):
                 put(kind, x, y)
         for _kind, where in hazards:
-            ax = {"party": 3, "center": cx, "foes": w - 4}[where]
+            ax = anchor[where]
             for x, y in nearest(ax, my + rng.randint(-1, 1), 4):
                 grid[y][x] = HAZARD
         items = []
@@ -502,7 +504,7 @@ def generate(spec: dict, source: dict, n_party: int = 2, n_foes: int = 3) -> dic
         if not all(p in dist for p in party + foes) or len(dist) < 0.9 * len(free_tiles):
             continue
         a.update(
-            spec={**spec, "features": spec["features"], "source": source["kind"], "source_id": source["id"], "decor": source["decor"]},
+            spec={**spec, "source": source["kind"], "source_id": source["id"], "decor": source["decor"]},
             look=source["look"], starts={"party": [list(p) for p in party], "foes": [list(p) for p in foes]},
             units={}, seen=["0" * w for _ in range(h)])
         return a
@@ -536,13 +538,9 @@ def new_id(campaign_dir: Path) -> str:
 # -- the preview ---------------------------------------------------------------
 
 
+@lru_cache(maxsize=64)
 def prop_png(kind: str) -> bytes:
     """A prop as one picture for the board: the scene sprite, scaled down so it does not cover its neighbors."""
-    return _prop_png(kind)
-
-
-@lru_cache(maxsize=64)
-def _prop_png(kind: str) -> bytes:
     from stage import scenes
 
     img = scenes.prop_image(kind).convert("RGBA")

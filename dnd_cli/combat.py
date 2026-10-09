@@ -673,7 +673,7 @@ def _find_attack(rec: dict, name: str) -> dict:
 
 def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: str, adv: bool = False,
            dis: bool = False, damage_expr: str | None = None, damage_type: str = "", bonus: int = 0,
-           secret: bool = False, rng=None, skip=(), cost: str | None = "action") -> list[str]:
+           secret: bool = False, rng=None, skip=(), cost: str | None = "action", catch_up: bool = True) -> list[str]:
     """One attack roll against AC; on a hit, roll and apply the damage. Crits double the dice.
 
     The attack uses the attacker's `cost` (action, bonus or reaction; None for a free attack). A multiattack
@@ -691,8 +691,8 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     parts = [[damage_expr, damage_type]] if damage_expr else act["damage"]
     if not parts:
         raise RulesError(f"{act['name']} has no damage on record; give it with --damage 1d10 --type fire.")
-    # A reaction happens on someone else's turn: the tracker must not move to the attacker.
-    turn_lines = [] if cost == "reaction" else _catch_up(campaign_dir, state, attacker)
+    # `catch_up` False: a reaction happens on someone else's turn, so the tracker must not move to the attacker.
+    turn_lines = _catch_up(campaign_dir, state, attacker) if catch_up else []
     if cost:
         spend_turn(state, attacker, cost, quiet=True)
     if has_condition(state, target, "dodging"):

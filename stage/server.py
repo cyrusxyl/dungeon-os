@@ -58,6 +58,8 @@ from stage.assets import AssetError
 from stage.files import read_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
 
+RULES_LOCK = threading.Lock()  # the rules code writes state.json and the arena file: one writer at a time in this process
+
 STAGE_DIR = Path(__file__).resolve().parent
 WEB_DIST = STAGE_DIR / "web" / "dist"
 HOOK_SCRIPT = STAGE_DIR / "hook.py"
@@ -134,6 +136,8 @@ class Stage:
         self.holdings: dict[str, dict[str, int]] = {}  # character id -> item -> quantity, to tell the owner what changed
         self.sheet_mtimes: dict[Path, int] = {}
         self.pending: list[str] = []  # prompts for the DM, sent one at a time when it is idle
+        self.pumping = False  # a pump of the creatures on a board is running (see pump_board)
+        self.pump_due = False  # something changed that a pump may act on
         self.seen_ids = character_ids(campaign_dir)  # sheets that existed when the creator opened
         # Open from the start for a new party; it stays open until the player is done (not when the first sheet lands).
         self.opened = not self.seen_ids and self.party_mode() != "premade"
@@ -145,6 +149,49 @@ class Stage:
             "DUNGEON_STAGE_HOOK": str(HOOK_SCRIPT),
         }
         self.dm = DMSession(dm_command, env, self._pty_output, self._dm_exited)
+
+    # -- the creatures on a board ----------------------------------------
+
+    def board_step(self) -> dict | None:
+        """One engine step of the fight on the board, under the rules lock (the DM's commands write the same files)."""
+        def step(state, a):
+            if (p := a.get("pending")) and (p["who"] not in self.seats.owners or p["who"] in self.seats.away):
+                # Nobody is there to answer: no reaction attack.
+                out = board.answer(self.campaign_dir, state, a, False)
+                return {"kind": "turn", "who": p["against"], "lines": out["lines"], "pending": bool(out["pending"])}
+            return board.pump_step(self.campaign_dir, state, a)
+        try:
+            arena_id, done = with_board(self, step, keep=lambda out: out is not None)
+        except board.BoardError:
+            return None  # no fight on a board
+        return done and {**done, "arena": arena_id}
+
+    async def pump_board(self) -> None:
+        """Play the creatures of a fight on a board until a player character or the DM is up. One pump at a time.
+
+        It runs only when something changed (`pump_due`): an event of the log, an answer, a move, the DM going idle.
+        """
+        if self.pumping or not self.pump_due or not self.state.get("arena") or not self.dm_ready():
+            return
+        self.pumping = True
+        self.pump_due = False
+        try:
+            while self.dm_ready():
+                step = await asyncio.to_thread(self.board_step)
+                if step is None:
+                    break
+                await self._local_event({"type": "arena_updated", "arena": step["arena"]})
+                if step["kind"] == "dm":
+                    await self.submit(step["prompt"])
+                    break
+                if step["kind"] == "over":
+                    await self.submit(BOARD_OVER[step["won"]])
+                    break
+                if step["pending"]:
+                    break
+                await asyncio.sleep(BOARD_PACE)  # the players see each creature's turn before the next
+        finally:
+            self.pumping = False
 
     # -- event log -------------------------------------------------------
 
@@ -311,6 +358,7 @@ class Stage:
             was_busy = self.state["dm"].get("status") != "idle"
             events += self.inventory_notices()  # a notice is for the owner's snapshot only (see `snapshot`); it is not in the log
             if self.fold(events):
+                self.pump_due = True
                 await self.broadcast()
             session = next((e["session"] for e in reversed(events) if e.get("session")), None)
             if session:
@@ -319,6 +367,7 @@ class Stage:
                 await asyncio.to_thread(self.autosave)
             if self.pending and self.dm_ready():
                 await self.submit(self.pending.pop(0))  # busy at once: the next loop waits
+            await self.pump_board()
             await asyncio.sleep(0.15)
 
     async def broadcast(self) -> None:
@@ -353,6 +402,7 @@ class Stage:
         # Server-side status, not written to the log: a restart must not
         # replay "exited".
         self.fold([event])
+        self.pump_due = self.pump_due or event["type"] == "arena_updated"
         await self.broadcast()
 
     def away_note(self) -> str:
@@ -397,7 +447,42 @@ class Stage:
         return self.state["dm"].get("status") == "idle"
 
 
+def with_rules(stage: Stage, fn, keep=None):
+    """Run fn(state) on the campaign's state under the rules lock, with the stage log set (so rolls show), and save the state.
+
+    `keep(out)` false: fn changed nothing worth writing; skip the save.
+    """
+    with RULES_LOCK:
+        os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
+        try:
+            state = combat.load_state(stage.campaign_dir)
+            out = fn(state)
+            if keep is None or keep(out):
+                combat.save_state(stage.campaign_dir, state)
+            return out
+        finally:
+            del os.environ["DUNGEON_STAGE_LOG"]
+
+
+def with_board(stage: Stage, fn, keep=None):
+    """Run fn(state, arena) on the running fight like `with_rules`, and save the arena too: (arena id, fn's result)."""
+    def go(state):
+        arena_id, a = board.running(stage.campaign_dir, state)
+        out = fn(state, a)
+        if keep is None or keep(out):
+            arena.save(stage.campaign_dir, arena_id, a)
+        return arena_id, out
+    return with_rules(stage, go, keep=keep and (lambda result: keep(result[1])))
+
+
 LOCAL_HOSTS = {"127.0.0.1", "localhost"}
+BOARD_PACE = 1.0  # seconds between two creature turns on a board
+BOARD_OVER = {
+    True: "[combat] Every creature is down. Narrate the end of the fight in one beat, then run `uv run dnd-cli encounter end` "
+          "(it splits the XP). Then offer a search, loot or a rest.",
+    False: "[combat] The whole party is down. Narrate what happens in one beat, then decide what the story does next "
+           "(`uv run dnd-cli encounter end --no-xp` ends the fight).",
+}
 
 
 def request_allowed(scope_type: str, method: str, headers: dict[str, str], hosts: frozenset[str] = frozenset(LOCAL_HOSTS)) -> bool:
@@ -1141,34 +1226,6 @@ def create_app(
             raise HTTPException(404, "No such character.")
         return who
 
-    rolling = threading.Lock()
-
-    def with_rules(stage: Stage, fn):
-        """Run rules code on the campaign's state with the stage log set (so rolls show), and save the state."""
-        with rolling:
-            os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
-            try:
-                state = combat.load_state(stage.campaign_dir)
-                out = fn(state)
-                combat.save_state(stage.campaign_dir, state)
-                return out
-            finally:
-                del os.environ["DUNGEON_STAGE_LOG"]
-
-    def with_board(stage: Stage, fn):
-        """Run fn(state, arena) on the running fight under the rules lock, and save both: (arena id, fn's result)."""
-        with rolling:
-            os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
-            try:
-                state = combat.load_state(stage.campaign_dir)
-                arena_id, a = board.running(stage.campaign_dir, state)
-                out = fn(state, a)
-                combat.save_state(stage.campaign_dir, state)
-                arena.save(stage.campaign_dir, arena_id, a)
-                return arena_id, out
-            finally:
-                del os.environ["DUNGEON_STAGE_LOG"]
-
     async def api_effects(request: Request):
         """A party member gives a bonus (a spell they know, Bardic Inspiration). The cost is spent; nothing else is on offer."""
         stage = idle_stage()
@@ -1190,6 +1247,8 @@ def create_app(
         own(request, stage, who)
         target = body.get("target")
         weapon = body.get("weapon")
+        if board.arena_id_of(combat.load_state(stage.campaign_dir)):
+            return await board_action(stage, who, body)
         try:
             done = await run_in_threadpool(with_rules, stage, lambda st: actions.perform(
                 stage.campaign_dir, st, who, str(body.get("action")), str(target) if target else None,
@@ -1215,6 +1274,31 @@ def create_app(
                            + " Narrate it. It is still their turn: wait for what they do next.")
         return JSONResponse({"lines": done["lines"]})
 
+    async def board_run(stage: Stage, fn) -> JSONResponse:
+        """Run fn(state, arena) on the running fight. A refusal of the rules comes back as words; browsers fetch the board again."""
+        try:
+            arena_id, out = await run_in_threadpool(with_board, stage, fn)
+        except (combat.RulesError, character.CharacterError) as e:
+            return error(str(e), 400)
+        await stage._local_event({"type": "arena_updated", "arena": arena_id})
+        return JSONResponse(out)
+
+    async def board_action(stage: Stage, who: str, body: dict) -> JSONResponse:
+        """An action from the character card in a fight on a board: the board's rules decide, and the DM is not called."""
+        action = str(body.get("action"))
+
+        def go(st, a):
+            board.require_turn(st, who)
+            if action == "attack":
+                return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"))}
+            done = actions.perform(stage.campaign_dir, st, who, action, body.get("target"), body.get("weapon"))
+            if done.get("roll"):
+                raise board.BoardError(f"{action} is not on the board yet.")
+            for line in done["lines"]:
+                combat.stage_feed(line)
+            return {"lines": done["lines"]}
+        return await board_run(stage, go)
+
     async def api_end_turn(request: Request):
         """The player ends their turn: the tracker moves on, and the DM runs the creatures until a player character is up."""
         stage = idle_stage()
@@ -1237,6 +1321,10 @@ def create_app(
         state = combat.load_state(stage.campaign_dir)
         now = state["active_encounter"]["current_turn"]
         name = stage.char_name(who)
+        if arena_id := board.arena_id_of(state):
+            # On a board the stage plays the creatures (pump_board); the DM is called only for the creatures it plays.
+            await stage._local_event({"type": "arena_updated", "arena": arena_id})
+            return JSONResponse({"lines": lines})
         if character.character_path(stage.campaign_dir, now).exists():
             todo = "It is a player character's turn now: narrate the change in one beat, then wait for the player."
         else:
@@ -1400,28 +1488,23 @@ def create_app(
         def build():
             state = combat.load_state(stage.campaign_dir)
             a = arena.load(stage.campaign_dir, arena_id)
-            if a is None or (state.get("active_encounter") or {}).get("arena") != arena_id:
+            if a is None or board.arena_id_of(state) != arena_id:
                 return None
             return board.view(stage.campaign_dir, state, arena_id, a)
         view = await run_in_threadpool(build)
         return JSONResponse(view) if view else error("No such fight.", 404)
 
-    async def board_call(request: Request, fn, who_key: str = "who"):
-        """A player's action on the board: the character is theirs, it is its turn, the DM is idle. Returns fn's result as JSON."""
+    async def board_call(request: Request, fn):
+        """A player's action on the board: the character is theirs, it is its turn, the DM is idle."""
         stage = idle_stage()
         body = await request.json()
-        who = pc_or_404(stage, body.get(who_key))
+        who = pc_or_404(stage, body.get("who"))
         own(request, stage, who)
 
         def go(st, a):
             board.require_turn(st, who)
             return fn(stage, st, a, who, body)
-        try:
-            arena_id, out = await run_in_threadpool(with_board, stage, go)
-        except (combat.RulesError, character.CharacterError) as e:
-            return error(str(e), 400)
-        await stage._local_event({"type": "arena_updated", "arena": arena_id})
-        return JSONResponse(out)
+        return await board_run(stage, go)
 
     async def api_arena_move(request: Request):
         def go(stage, st, a, who, body):
@@ -1434,28 +1517,19 @@ def create_app(
 
     async def api_arena_attack(request: Request):
         def go(stage, st, a, who, body):
-            target = str(body.get("target"))
-            if target not in a["units"]:
-                raise board.BoardError("no such target on the board.")
-            weapon = str(body.get("weapon") or board.default_weapon(stage.campaign_dir, st, a, who, target))
-            return {"lines": board.attack(stage.campaign_dir, st, a, who, weapon, target, own_turn_only=True)}
+            return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"))}
         return await board_call(request, go)
 
     async def api_arena_react(request: Request):
         stage = idle_stage()
         body = await request.json()
-        state = combat.load_state(stage.campaign_dir)
-        arena_id = (state.get("active_encounter") or {}).get("arena")
-        pending = ((arena.load(stage.campaign_dir, arena_id) if arena_id else None) or {}).get("pending")
-        if not pending:
-            return error("No reaction question is waiting.")
-        own(request, stage, pending["who"])  # only the player asked may answer
-        try:
-            arena_id, out = await run_in_threadpool(with_board, stage, lambda st, a: board.answer(stage.campaign_dir, st, a, bool(body.get("take"))))
-        except (combat.RulesError, character.CharacterError) as e:
-            return error(str(e), 400)
-        await stage._local_event({"type": "arena_updated", "arena": arena_id})
-        return JSONResponse(out)
+
+        def go(st, a):
+            if not a.get("pending"):
+                raise board.BoardError("no reaction question is waiting.")
+            own(request, stage, a["pending"]["who"])  # only the player asked may answer
+            return board.answer(stage.campaign_dir, st, a, bool(body.get("take")))
+        return await board_run(stage, go)
 
     async def asset_arena(request: Request):
         a = arena.load(need().campaign_dir, request.path_params["arena_id"])
