@@ -53,7 +53,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli.sheet import GOLD
-from stage import actors, arena, beat, board, crawl, lpc, maps, party, scenes, state as stage_state
+from stage import actors, arena, beat, board, crawl, hand, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
@@ -1573,6 +1573,45 @@ def create_app(
             return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"))}
         return await board_call(request, go)
 
+    async def api_arena_act(request: Request):
+        def go(stage, st, a, who, body):
+            return {"lines": hand.act(stage.campaign_dir, st, a, who, str(body.get("ability")), body.get("target"), body.get("aim"))}
+        return await board_call(request, go)
+
+    async def hand_read(request: Request, build):
+        """Read-only views of the hand of a character the device plays: build(state, arena, who)."""
+        stage = need()
+        who = pc_or_404(stage, request.query_params.get("who") if request.method == "GET" else (await request.json()).get("who"))
+        own(request, stage, who)
+
+        def go():
+            state = combat.load_state(stage.campaign_dir)
+            _, a = board.running(stage.campaign_dir, state)
+            return build(state, a, who)
+        try:
+            return JSONResponse(await run_in_threadpool(go))
+        except combat.RulesError as e:
+            return error(str(e), 404 if "no fight" in str(e) else 400)
+
+    async def api_arena_hand(request: Request):
+        stage = need()
+
+        def build(state, a, who):
+            rec = combat.combatant(stage.campaign_dir, state, who)
+            return {"who": who, "abilities": hand.listing(stage.campaign_dir, state, a, who), "turn": combat.turn_used(state, who),
+                    "feet_left": board.tiles_left(state, rec) * board.TILE_FT, "current": state["active_encounter"].get("current_turn")}
+        return await hand_read(request, build)
+
+    async def api_arena_preview(request: Request):
+        body = await request.json()  # cached by Starlette: hand_read reads it again
+
+        def build(state, a, who):
+            aim = body.get("aim")
+            if not (isinstance(aim, list) and len(aim) == 2):
+                raise board.BoardError("give aim as [x, y].")
+            return hand.preview(need().campaign_dir, state, a, who, str(body.get("ability")), (int(aim[0]), int(aim[1])))
+        return await hand_read(request, build)
+
     async def api_arena_react(request: Request):
         stage = idle_stage()
         body = await request.json()
@@ -1700,6 +1739,9 @@ def create_app(
         Route("/api/arena/move", api_arena_move, methods=["POST"]),
         Route("/api/arena/attack", api_arena_attack, methods=["POST"]),
         Route("/api/arena/react", api_arena_react, methods=["POST"]),
+        Route("/api/arena/act", api_arena_act, methods=["POST"]),
+        Route("/api/arena/preview", api_arena_preview, methods=["POST"]),
+        Route("/api/arena/hand", api_arena_hand),
         Route("/api/combat/settings", api_combat_settings, methods=["POST"]),
         Route("/api/arena/{arena_id}", api_arena),
         Route("/asset/arena/{arena_id}.png", asset_arena),

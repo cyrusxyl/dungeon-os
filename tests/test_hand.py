@@ -1,0 +1,160 @@
+"""Checks for the hand of a player character on the board: abilities with reasons, odds in words, spells, shove and hide.
+
+Run from the repo root:  .venv/bin/python tests/test_hand.py
+
+Plain asserts so no test runner is needed. It reads the cached 5e API data under .cache.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+
+from dnd_cli import character, combat  # noqa: E402
+from stage import board, hand  # noqa: E402
+from tests.test_board import dark, setup  # noqa: E402
+from tests.test_rules import Fixed  # noqa: E402
+
+PASS = FAIL = 0
+
+
+def check(label: str, cond: bool, detail: str = "") -> None:
+    global PASS, FAIL
+    PASS, FAIL = PASS + bool(cond), FAIL + (not cond)
+    print(f"  {'ok  ' if cond else 'FAIL'} {label}{'' if cond or not detail else f'  ({detail})'}")
+
+
+def raises(fn) -> str | None:
+    try:
+        fn()
+    except board.BoardError as e:
+        return str(e)
+    return None
+
+
+def by_id(items: list[dict]) -> dict:
+    return {x["id"]: x for x in items}
+
+
+def give_spells(c: Path, who: str, spells: list[str], slots: dict) -> None:
+    sheet = character.load(c, who)
+    sheet["spellcasting"] = {"ability": "intelligence", "spell_save_dc": 13, "spell_attack_bonus": 5, "spells_known": spells,
+                             "spell_slots": {k: {"max": v, "remaining": v} for k, v in slots.items()}}
+    sheet["level"] = 5
+    character.save(c, who, sheet)
+
+
+def test_listing() -> None:
+    print("hand: the abilities of a character")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
+        hand_ = by_id(hand.listing(c, state, a, "aragorn"))
+        check("weapons, unarmed strike, the common actions and class features are all there",
+              {"attack:Longsword", "attack:Longbow", "attack:Unarmed Strike", "dash", "disengage", "dodge", "help", "hide", "shove", "feature:Second Wind"} <= set(hand_))
+        sword = hand_["attack:Longsword"]
+        check("a weapon says its reach and its numbers, and needs a target", sword["needs"] == "target" and sword["text"] == "Reach 5 ft" and sword["stat"] == "+5 · 1d8+3")
+        near, far = by_id(sword["targets"])["goblin#1"], by_id(sword["targets"])["goblin#2"]
+        check("a creature in reach is a valid target, with odds in words and no AC", near["ok"] and near["odds"] in ("good odds", "even odds", "poor odds")
+              and '"ac"' not in json.dumps(hand_).lower())
+        check("a creature out of reach says how far", not far["ok"] and "ft away" in far["why"] and far["dist_ft"] == 35)
+        check("a bow reaches it", by_id(hand_["attack:Longbow"]["targets"])["goblin#2"]["ok"])
+        check("a character that is not on turn has every ability off", all(hand.listing(c, state, a, "legolas")[i]["why"] for i in range(3)))
+        check("on turn, nothing is off at the start but shove needs a creature next to it", sword["why"] is None and hand_["dash"]["why"] is None)
+        combat.spend_turn(state, "aragorn", "action")
+        spent = by_id(hand.listing(c, state, a, "aragorn"))
+        check("a spent action turns off attacks and Dash, not a bonus action", spent["attack:Longsword"]["why"] == "The action is used." and spent["dash"]["why"]
+              and spent["feature:Second Wind"]["why"] is None)
+
+
+def test_spells() -> None:
+    print("hand: spells")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (5, 3), "goblin#2": (6, 3), "boss": (10, 6)})
+        give_spells(c, "aragorn", ["burning-hands", "fire-bolt", "fireball", "cure-wounds"], {"1": 2, "3": 1})
+        h = by_id(hand.listing(c, state, a, "aragorn"))
+        check("damage spells are in the hand, a healing spell is not", {"spell:burning-hands", "spell:fire-bolt", "spell:fireball"} <= set(h) and "spell:cure-wounds" not in h)
+        check("a cantrip is at will, with its range and the dice of the caster's level", h["spell:fire-bolt"]["text"] == "Cantrip · 120 ft" and h["spell:fire-bolt"]["damage"] == [["2d10", "fire"]]
+              and h["spell:fire-bolt"]["needs"] == "target")
+        check("an area spell is aimed at a cell", h["spell:fireball"]["needs"] == "aim" and h["spell:fireball"]["stat"] == "DC 13 · 8d6")
+        check("burning hands takes the level 1 slot", h["spell:burning-hands"]["slot"] == 1 and h["spell:burning-hands"]["damage"] == [["3d6", "fire"]])
+        check("a spell with no slot is off, and says so", by_id(hand.listing(c, state, a, "aragorn"))["spell:fireball"]["why"] is None)
+        pv = hand.preview(c, state, a, "aragorn", "spell:fireball", (6, 3))
+        check("the preview shows the cells and the creatures in a fireball", pv["ok"] and (6, 3) in {tuple(x) for x in pv["cells"]} and set(pv["units"]) >= {"goblin#1", "goblin#2"})
+        check("a cone has no range: any other cell is a direction", hand.preview(c, state, a, "aragorn", "spell:burning-hands", (6, 3))["ok"]
+              and not hand.preview(c, state, a, "aragorn", "spell:burning-hands", (2, 3))["ok"])
+        lines = hand.act(c, state, a, "aragorn", "spell:fireball", aim=(6, 3), rng=Fixed(10, 3, 3, 3, 3, 3, 3, 3, 3, 12, 12))
+        check("a fireball is cast: it uses the action and a level 3 slot, and the creatures save", combat.turn_used(state, "aragorn")["action"]
+              and character.load(c, "aragorn")["spellcasting"]["spell_slots"]["3"]["remaining"] == 0 and sum("save" in ln for ln in lines) >= 2)
+        check("with the action used it is off", by_id(hand.listing(c, state, a, "aragorn"))["spell:fireball"]["why"] == "The action is used.")
+        state["active_encounter"]["resources"]["aragorn"] = {}
+        msg = raises(lambda: hand.act(c, state, a, "aragorn", "spell:fireball", aim=(6, 3)))
+        check("a spell with no slot is refused, and costs nothing", msg == "No spell slot left." and not combat.turn_used(state, "aragorn")["action"])
+        msg = raises(lambda: hand.act(c, state, a, "aragorn", "spell:fire-bolt", target="boss", rng=Fixed(15, 6)))
+        check("a cantrip attack on a creature in sight works and spends the action", msg is None and combat.turn_used(state, "aragorn")["action"])
+        state["active_encounter"]["resources"]["aragorn"] = {}
+        check("a spell attack needs a target, an area needs an aim", "target" in (raises(lambda: hand.act(c, state, a, "aragorn", "spell:fire-bolt")) or "")
+              and "aim" in (raises(lambda: hand.act(c, state, a, "aragorn", "spell:burning-hands")) or ""))
+        state["active_encounter"]["resources"]["aragorn"] = {}
+        a["units"]["boss"] = {"x": 3, "y": 3}
+        state["active_encounter"]["monsters"]["boss"]["hp"]["current"] = 7  # it survived or fell above: stand it up
+        lines = hand.act(c, state, a, "aragorn", "spell:burning-hands", aim=(5, 3), rng=Fixed(10, 3, 3, 3, 12, 12))
+        check("a cone starts next to the caster and never covers him", any(ln.startswith("boss DEX") for ln in lines) and not any(ln.startswith("aragorn DEX") for ln in lines), str(lines))
+        dark(a)
+        a["units"]["goblin#1"] = {"x": 10, "y": 1}
+        h = by_id(hand.listing(c, state, a, "aragorn"))
+        check("a creature out of sight is not a target in the dark", "goblin#1" not in {t["id"] for t in h["spell:fire-bolt"]["targets"]})
+
+
+def test_actions() -> None:
+    print("hand: shove, hide and the stances")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
+        lines = hand.act(c, state, a, "aragorn", "shove", target="goblin#1", rng=Fixed(20, 1))
+        check("a won shove pushes the creature 5 ft away and uses the bonus action", board.pos(a, "goblin#1") == (4, 3) and combat.turn_used(state, "aragorn")["bonus"]
+              and any("pushed 5 ft" in ln for ln in lines))
+        state["active_encounter"]["resources"]["aragorn"] = {}
+        check("a shove at a creature that is not next to you is refused", "ft away" in (raises(lambda: hand.act(c, state, a, "aragorn", "shove", target="goblin#2")) or ""))
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
+        lines = hand.act(c, state, a, "aragorn", "shove", target="goblin#1", rng=Fixed(2, 19))
+        check("a lost shove leaves it where it is", board.pos(a, "goblin#1") == (3, 3) and any("holds its ground" in ln for ln in lines))
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
+        a["grid"][3] = a["grid"][3][:4] + "~" + a["grid"][3][5:]
+        a["spec"]["decor"] = "tavern"
+        lines = hand.act(c, state, a, "aragorn", "shove", target="goblin#1", rng=Fixed(20, 1, 4, 4))
+        check("shoved into lava a creature takes 2d6", board.pos(a, "goblin#1") == (4, 3) and any("goblin#1" in ln and "takes" in ln for ln in lines))
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
+        a["grid"][3] = a["grid"][3][:4] + "#" + a["grid"][3][5:]
+        hand.act(c, state, a, "aragorn", "shove", target="goblin#1", rng=Fixed(20, 1))
+        check("a shove into a wall does not move it", board.pos(a, "goblin#1") == (3, 3))
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (8, 3), "goblin#2": (9, 5)})
+        state["active_encounter"]["current_turn"] = "legolas"
+        lines = hand.act(c, state, a, "legolas", "hide", rng=Fixed(20))
+        check("hide: stealth against the best passive Perception; a success is hidden", combat.has_condition(state, "legolas", "hidden") and combat.turn_used(state, "legolas")["action"], str(lines))
+        check("the DC and the roll stay on the stage: the lines say only what the story needs", lines == ["Legolas slips out of sight."])
+        state["active_encounter"]["resources"]["legolas"] = {}
+        combat.condition(state, "legolas", "remove", "hidden")
+        hand.act(c, state, a, "legolas", "hide", rng=Fixed(1))
+        check("a failed hide leaves the character in the open", not combat.has_condition(state, "legolas", "hidden"))
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (8, 3), "goblin#2": (9, 5)})
+        hand.act(c, state, a, "aragorn", "dodge")
+        check("a stance from the hand is the condition, and spends the action", combat.has_condition(state, "aragorn", "dodging") and combat.turn_used(state, "aragorn")["action"])
+        check("an ability that is off refuses with the reason", raises(lambda: hand.act(c, state, a, "aragorn", "dash")) == "The action is used")
+        check("an unknown ability is refused", "no ability" in (raises(lambda: hand.act(c, state, a, "aragorn", "nope")) or ""))
+        check("out of turn is refused", "turn" in (raises(lambda: hand.act(c, state, a, "legolas", "dash")) or ""))
+
+
+if __name__ == "__main__":
+    for t in (test_listing, test_spells, test_actions):
+        t()
+    print(f"\n{PASS} passed, {FAIL} failed")
+    raise SystemExit(1 if FAIL else 0)

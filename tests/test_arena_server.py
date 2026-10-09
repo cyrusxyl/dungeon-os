@@ -127,6 +127,30 @@ async def routes(c: Path, state: dict) -> None:
     status, r = await api(app, "POST", "/api/arena/react", {"take": True})
     check("an answer with no question is refused", status == 400)
 
+    # the hand: abilities for the character, an action from it, a preview of an area
+    state0 = combat.load_state(c)
+    state0["active_encounter"]["resources"]["aragorn"] = {}
+    state0["active_encounter"].setdefault("conditions", {}).pop("aragorn", None)
+    combat.save_state(c, state0)
+    status, h = await api(app, "GET", "/api/arena/hand?who=aragorn")
+    names = {x["id"] for x in h["abilities"]} if status == 200 else set()
+    check("the hand lists the weapons, the common actions and the features of a character",
+          status == 200 and {"attack:Longsword", "dash", "shove", "feature:Second Wind"} <= names and h["turn"] == {"action": False, "bonus": False, "reaction": False} and h["current"] == "aragorn", str(h)[:200])
+    check("a creature's AC is never in the hand", '"ac"' not in json.dumps(h).lower())
+    status, r = await api(app, "GET", "/api/arena/hand?who=aragorn", device=OTHER)
+    check("only the player of the character gets the hand", status == 403)
+    check("an unknown character has no hand", (await api(app, "GET", "/api/arena/hand?who=nobody"))[0] == 404)
+    status, r = await api(app, "POST", "/api/arena/act", {"who": "aragorn", "ability": "dash"})
+    check("an ability of the hand is done from the stage", status == 200 and combat.has_condition(combat.load_state(c), "aragorn", "dashing") and r["lines"])
+    status, r = await api(app, "POST", "/api/arena/act", {"who": "aragorn", "ability": "dash"})
+    check("an ability that is off says why", status == 400 and "action is used" in r["error"])
+    status, r = await api(app, "POST", "/api/arena/act", {"who": "legolas", "ability": "dash"})
+    check("an ability out of turn is refused", status == 400 and "turn" in r["error"])
+    status, r = await api(app, "POST", "/api/arena/preview", {"who": "aragorn", "ability": "dash", "aim": [3, 3]})
+    check("a preview of an ability with no area is refused", status == 400)
+    status, r = await api(app, "POST", "/api/arena/preview", {"who": "aragorn", "ability": "dash", "aim": "x"})
+    check("a bad aim is refused", status == 400)
+
     # settings: only the host changes them; a fight's own values give way to the host's
     status, r = await api(app, "POST", "/api/combat/settings", {"reaction_seconds": 20}, device=OTHER)
     check("only the host changes the combat settings", status == 403)

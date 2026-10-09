@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from dnd_cli import abilities, character, combat
+from dnd_cli import abilities, character, combat, dice
 from stage import arena
 
 
@@ -605,3 +605,50 @@ def use_multiattack(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict
             lines += attack(campaign_dir, state, a, cid, name, target, rng=rng, cost=ab["cost"] if first else None)
             first = False
     return lines
+
+
+# -- actions that need the board: shove and hide -----------------------------------
+
+
+def shove(campaign_dir: Path, state: dict, a: dict, cid: str, target: str, rng=None) -> list[str]:
+    """Athletics against the target's Athletics or Acrobatics. A win pushes it 5 ft straight away; into a hazard it takes 2d6."""
+    import random
+
+    rng = rng or random
+    here, there = pos(a, cid), pos(a, target)
+    if arena.cheb(here, there) > 1:
+        raise BoardError(f"{target} is {arena.cheb(here, there) * TILE_FT} ft away. Shove needs it next to you.")
+    me, foe = combat.combatant(campaign_dir, state, cid), combat.combatant(campaign_dir, state, target)
+    mine = dice.d20(rng)[0] + combat.skill_bonus(me, "athletics")
+    theirs = dice.d20(rng)[0] + max(combat.skill_bonus(foe, "athletics"), combat.skill_bonus(foe, "acrobatics"))
+    combat.spend_turn(state, cid, "bonus", quiet=True)
+    combat.stage_feed(f"{me['name']} shoves {foe['name']}: {mine} against {theirs}.")
+    lines = [f"{cid} shoves {target}: Athletics {mine} against {theirs}."]
+    if mine < theirs:
+        return lines + [f"{target} holds its ground."]
+    dx, dy = (there[0] > here[0]) - (there[0] < here[0]), (there[1] > here[1]) - (there[1] < here[1])
+    dest = (there[0] + dx, there[1] + dy)
+    solid_cells, others = arena.blocked_cells(a) - {c for c in arena.blocked_cells(a) if a["grid"][c[1]][c[0]] == arena.HAZARD}, set(occupied(campaign_dir, state, a, skip=target))
+    if not (0 <= dest[0] < a["w"] and 0 <= dest[1] < a["h"]) or dest in solid_cells or dest in others:
+        return lines + [f"{target} is pushed, but something blocks the way: it does not move."]
+    a["units"][target] = {"x": dest[0], "y": dest[1]}
+    lines.append(f"{target} is pushed 5 ft.")
+    if a["grid"][dest[1]][dest[0]] == arena.HAZARD:
+        amount, groups = dice.roll("2d6", rng)
+        combat.stage_roll(f"{foe['name']} falls into the {'water' if a['spec']['decor'] == 'forest' else 'lava'}: 2d6", amount, groups)
+        lines.append(combat.damage(campaign_dir, state, target, amount, "fire"))
+    note(a, f"{me['name']} shoved {foe['name']}")
+    return lines
+
+
+def hide(campaign_dir: Path, state: dict, a: dict, cid: str, rng=None) -> list[str]:
+    """Stealth against the highest passive Perception of the creatures that stand. On a success the character is hidden:
+    its next attack has advantage."""
+    foes = [c for c in standing_foes(campaign_dir, state, a)]
+    dc = max((10 + combat.skill_bonus(combat.combatant(campaign_dir, state, f), "perception") for f in foes), default=10)
+    combat.spend_turn(state, cid, "action", quiet=True)
+    done = combat.check(campaign_dir, state, [cid], "stealth", dc=dc, hide_dc=True, rng=rng)[-1]
+    if "— success" in done:
+        combat.condition(state, cid, "add", "hidden")
+    name = combat.combatant(campaign_dir, state, cid)["name"]
+    return [f"{name} slips out of sight." if "— success" in done else f"{name} tries to hide, and is noticed."]  # the DC and the roll stay on the stage
