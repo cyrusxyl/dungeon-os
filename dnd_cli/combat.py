@@ -200,6 +200,26 @@ def party(campaign_dir: Path, state: dict) -> list[str]:
 # -- combatant records -------------------------------------------------------
 
 
+def _feet(text: str | None, default: int = 30) -> int:
+    m = re.match(r"\s*(\d+)", text or "")
+    return int(m.group(1)) if m else default
+
+
+def geometry(text: str, ranged_only: bool = False) -> dict:
+    """How far an attack reaches, from its text: `reach 5 ft.` (melee) and `range 80/320 ft.` or `(range 150/600)` (ranged), in feet.
+
+    A weapon with neither word is a melee weapon with reach 5. `ranged_only` is for ammunition weapons.
+    """
+    out = {}
+    if m := re.search(r"reach (\d+) ft", text):
+        out["reach_ft"] = int(m.group(1))
+    if m := re.search(r"range (\d+)(?:/\d+)?", text):
+        out["range_ft"] = int(m.group(1))
+    if not out and not ranged_only:
+        out["reach_ft"] = 5
+    return out
+
+
 def _mods(scores: dict) -> dict:
     return {a: dice.mod(scores.get(a, 10)) for a in ABILITIES}
 
@@ -207,13 +227,16 @@ def _mods(scores: dict) -> dict:
 def pc_record(sheet: dict, cid: str) -> dict:
     scores = sheet.get("ability_scores", {})
     mods = _mods(scores)
-    attacks = [
-        {"name": w["name"], "bonus": w.get("attack_bonus", 0),
-         "damage": [[w["damage"], w.get("damage_type", "")]] if w.get("damage") else []}
-        for w in sheet.get("weapons", [])
-    ]
+    attacks = []
+    for w in sheet.get("weapons", []):
+        props = " ".join(w.get("properties", []))
+        reach = geometry(props, ranged_only="ammunition" in props)
+        if "ammunition" not in props:
+            reach["reach_ft"] = 10 if "reach" in props.split() else 5  # a thrown weapon is also a melee weapon
+        attacks.append({"name": w["name"], "bonus": w.get("attack_bonus", 0), "equipped": bool(w.get("equipped")), **reach,
+                        "damage": [[w["damage"], w.get("damage_type", "")]] if w.get("damage") else []})
     # Bare fists, as in Baldur's Gate 3: 1 + Strength modifier, bludgeoning.
-    attacks.append({"name": "Unarmed Strike", "bonus": mods["strength"] + sheet.get("proficiency_bonus", 2),
+    attacks.append({"name": "Unarmed Strike", "bonus": mods["strength"] + sheet.get("proficiency_bonus", 2), "reach_ft": 5,
                     "damage": [[f"1{dice.signed(mods['strength'])}", "bludgeoning"]]})
     spell = sheet.get("spellcasting") or {}
     if "spell_attack_bonus" in spell:
@@ -223,7 +246,7 @@ def pc_record(sheet: dict, cid: str) -> dict:
         "hp": sheet["hp"], "mods": mods,
         "saves": {a: sheet.get("saving_throws", {}).get(a, mods[a]) for a in ABILITIES},
         "skills": {s: sheet.get("skills", {}).get(s, mods[a]) for s, a in SKILLS.items()},
-        "attacks": attacks, "init": sheet.get("initiative", mods["dexterity"]),
+        "attacks": attacks, "init": sheet.get("initiative", mods["dexterity"]), "speed_ft": sheet.get("speed", 30),
         "spell_dc": spell.get("spell_save_dc"), "resist": [], "immune": [], "vuln": [],
         "prof": sheet.get("proficiency_bonus"),
     }
@@ -237,7 +260,7 @@ def monster_record(data: dict, cid: str) -> dict:
     for act in data.get("actions", []):
         damage = [[d["damage_dice"], d.get("damage_type", {}).get("name", "").lower()]
                   for d in act.get("damage", []) if d.get("damage_dice")]
-        entry = {"name": act["name"], "damage": damage}
+        entry = {"name": act["name"], "damage": damage, **geometry(act.get("desc", ""))}
         if "attack_bonus" in act:
             entry["bonus"] = act["attack_bonus"]
         elif act.get("dc"):
@@ -256,6 +279,7 @@ def monster_record(data: dict, cid: str) -> dict:
         "saves": {a: profs[f"saving-throw-{a[:3]}"] for a in ABILITIES if f"saving-throw-{a[:3]}" in profs},
         "skills": {s: profs[f"skill-{s.replace('_', '-')}"] for s in SKILLS if f"skill-{s.replace('_', '-')}" in profs},
         "attacks": attacks, "init": mods["dexterity"], "xp": data.get("xp", 0),
+        "speed_ft": _feet((data.get("speed") or {}).get("walk")),
         "resist": data.get("damage_resistances", []), "immune": data.get("damage_immunities", []),
         "vuln": data.get("damage_vulnerabilities", []),
     }
@@ -266,14 +290,15 @@ def npc_record(data: dict, cid: str) -> dict:
     attacks = []
     for act in data.get("actions", []):
         if "attack_bonus" in act:
-            attacks.append({"name": act["name"], "bonus": act["attack_bonus"],
+            attacks.append({"name": act["name"], "bonus": act["attack_bonus"], **geometry(act.get("desc", "")),
                             "damage": [[act["damage"], ""]] if act.get("damage") else []})
     hp = data["hp"]
     return {
         "id": cid, "kind": "npc", "name": data.get("name", cid), "ac": data.get("armor_class", 10),
         "hp": {"current": hp.get("current", hp.get("max", 1)), "max": hp.get("max", 1)},
         "mods": mods, "saves": {}, "skills": {},
-        "attacks": attacks, "init": mods["dexterity"], "xp": 0, "resist": [], "immune": [], "vuln": [],
+        "attacks": attacks, "init": mods["dexterity"], "xp": 0, "speed_ft": _feet(data.get("speed")),
+        "resist": [], "immune": [], "vuln": [],
     }
 
 
@@ -666,7 +691,8 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     parts = [[damage_expr, damage_type]] if damage_expr else act["damage"]
     if not parts:
         raise RulesError(f"{act['name']} has no damage on record; give it with --damage 1d10 --type fire.")
-    turn_lines = _catch_up(campaign_dir, state, attacker)
+    # A reaction happens on someone else's turn: the tracker must not move to the attacker.
+    turn_lines = [] if cost == "reaction" else _catch_up(campaign_dir, state, attacker)
     if cost:
         spend_turn(state, attacker, cost, quiet=True)
     if has_condition(state, target, "dodging"):

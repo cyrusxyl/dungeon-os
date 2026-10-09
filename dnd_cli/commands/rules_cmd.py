@@ -45,7 +45,15 @@ def execute_encounter(campaign, action: str, args) -> int:
             notify_stage(campaign_dir, {"type": "arena", "arena": state["active_encounter"]["arena"]})
             return lines
         if action == "add":
-            return combat.add(campaign_dir, state, args.specs)
+            lines = combat.add(campaign_dir, state, args.specs)
+            if arena_id := state["active_encounter"].get("arena"):
+                a = arena.load(campaign_dir, arena_id)
+                if board.sync_units(campaign_dir, state, a):
+                    arena.save(campaign_dir, arena_id, a)
+                    notify_stage(campaign_dir, {"type": "arena_updated", "arena": arena_id})
+            return lines
+        if action == "move":
+            return _move(campaign_dir, state, args)
         if action == "next":
             return combat.next_turn(campaign_dir, state)
         if action == "status":
@@ -70,6 +78,31 @@ def execute_encounter(campaign, action: str, args) -> int:
     return _with_state(campaign, fn)
 
 
+def _move(campaign_dir, state: dict, args) -> list[str]:
+    """A creature the DM plays walks on the board. The rules of the board apply: speed, blocked cells, reaction attacks."""
+    arena_id, a = board.running(campaign_dir, state)
+    if bool(args.to) == bool(args.toward):
+        raise combat.RulesError("give --to X,Y or --toward <id>.")
+    if args.to:
+        try:
+            x, y = (int(n) for n in args.to.split(","))
+        except ValueError:
+            raise combat.RulesError("--to is X,Y, for example --to 7,4.") from None
+        target = (x, y)
+    else:
+        target = board.approach(campaign_dir, state, a, args.who, args.toward)
+        if target is None:
+            return [f"{args.who} cannot get nearer to {args.toward} this turn."]
+    result = board.move(campaign_dir, state, a, args.who, target)
+    arena.save(campaign_dir, arena_id, a)
+    notify_stage(campaign_dir, {"type": "arena_updated", "arena": arena_id})
+    x, y = board.pos(a, args.who)
+    lines = result["lines"] + [f"{args.who} walks to {x},{y} ({board.tiles_left(state, combat.combatant(campaign_dir, state, args.who)) * board.TILE_FT} ft left)."]
+    if result["pending"]:
+        lines.append(f"The walk stops: {result['pending']['who']}'s player is asked for a reaction. The stage finishes the walk.")
+    return lines
+
+
 def _amount(text: str, label: str) -> tuple[int, str]:
     """A number, or dice (`1d8+3`) rolled and shown on the stage."""
     if text.lstrip("-").isdigit():
@@ -85,10 +118,17 @@ def _amount(text: str, label: str) -> tuple[int, str]:
 
 
 def execute_attack(campaign, args) -> int:
-    return _with_state(campaign, lambda c, s: combat.attack(
-        c, s, args.attacker, args.weapon, args.target, adv=args.adv, dis=args.dis,
-        damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret,
-        cost=None if args.cost == "free" else args.cost))
+    def fn(campaign_dir, state):
+        cost = None if args.cost == "free" else args.cost
+        if (state.get("active_encounter") or {}).get("arena") and not args.damage:
+            # On a board, reach, sight and cover decide (an improvised attack with --damage is the DM's own ruling).
+            _, a = board.running(campaign_dir, state)
+            return board.attack(campaign_dir, state, a, args.attacker, args.weapon, args.target, cost=cost,
+                                adv=args.adv, dis=args.dis, bonus=args.bonus, secret=args.secret)
+        return combat.attack(
+            campaign_dir, state, args.attacker, args.weapon, args.target, adv=args.adv, dis=args.dis,
+            damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret, cost=cost)
+    return _with_state(campaign, fn)
 
 
 def execute_save(campaign, args) -> int:

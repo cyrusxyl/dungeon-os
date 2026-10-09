@@ -429,6 +429,11 @@ def create_parser():
     for name in ("next", "status"):
         enc_sub.add_parser(name, help=f"{name} turn" if name == "next" else "Show the order, HP and conditions"
                            ).add_argument("--campaign", default=None)
+    p = enc_sub.add_parser("move", help="Walk a creature on the board: --to X,Y or --toward <id>")
+    p.add_argument("who")
+    p.add_argument("--to", default=None, metavar="X,Y")
+    p.add_argument("--toward", default=None, metavar="ID")
+    p.add_argument("--campaign", default=None)
     for name in ("damage", "heal"):
         p = enc_sub.add_parser(name, help=f"{name.title()} a combatant (PC or creature)")
         p.add_argument("target")
