@@ -213,6 +213,7 @@ DEFAULT_BOARD = {"blocks_move": True, "blocks_sight": False, "cover": "none", "h
 ZONE_ROWS = ("back", "mid", "front")
 MAX_TRIES = 60
 SETTING_KEYS = ("reaction_seconds", "round_summary")
+STYLES = ("aggressive", "sneaky", "cowardly", "skirmisher")
 
 
 class ArenaError(ValueError):
@@ -399,6 +400,10 @@ def parse(tokens: list[str]) -> dict:
             spec["theme"] = value
         elif key == "reaction_seconds":
             spec["settings"] |= check_settings({"reaction_seconds": int(value) if value.isdigit() else value})
+        elif key == "style":
+            if value not in STYLES:
+                raise ArenaError(f"style= is one of {', '.join(STYLES)}.")
+            spec["style"] = value
         elif key == "summary":
             if value not in ("on", "off"):
                 raise ArenaError("summary= is on or off.")
@@ -414,7 +419,7 @@ def parse(tokens: list[str]) -> dict:
                 raise ArenaError(f"hazard={value}: the hazard is lava or water.")
             spec["hazards"].append([thing, where])
         else:
-            raise ArenaError(f"unknown setting {key!r}. Use layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=, summary=, reaction_seconds=.")
+            raise ArenaError(f"unknown setting {key!r}. Use layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=, summary=, reaction_seconds=, style=.")
     return spec
 
 

@@ -56,11 +56,26 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: ArenaUnit, image: Image, cur
     ctx.lineWidth = 2
     ctx.strokeRect(u.x * T + 1, u.y * T + 1, T - 2, T - 2)
   }
+  if (u.intent && !u.down) drawIntent(ctx, u)
   const fill = u.hp ? (u.hp.current / (u.hp.max || 1)) * 100 : BAND_FILL[u.health]
   ctx.fillStyle = '#000'
   ctx.fillRect(u.x * T + 3, u.y * T + T - 5, T - 6, 4)
   ctx.fillStyle = u.pc ? '#6fcf6f' : '#e05050'
   ctx.fillRect(u.x * T + 4, u.y * T + T - 4, Math.round(((T - 8) * fill) / 100), 2)
+}
+
+/** A small label over a creature: what it will do on its turn. */
+function drawIntent(ctx: CanvasRenderingContext2D, u: ArenaUnit) {
+  const text = u.intent!.text
+  ctx.font = '8px sans-serif'
+  ctx.textAlign = 'center'
+  const w = Math.min(ctx.measureText(text).width + 6, T * 3)
+  const x = u.x * T + T / 2
+  const y = u.y * T - 2
+  ctx.fillStyle = u.intent!.kind === 'dm' ? 'rgba(20,50,90,0.85)' : 'rgba(60,10,10,0.85)'
+  ctx.fillRect(x - w / 2, y - 10, w, 10)
+  ctx.fillStyle = u.intent!.kind === 'move' ? '#c9a96e' : '#ffd6d3'
+  ctx.fillText(text, x, y - 2, T * 3 - 6)
 }
 
 function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number] | null, canWalk: boolean, image: Image) {

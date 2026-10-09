@@ -1,5 +1,5 @@
 {
-  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees). darkvision_ft: the darkvision of a race word (the longest match wins); a character without one sees only by light.",
+  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees). darkvision_ft: the darkvision of a race word (the longest match wins); a character without one sees only by light. styles: the weights of the foe planner (stage/foes.py). A creature with only ranged attacks plays as a skirmisher.",
   "decor": {
     "tavern": {
       "obstacles": [
@@ -161,5 +161,40 @@
     "half-elf": 60,
     "half-orc": 60,
     "tiefling": 60
+  },
+  "styles": {
+    "aggressive": {
+      "dmg": 1,
+      "kill": 5,
+      "weak": 0,
+      "danger": 0,
+      "cover": 0,
+      "kite": 0
+    },
+    "sneaky": {
+      "dmg": 1,
+      "kill": 5,
+      "weak": 3,
+      "danger": 0.4,
+      "cover": 1.5,
+      "kite": 0
+    },
+    "cowardly": {
+      "dmg": 0.8,
+      "kill": 5,
+      "weak": 0,
+      "danger": 1.2,
+      "cover": 1,
+      "kite": 0,
+      "flee_below": 0.5
+    },
+    "skirmisher": {
+      "dmg": 1,
+      "kill": 5,
+      "weak": 1,
+      "danger": 0.8,
+      "cover": 1.5,
+      "kite": 0.6
+    }
   }
 }

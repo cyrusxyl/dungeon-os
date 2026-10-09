@@ -485,6 +485,7 @@ def with_board(stage: Stage, fn, keep=None):
         arena_id, a = board.running(stage.campaign_dir, state)
         out = fn(state, a)
         if keep is None or keep(out):
+            board.refresh_intents(stage.campaign_dir, state, a)
             arena.save(stage.campaign_dir, arena_id, a)
         return arena_id, out
     return with_rules(stage, go, keep=keep and (lambda result: keep(result[1])))

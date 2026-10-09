@@ -14,6 +14,8 @@ export interface ArenaUnit {
   conditions: string[]
   /** Only a player character shows numbers. */
   hp?: { current: number; max: number }
+  /** What a creature will do on its turn (a creature the stage plays; the DM's creatures say "DM decides"). */
+  intent?: { kind: string; text: string }
 }
 
 export interface ArenaView {

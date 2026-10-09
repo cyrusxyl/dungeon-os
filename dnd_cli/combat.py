@@ -252,14 +252,25 @@ def pc_record(sheet: dict, cid: str) -> dict:
     }
 
 
+def damage_parts(damage: list[dict]) -> list[list[str]]:
+    """The [dice, type] parts of an API action's damage. A weapon that offers a choice (a longsword one or two handed)
+    gives its first option."""
+    out = []
+    for d in damage:
+        if "damage_dice" not in d and (options := (d.get("from") or {}).get("options")):
+            d = options[0]
+        if d.get("damage_dice"):
+            out.append([d["damage_dice"], d.get("damage_type", {}).get("name", "").lower()])
+    return out
+
+
 def monster_record(data: dict, cid: str) -> dict:
     """A compact copy of an API monster: only what play needs (no description text)."""
     mods = _mods(data)
     profs = {p["proficiency"]["index"]: p["value"] for p in data.get("proficiencies", [])}
     attacks = []
     for act in data.get("actions", []):
-        damage = [[d["damage_dice"], d.get("damage_type", {}).get("name", "").lower()]
-                  for d in act.get("damage", []) if d.get("damage_dice")]
+        damage = damage_parts(act.get("damage", []))
         entry = {"name": act["name"], "damage": damage, **geometry(act.get("desc", ""))}
         if "attack_bonus" in act:
             entry["bonus"] = act["attack_bonus"]
@@ -270,6 +281,9 @@ def monster_record(data: dict, cid: str) -> dict:
             continue  # Multiattack and abilities with no roll: the DM narrates them.
         attacks.append(entry)
     ac = data.get("armor_class", [{}])
+    extra = abilities.from_monster(data)
+    if bonus := next((x["attack"]["bonus"] for x in extra["abilities"] if x["kind"] == "spell_attack"), None):
+        attacks.append({"name": "spell", "bonus": bonus, "damage": []})  # a spell attack rolls like a PC's: `attack <id> spell <target> --damage`
     return {
         "id": cid, "kind": "monster", "index": data.get("index"), "name": data.get("name", cid),
         "ac": ac[0].get("value", 10) if isinstance(ac, list) else ac,
@@ -279,7 +293,7 @@ def monster_record(data: dict, cid: str) -> dict:
         "saves": {a: profs[f"saving-throw-{a[:3]}"] for a in ABILITIES if f"saving-throw-{a[:3]}" in profs},
         "skills": {s: profs[f"skill-{s.replace('_', '-')}"] for s in SKILLS if f"skill-{s.replace('_', '-')}" in profs},
         "attacks": attacks, "init": mods["dexterity"], "xp": data.get("xp", 0),
-        "speed_ft": _feet((data.get("speed") or {}).get("walk")), **abilities.from_monster(data),
+        "speed_ft": _feet((data.get("speed") or {}).get("walk")), **extra,
         "resist": data.get("damage_resistances", []), "immune": data.get("damage_immunities", []),
         "vuln": data.get("damage_vulnerabilities", []),
     }

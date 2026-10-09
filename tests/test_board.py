@@ -17,7 +17,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from dnd_cli import combat  # noqa: E402
-from stage import arena, board  # noqa: E402
+from stage import arena, board, foes  # noqa: E402
 from tests.test_arena import fight_with_boss  # noqa: E402
 from tests.test_rules import Fixed  # noqa: E402
 
@@ -180,12 +180,14 @@ def test_foes() -> None:
         c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (10, 5)})
         a["control"] = {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"}
         enc = state["active_encounter"]
+        for foe in enc["monsters"].values():
+            foe["abilities"] = []  # a plain goblin: the fixture's acid spit would be a better play
         enc["current_turn"] = "goblin#1"
-        out = board.play_foe(c, state, a, "goblin#1", rng=Fixed(15, 3))
+        out = foes.play_foe(c, state, a, "goblin#1", rng=Fixed(15, 3))
         check("a goblin next to a hero attacks it", any("Scimitar" in ln for ln in out["lines"]) and combat.turn_used(state, "goblin#1")["action"])
-        check("the nearest hero is the target", any("→ aragorn" in ln for ln in out["lines"]))
+        check("it picks the hero it can hurt most (the softer armor)", any("→ legolas" in ln for ln in out["lines"]))
         enc["current_turn"] = "goblin#2"
-        out = board.play_foe(c, state, a, "goblin#2", rng=Fixed(15, 3))
+        out = foes.play_foe(c, state, a, "goblin#2", rng=Fixed(15, 3))
         x, y = board.pos(a, "goblin#2")
         check("a far goblin walks 30 ft toward the party", min(arena.cheb((x, y), (2, 3)), arena.cheb((x, y), (2, 5))) == 2 and board.resources(state, "goblin#2")["moved"] == 6 and not out["pending"])
         check("it cannot attack if it is still out of reach", not any("Scimitar" in ln for ln in out["lines"]) and not combat.turn_used(state, "goblin#2")["action"])
@@ -218,14 +220,14 @@ def test_foes() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3)})
         a["control"] = {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"}
-        state["active_encounter"]["current_turn"] = "goblin#1"
-        out = board.play_foe(c, state, a, "goblin#1", rng=Fixed(15, 3))
-        board.walk(c, state, a, "goblin#2", [(8, 4)])  # a far goblin walking away from nobody: no question
+        for foe in state["active_encounter"]["monsters"].values():
+            foe["abilities"] = []
         a["units"]["goblin#2"] = {"x": 3, "y": 4}
-        state["active_encounter"]["current_turn"] = "goblin#2"
         a["units"]["goblin#1"] = {"x": 8, "y": 3}
-        out = board.play_foe(c, state, a, "goblin#2", rng=Fixed(15, 3))
-        check("a creature next to two heroes attacks the closer, lower one without walking", any("Scimitar" in ln for ln in out["lines"]) and not out["pending"])
+        state["active_encounter"]["current_turn"] = "goblin#2"
+        out = foes.play_foe(c, state, a, "goblin#2", rng=Fixed(15, 3))
+        check("a creature next to two heroes attacks without walking", any("Scimitar" in ln for ln in out["lines"]) and not out["pending"]
+              and board.pos(a, "goblin#2") == (3, 4))
 
 
 def test_summary_and_time() -> None:

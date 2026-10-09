@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from dnd_cli import character, combat, dice
+from dnd_cli import abilities, character, combat
 from stage import arena
 
 
@@ -34,6 +34,7 @@ def start(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> li
     a["units"] |= {cid: {"x": x, "y": y} for cid, (x, y) in zip(foes, a["starts"]["foes"])}
     a["control"] = {cid: controlled_by(enc["monsters"][cid]) for cid in foes}
     refresh_sight(campaign_dir, state, a)
+    refresh_intents(campaign_dir, state, a)
     arena_id = arena.new_id(campaign_dir)
     arena.save(campaign_dir, arena_id, a)
     enc["arena"] = arena_id
@@ -159,6 +160,13 @@ def visible_cells(campaign_dir: Path, state: dict, a: dict) -> set[tuple[int, in
             if arena.cheb(here, cell) <= radius or any(arena.cheb(lamp, cell) <= LIT_PROP_TILES for lamp in lamps):
                 vis.add(cell)
     return vis
+
+
+def refresh_intents(campaign_dir: Path, state: dict, a: dict) -> None:
+    """Work out what each creature would do now, to show over it (computed after each change, not on each fetch)."""
+    from stage import foes
+
+    a["intents"] = {cid: foes.describe(campaign_dir, state, a, cid) for cid in standing_foes(campaign_dir, state, a)}
 
 
 def refresh_sight(campaign_dir: Path, state: dict, a: dict) -> None:
@@ -333,8 +341,16 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
     rec = combat.combatant(campaign_dir, state, attacker)
     entry = combat._find_attack(rec, weapon)
     check = attack_check(campaign_dir, state, a, attacker, entry, target)
+    traits, damage_expr, damage_type = rec.get("traits", []), None, ""
+    ally = bool(traits) and _party_adjacent(campaign_dir, state, a, attacker, target)
+    if ally and "Pack Tactics" in traits:
+        adv = True
+    if ally and "Martial Advantage" in traits and not resources(state, attacker).get("martial") and len(entry["damage"]) == 1:
+        resources(state, attacker)["martial"] = True  # once per turn
+        damage_expr, damage_type = f"{entry['damage'][0][0]}+{abilities.traits()['Martial Advantage']['dice']}", entry["damage"][0][1]
     lines = combat.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
-                          bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up)
+                          bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up,
+                          damage_expr=damage_expr, damage_type=damage_type)
     note(a, brief(campaign_dir, state, a, lines, attacker, entry["name"], target))
     notes = [f"{target} has {check['cover']} cover: -{arena.COVER_BONUS[check['cover']]} to hit."] if check["cover"] != "none" else []
     return notes + (["An enemy is next to the archer: disadvantage."] if check["dis"] else []) + lines
@@ -372,6 +388,8 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict
              "health": combat.health_band(rec), "conditions": [c["condition"] for c in enc.get("conditions", {}).get(cid, [])]}
         if u["pc"]:
             u["hp"] = rec["hp"]
+        elif cid in a.get("intents", {}):
+            u["intent"] = a["intents"][cid]
         units.append(u)
     current = enc.get("current_turn")
     walk: list[list[int]] = []
@@ -427,54 +445,6 @@ def standing_foes(campaign_dir: Path, state: dict, a: dict) -> list[str]:
     return [c for c in a["units"] if is_foe(state, c) and standing(combat.combatant(campaign_dir, state, c))]
 
 
-def best_attack(campaign_dir: Path, state: dict, a: dict, cid: str, target: str) -> dict | None:
-    """The attack of `cid` that can hit `target` from where it stands and does the most damage on average."""
-    rec = combat.combatant(campaign_dir, state, cid)
-    best, top = None, -1.0
-    for entry in attack_rolls(rec):
-        try:
-            attack_check(campaign_dir, state, a, cid, entry, target)
-        except BoardError:
-            continue
-        score = sum(dice.average(expr) for expr, _ in entry["damage"])
-        if score > top:
-            best, top = entry, score
-    return best
-
-
-def play_foe(campaign_dir: Path, state: dict, a: dict, cid: str, rng=None) -> dict:
-    """The stage plays one creature's turn the plain way: attack the nearest party member, walking toward it first if it must.
-
-    Returns {"lines", "pending"}; `pending` is True when a player is asked for a reaction, and the turn waits for the answer.
-    """
-    lines: list[str] = []
-    walked = False
-    for _ in range(3):
-        pcs = standing_pcs(campaign_dir, state, a)
-        if not pcs:
-            break
-        here = pos(a, cid)
-        target = min(pcs, key=lambda p: (arena.cheb(here, pos(a, p)), combat.combatant(campaign_dir, state, p)["hp"]["current"]))
-        if combat.turn_used(state, cid)["action"]:
-            break
-        if (entry := best_attack(campaign_dir, state, a, cid, target)) is not None:
-            lines += attack(campaign_dir, state, a, cid, entry["name"], target, rng=rng)
-            break
-        dest = approach(campaign_dir, state, a, cid, target)
-        if dest is None:
-            if not walked:
-                lines.append(f"{cid} cannot get nearer to {target}.")
-            break
-        walked = True
-        result = move(campaign_dir, state, a, cid, dest, rng=rng)
-        lines += result["lines"]
-        if result["pending"]:
-            return {"lines": lines, "pending": True}
-        if not standing(combat.combatant(campaign_dir, state, cid)):
-            break
-    return {"lines": lines, "pending": False}
-
-
 def dm_prompt(campaign_dir: Path, state: dict, a: dict, cid: str) -> str:
     """What the DM is told when a creature it plays is up. It names only what the party can see (the console is public)."""
     rec = combat.combatant(campaign_dir, state, cid)
@@ -484,6 +454,9 @@ def dm_prompt(campaign_dir: Path, state: dict, a: dict, cid: str) -> str:
     attacks = "; ".join(f"{x['name']} +{x.get('bonus', 0)} " + ", ".join(e for e, _ in x["damage"])
                         + (f" (reach {x['reach_ft']} ft)" if x.get("reach_ft") else f" (range {x['range_ft']} ft)") for x in rec["attacks"] if x["damage"])
     walk = tiles_left(state, rec) * TILE_FT
+    other = "; ".join(f"{x['name']} ({x['kind'] if x['kind'] != 'dm' else 'play it from the rules: ' + x.get('desc', '')[:90]})"
+                      for x in rec.get("abilities", []) if abilities.available(rec, x) or x["kind"] == "dm")
+    attacks += f". Also: {other}" if other else ""
     return (f"[combat] Round {state['active_encounter'].get('round', 1)}: {rec['name']} ({cid}) acts, and you play it. "
             f"It has {walk} ft of walking. Party: {near}. Its attacks: {attacks}. Move it with "
             f"`uv run dnd-cli encounter move {cid} --toward <id>`, attack with `uv run dnd-cli attack {cid} \"<attack>\" <id>` "
@@ -536,7 +509,9 @@ def pump_step(campaign_dir: Path, state: dict, a: dict, rng=None, settings: dict
         # The DM answered and did not end the turn: the stage ends it.
         a["asked"] = None
         return {"kind": "turn", "who": cid, "lines": combat.next_turn(campaign_dir, state), "pending": False}
-    played = play_foe(campaign_dir, state, a, cid, rng)
+    from stage import foes  # the planner reads this module
+
+    played = foes.play_foe(campaign_dir, state, a, cid, rng)
     if played["pending"]:
         return {"kind": "turn", "who": cid, "lines": played["lines"], "pending": True}
     return {"kind": "turn", "who": cid, "lines": played["lines"] + combat.next_turn(campaign_dir, state), "pending": False}
@@ -549,3 +524,84 @@ def player_attack(campaign_dir: Path, state: dict, a: dict, who: str, target: st
     if target in hidden_foes(campaign_dir, state, a):
         raise BoardError("you cannot see that target.")
     return attack(campaign_dir, state, a, who, weapon or default_weapon(campaign_dir, state, a, who, target), target, own_turn_only=True)
+
+
+# -- abilities on the board --------------------------------------------------------
+
+
+def _party_adjacent(campaign_dir: Path, state: dict, a: dict, attacker: str, target: str) -> bool:
+    """An ally of `attacker` (up and not the attacker) stands next to `target`: Pack Tactics and Martial Advantage need it."""
+    return any(o != attacker and is_foe(state, o) == is_foe(state, attacker) and arena.cheb(pos(a, o), pos(a, target)) <= 1
+               and standing(combat.combatant(campaign_dir, state, o)) for o in a["units"])
+
+
+def check_aim(a: dict, cid: str, ab: dict, aim) -> None:
+    """The aim of an area ability: in range with a clear line (a sphere or a cube), or any other cell (a cone or a line)."""
+    shape, here, aim = ab["shape"], pos(a, cid), tuple(aim)
+    if shape["type"] in ("cone", "line"):
+        if aim == here:
+            raise BoardError(f"{ab['name']} needs a direction: aim at another cell.")
+        return
+    if not (0 <= aim[0] < a["w"] and 0 <= aim[1] < a["h"]):
+        raise BoardError("aim inside the arena.")
+    reach = shape["range_ft"] // TILE_FT
+    if arena.cheb(here, aim) > reach:
+        raise BoardError(f"{ab['name']} reaches {reach * TILE_FT} ft; that is {arena.cheb(here, aim) * TILE_FT} ft away.")
+    if not arena.clear_line(here, aim, arena.opaque_cells(a)):
+        raise BoardError("A wall or a tall prop blocks the line there.")
+
+
+def covered_units(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, aim) -> list[str]:
+    """The creatures an area covers (an ally too). A cone or a line never covers its caster."""
+    cells = arena.shape_cells(ab["shape"], pos(a, cid), tuple(aim), (a["w"], a["h"]))
+    return [u for u in a["units"] if pos(a, u) in cells and (u != cid or ab["shape"]["type"] not in ("cone", "line"))
+            and standing(combat.combatant(campaign_dir, state, u))]
+
+
+def spend_ability(campaign_dir: Path, state: dict, cid: str, ab: dict) -> None:
+    """The action, bonus action or reaction an ability costs, and its use or slot."""
+    if ab["cost"] in combat.TURN_KINDS:
+        combat.spend_turn(state, cid, ab["cost"], quiet=True)
+    abilities.spend(combat.combatant(campaign_dir, state, cid), ab)
+
+
+def use_zone(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, aim, rng=None) -> list[str]:
+    """A save-based ability on an area: each creature in it saves, and takes the damage (half on a success for a `half` ability)."""
+    rec = combat.combatant(campaign_dir, state, cid)
+    if not abilities.available(rec, ab):
+        raise BoardError(f"{rec['name']} cannot use {ab['name']} now.")
+    check_aim(a, cid, ab, aim)
+    targets = covered_units(campaign_dir, state, a, cid, ab, aim)
+    spend_ability(campaign_dir, state, cid, ab)
+    expr, dtype = ab["damage"][0]
+    lines = combat.save(campaign_dir, state, targets, ab["save"]["ability"], ab["save"]["dc"], damage_expr=expr, damage_type=dtype,
+                        half=ab["save"]["success"] == "half", rng=rng) if targets else []
+    names = ", ".join(combat.combatant(campaign_dir, state, t)["name"] for t in targets) or "no one"
+    note(a, f"{rec['name']} used {ab['name']} on {names}")
+    return [f"{cid} uses {ab['name']}: {len(targets)} in the area."] + lines
+
+
+def use_spell_attack(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, target: str, rng=None) -> list[str]:
+    """A spell with an attack roll: the board's reach, sight and cover decide, then the usual attack roll with the spell's damage."""
+    rec = combat.combatant(campaign_dir, state, cid)
+    if not abilities.available(rec, ab):
+        raise BoardError(f"{rec['name']} cannot use {ab['name']} now.")
+    check = attack_check(campaign_dir, state, a, cid, {"name": ab["name"], **ab["attack"]}, target)
+    spend_ability(campaign_dir, state, cid, ab)
+    expr, dtype = ab["damage"][0]
+    lines = combat.attack(campaign_dir, state, cid, "spell", target, rng=rng, cost=None, damage_expr=expr, damage_type=dtype,
+                          bonus=-arena.COVER_BONUS[check["cover"]], dis=check["dis"])
+    note(a, brief(campaign_dir, state, a, [ln.replace(" spell ", f" {ab['name']} ", 1) for ln in lines], cid, ab["name"], target))
+    return [f"{cid} casts {ab['name']}."] + lines
+
+
+def use_multiattack(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, target: str, rng=None) -> list[str]:
+    """Each attack of a Multiattack on one target; the first spends the action."""
+    lines, first = [], True
+    for name, count in ab["parts"]:
+        for _ in range(count):
+            if not standing(combat.combatant(campaign_dir, state, target)):
+                return lines
+            lines += attack(campaign_dir, state, a, cid, name, target, rng=rng, cost=ab["cost"] if first else None)
+            first = False
+    return lines
