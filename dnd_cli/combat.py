@@ -23,7 +23,7 @@ import random
 import re
 from pathlib import Path
 
-from dnd_cli import character, dice, effects
+from dnd_cli import abilities, character, dice, effects
 from dnd_cli.api import api_get
 from stage.files import read_json, write_json
 
@@ -279,7 +279,7 @@ def monster_record(data: dict, cid: str) -> dict:
         "saves": {a: profs[f"saving-throw-{a[:3]}"] for a in ABILITIES if f"saving-throw-{a[:3]}" in profs},
         "skills": {s: profs[f"skill-{s.replace('_', '-')}"] for s in SKILLS if f"skill-{s.replace('_', '-')}" in profs},
         "attacks": attacks, "init": mods["dexterity"], "xp": data.get("xp", 0),
-        "speed_ft": _feet((data.get("speed") or {}).get("walk")),
+        "speed_ft": _feet((data.get("speed") or {}).get("walk")), **abilities.from_monster(data),
         "resist": data.get("damage_resistances", []), "immune": data.get("damage_immunities", []),
         "vuln": data.get("damage_vulnerabilities", []),
     }

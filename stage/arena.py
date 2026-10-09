@@ -272,6 +272,39 @@ def cover_between(a, b, cover: dict) -> str:
     return best
 
 
+def shape_cells(shape: dict, origin, aim, size: tuple[int, int]) -> set[tuple[int, int]]:
+    """The cells an area covers. `aim` is the center of a sphere or a cube, and the direction of a cone or a line from `origin`
+    (a cone or a line starts next to the origin and never covers it). One tile is 5 ft."""
+    w, h = size
+    r = shape["size_ft"] // 5
+    ox, oy = origin
+    ax, ay = aim
+    kind = shape["type"]
+    inside = lambda c: 0 <= c[0] < w and 0 <= c[1] < h  # noqa: E731
+    if kind == "single":
+        return {tuple(aim)}
+    if kind in ("sphere", "cylinder"):
+        return {(x, y) for x in range(ax - r, ax + r + 1) for y in range(ay - r, ay + r + 1)
+                if inside((x, y)) and math.hypot(x - ax, y - ay) <= r + 0.5}
+    if kind == "cube":
+        half = max(1, r) // 2
+        return {(x, y) for x in range(ax - half, ax + half + 1) for y in range(ay - half, ay + half + 1) if inside((x, y))}
+    dx, dy = ax - ox, ay - oy
+    norm = math.hypot(dx, dy) or 1
+    if kind == "line":
+        cells = {(round(ox + dx / norm * i), round(oy + dy / norm * i)) for i in range(1, r + 1)}
+        return {c for c in cells if inside(c)}
+    # a cone: within `size` of the origin and within 26.5 degrees of the aim (a 53-degree spread)
+    out = set()
+    for x in range(ox - r, ox + r + 1):
+        for y in range(oy - r, oy + r + 1):
+            vx, vy = x - ox, y - oy
+            dist = math.hypot(vx, vy)
+            if inside((x, y)) and (vx or vy) and dist <= r + 0.5 and (vx * dx + vy * dy) / (dist * norm) >= math.cos(math.radians(26.6)):
+                out.add((x, y))
+    return out
+
+
 def reach(start, limit: int, blocked, size: tuple[int, int], occupied=frozenset()):
     """Walk 8 directions from start, up to `limit` steps: (distance by cell, previous cell by cell).
 

@@ -1,0 +1,6 @@
+{
+  "_comment": "Hand-written rules for the monster traits that are plain text in the 5e API and change a turn (see dnd_cli/abilities.py). `ability` is added to the creature's abilities; `rule` names what the board engine does (stage/board.py). A trait not listed here is left to the DM.",
+  "Nimble Escape": {"ability": {"id": "nimble-escape", "name": "Nimble Escape", "cost": "bonus", "kind": "self", "effect": "disengage"}},
+  "Pack Tactics": {"rule": "advantage"},
+  "Martial Advantage": {"rule": "extra_damage", "dice": "2d6"}
+}
