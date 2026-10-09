@@ -12,18 +12,15 @@ is secret. `view` gives the browser only what the party has seen.
 from __future__ import annotations
 
 import io
-import json
 import random
-import re
 from collections import deque
-from functools import cache, lru_cache
 from pathlib import Path
 
 from stage import arena
+from stage.arena import T, atlas_png, data, icon_png, themes, tile_counts, variant
 from stage.beat import SLUG_RE, title
 from stage.files import read_json, write_json
 
-DATA_PATH = Path(__file__).resolve().parent / "data" / "crawl.json"
 _DUNGEON_SIZES = {"small": (32, 22), "medium": (44, 30), "large": (60, 40)}
 SIZES = {
     "rooms": _DUNGEON_SIZES,
@@ -37,7 +34,6 @@ WALL, FLOOR, DOOR, OPEN, EXIT = "#", ".", "+", "'", "<"
 WALKABLE = {FLOOR, DOOR, OPEN, EXIT}
 OPAQUE = {WALL, DOOR}
 STEPS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
-T = 32
 
 
 class SiteError(ValueError):
@@ -46,15 +42,6 @@ class SiteError(ValueError):
 
 class _Retry(Exception):
     """A generator attempt failed; try the next sub-seed."""
-
-
-@cache
-def data() -> dict:
-    return json.loads(DATA_PATH.read_text())
-
-
-def themes() -> dict:
-    return data()["themes"]
 
 
 # -- generators ----------------------------------------------------------
@@ -632,87 +619,7 @@ def save(campaign_dir: Path, site_id: str, site: dict) -> Path:
     return write_json(sites_dir(campaign_dir) / f"{site_id}.json", site)
 
 
-# -- tiles -----------------------------------------------------------------
-
-
-@cache
-def _variants(family: str) -> tuple[str, ...]:
-    """The numbered tiles of a DCSS family, without the _new/_old duplicates."""
-    from stage.assets import ensure_dcss
-
-    folder, name = (ensure_dcss() / family).parent, Path(family).name
-    pattern = re.compile(re.escape(name) + r"_?(\d*)\.png")
-    found = [(int(m.group(1) or 0), p.name) for p in folder.glob("*.png") if (m := pattern.fullmatch(p.name))]
-    return tuple(str(folder / n) for _, n in sorted(found))[:8]
-
-
-def _floor_tiles(name: str) -> list:
-    from PIL import Image
-
-    if name.startswith("lpc:"):
-        from stage import scenes
-
-        return [scenes.surface_tile(name[4:], col, row) for row in (0, 1) for col in (0, 1)]
-    return [Image.open(p).convert("RGBA") for p in _variants(name)]
-
-
-def _walls(theme: str) -> tuple[str, ...]:
-    t = themes()[theme]
-    return _variants(t["wall"])[: t.get("wall_variants", 8)]
-
-
-@cache
-def tile_counts(theme: str) -> dict:
-    t = themes()[theme]
-    floors = 4 if t["floor"].startswith("lpc:") else len(_variants(t["floor"]))
-    return {"walls": len(_walls(theme)), "floors": floors, "pattern": t["floor"].startswith("lpc:")}
-
-
-@lru_cache(maxsize=16)
-def atlas_png(theme: str) -> bytes:
-    """Row 0: wall variants. Row 1: floor variants. Row 2: closed door, open door, exit."""
-    from PIL import Image
-
-    from stage.assets import ensure_dcss
-
-    t = themes()[theme]
-    dcss = ensure_dcss()
-    walls = [Image.open(p).convert("RGBA") for p in _walls(theme)]
-    floors = _floor_tiles(t["floor"])
-    doors = data()["doors"]
-    specials = [Image.open(dcss / p).convert("RGBA") for p in (doors["closed"], doors["open"], t["exit"])]
-    floor0 = floors[0]
-    img = Image.new("RGBA", (T * max(len(walls), len(floors), 3), T * 3))
-    for row, tiles in enumerate((walls, floors, specials)):
-        for i, tile in enumerate(tiles):
-            if row == 2:
-                # Doors and the exit stand on the floor.
-                img.alpha_composite(floor0, (i * T, row * T))
-            img.alpha_composite(tile.crop((0, 0, T, T)), (i * T, row * T))
-    buf = io.BytesIO()
-    img.save(buf, "PNG")
-    return buf.getvalue()
-
-
-@lru_cache(maxsize=64)
-def icon_png(name: str) -> bytes | None:
-    from PIL import Image
-
-    from stage.assets import ensure_dcss
-
-    rel = data()["icons"].get(name)
-    if rel is None:
-        return None
-    buf = io.BytesIO()
-    Image.open(ensure_dcss() / rel).convert("RGBA").save(buf, "PNG")
-    return buf.getvalue()
-
-
-def variant(x: int, y: int, n: int) -> int:
-    """A stable tile variant per cell, variant 0 about half of the time. Same as variant() in CrawlView.tsx."""
-    h = ((x * 374761393) & 0xFFFFFFFF) ^ ((y * 668265263) & 0xFFFFFFFF)
-    k = (h ^ (h >> 13)) % (n * 2)
-    return k if k < n else 0
+# -- tiles are in stage/arena.py (shared with the combat board) --
 
 
 def render_full(site: dict):

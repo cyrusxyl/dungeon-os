@@ -8,7 +8,15 @@ own tiles. See combat-board.md.
 
 from __future__ import annotations
 
+import io
+import json
+import re
 from collections import deque
+from functools import cache, lru_cache
+from pathlib import Path
+
+DATA_PATH = Path(__file__).resolve().parent / "data" / "crawl.json"
+T = 32
 
 
 def around4(x: int, y: int, w: int, h: int):
@@ -72,3 +80,114 @@ def sight(grid, x: int, y: int, radius: int, opaque) -> set[tuple[int, int]]:
                     if 0 <= nx < w and 0 <= ny < h and grid[ny][nx] in opaque:
                         seen.add((nx, ny))
     return seen
+
+
+# -- tiles -----------------------------------------------------------------
+
+
+@cache
+def data() -> dict:
+    return json.loads(DATA_PATH.read_text())
+
+
+def themes() -> dict:
+    return data()["themes"]
+
+
+@cache
+def _variants(family: str) -> tuple[str, ...]:
+    """The numbered tiles of a DCSS family, without the _new/_old duplicates."""
+    from stage.assets import ensure_dcss
+
+    folder, name = (ensure_dcss() / family).parent, Path(family).name
+    pattern = re.compile(re.escape(name) + r"_?(\d*)\.png")
+    found = [(int(m.group(1) or 0), p.name) for p in folder.glob("*.png") if (m := pattern.fullmatch(p.name))]
+    return tuple(str(folder / n) for _, n in sorted(found))[:8]
+
+
+def _floor_tiles(name: str) -> list:
+    from PIL import Image
+
+    if name.startswith("lpc:"):
+        from stage import scenes
+
+        return [scenes.surface_tile(name[4:], col, row) for row in (0, 1) for col in (0, 1)]
+    return [Image.open(p).convert("RGBA") for p in _variants(name)]
+
+
+def look_of(theme: str) -> dict:
+    """The tiles of a theme: a wall family, a floor, an exit tile. An arena keeps its own copy (see `arena.create`)."""
+    t = themes()[theme]
+    return {"wall": t["wall"], "floor": t["floor"], "exit": t["exit"], "wall_variants": t.get("wall_variants", 8)}
+
+
+def _walls(wall: str, n: int = 8) -> tuple[str, ...]:
+    return _variants(wall)[:n]
+
+
+def tile_counts(theme: str) -> dict:
+    return look_counts(look_of(theme))
+
+
+@cache
+def _look_counts(wall: str, floor: str, n: int) -> dict:
+    floors = 4 if floor.startswith("lpc:") else len(_variants(floor))
+    return {"walls": len(_walls(wall, n)), "floors": floors, "pattern": floor.startswith("lpc:")}
+
+
+def look_counts(look: dict) -> dict:
+    return _look_counts(look["wall"], look["floor"], look.get("wall_variants", 8))
+
+
+def atlas_png(theme: str) -> bytes:
+    return atlas_for(look_of(theme))
+
+
+def atlas_for(look: dict) -> bytes:
+    return _atlas(look["wall"], look["floor"], look["exit"], look.get("wall_variants", 8))
+
+
+@lru_cache(maxsize=32)
+def _atlas(wall: str, floor: str, exit_tile: str, n: int) -> bytes:
+    """Row 0: wall variants. Row 1: floor variants. Row 2: closed door, open door, exit."""
+    from PIL import Image
+
+    from stage.assets import ensure_dcss
+
+    dcss = ensure_dcss()
+    walls = [Image.open(p).convert("RGBA") for p in _walls(wall, n)]
+    floors = _floor_tiles(floor)
+    doors = data()["doors"]
+    specials = [Image.open(dcss / p).convert("RGBA") for p in (doors["closed"], doors["open"], exit_tile)]
+    floor0 = floors[0]
+    img = Image.new("RGBA", (T * max(len(walls), len(floors), 3), T * 3))
+    for row, tiles in enumerate((walls, floors, specials)):
+        for i, tile in enumerate(tiles):
+            if row == 2:
+                # Doors and the exit stand on the floor.
+                img.alpha_composite(floor0, (i * T, row * T))
+            img.alpha_composite(tile.crop((0, 0, T, T)), (i * T, row * T))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+@lru_cache(maxsize=64)
+def icon_png(name: str) -> bytes | None:
+    from PIL import Image
+
+    from stage.assets import ensure_dcss
+
+    rel = data()["icons"].get(name)
+    if rel is None:
+        return None
+    buf = io.BytesIO()
+    Image.open(ensure_dcss() / rel).convert("RGBA").save(buf, "PNG")
+    return buf.getvalue()
+
+
+def variant(x: int, y: int, n: int) -> int:
+    """A stable tile variant per cell, variant 0 about half of the time. Same as variant() in CrawlView.tsx."""
+    h = ((x * 374761393) & 0xFFFFFFFF) ^ ((y * 668265263) & 0xFFFFFFFF)
+    k = (h ^ (h >> 13)) % (n * 2)
+    return k if k < n else 0
