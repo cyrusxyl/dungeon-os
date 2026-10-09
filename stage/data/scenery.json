@@ -1,5 +1,5 @@
 {
-  "_comment": "Scenery catalog for stage/scenes.py. Coordinates are in 32 px tiles: [col, row, width, height]. Sheets: walls, floors, city, out, terrain, interior, decor, ruins, winter, winter_b (LPC tile packs; `keys` names a flat colour a pack uses for empty cells) and dcss:<path> (one CC0 DCSS png). Walls and floors are [col, row] on the walls/floors sheet, or {\"sheet\", \"at\"} on another. Walls are 4x3 blocks: left edge, two repeating middles, right edge. Floors repeat a 2x2 pattern. Grounds pick one of their 1x1 variants per tile.",
+  "_comment": "Scenery catalog for stage/scenes.py. Coordinates are in 32 px tiles: [col, row, width, height]. Sheets: walls, floors, city, out, terrain, interior, decor, ruins, winter, winter_b (LPC tile packs; `keys` names a flat colour a pack uses for empty cells) and dcss:<path> (one CC0 DCSS png). Walls and floors are [col, row] on the walls/floors sheet, or {\"sheet\", \"at\"} on another. Walls are 4x3 blocks: left edge, two repeating middles, right edge. Floors repeat a 2x2 pattern. Grounds pick one of their 1x1 variants per tile. A prop may have a \"board\" entry (blocks_move, blocks_sight, cover, hp, tags) for the combat arena; a prop without one blocks movement and gives no cover (see combat-board.md).",
   "sheets": {
     "walls": "tiles/walls/lpc-walls/walls.png",
     "floors": "tiles/floors/lpc-floors/floors.png",
@@ -819,7 +819,18 @@
         0,
         1,
         1
-      ]
+      ],
+      "board": {
+        "blocks_move": false,
+        "blocks_sight": false,
+        "cover": "none",
+        "hp": 3,
+        "tags": [
+          "portable",
+          "breakable",
+          "flammable"
+        ]
+      }
     },
     "chair": {
       "sheet": "city",
@@ -828,7 +839,18 @@
         4,
         1,
         1
-      ]
+      ],
+      "board": {
+        "blocks_move": false,
+        "blocks_sight": false,
+        "cover": "none",
+        "hp": 5,
+        "tags": [
+          "portable",
+          "breakable",
+          "flammable"
+        ]
+      }
     },
     "stool_round": {
       "sheet": "city",
@@ -846,7 +868,19 @@
         3,
         2,
         1
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": false,
+        "cover": "half",
+        "hp": 15,
+        "tags": [
+          "heavy",
+          "flammable",
+          "breakable",
+          "container"
+        ]
+      }
     },
     "cabinet": {
       "sheet": "city",
@@ -928,7 +962,18 @@
         14,
         1,
         2
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": false,
+        "cover": "half",
+        "hp": 10,
+        "tags": [
+          "flammable",
+          "breakable",
+          "heavy"
+        ]
+      }
     },
     "barrel_pile": {
       "sheet": "out",
@@ -937,7 +982,18 @@
         16,
         2,
         2
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": false,
+        "cover": "half",
+        "hp": 25,
+        "tags": [
+          "flammable",
+          "breakable",
+          "heavy"
+        ]
+      }
     },
     "chest": {
       "sheet": "out",
@@ -1011,7 +1067,16 @@
         1,
         1
       ],
-      "flat": true
+      "flat": true,
+      "board": {
+        "blocks_move": false,
+        "blocks_sight": false,
+        "cover": "none",
+        "hp": null,
+        "tags": [
+          "portable"
+        ]
+      }
     },
     "bush": {
       "sheet": "terrain",
@@ -1020,7 +1085,17 @@
         12,
         2,
         2
-      ]
+      ],
+      "board": {
+        "blocks_move": false,
+        "blocks_sight": false,
+        "cover": "none",
+        "hp": null,
+        "tags": [
+          "flammable",
+          "concealing"
+        ]
+      }
     },
     "pine": {
       "sheet": "terrain",
@@ -1029,7 +1104,17 @@
         0,
         2,
         5
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": true,
+        "cover": "none",
+        "hp": null,
+        "tags": [
+          "climbable",
+          "flammable"
+        ]
+      }
     },
     "pine_small": {
       "sheet": "terrain",
@@ -1047,7 +1132,17 @@
         28,
         3,
         4
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": true,
+        "cover": "none",
+        "hp": null,
+        "tags": [
+          "climbable",
+          "flammable"
+        ]
+      }
     },
     "stump": {
       "sheet": "terrain",
@@ -1056,7 +1151,17 @@
         12,
         1,
         1
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": false,
+        "cover": "half",
+        "hp": null,
+        "tags": [
+          "climbable",
+          "heavy"
+        ]
+      }
     },
     "rocks": {
       "sheet": "terrain",
@@ -1074,7 +1179,17 @@
         31,
         1,
         1
-      ]
+      ],
+      "board": {
+        "blocks_move": false,
+        "blocks_sight": false,
+        "cover": "none",
+        "hp": null,
+        "tags": [
+          "portable",
+          "fragile"
+        ]
+      }
     },
     "statue": {
       "sheet": "dcss:dungeon/statues/granite_statue.png"
@@ -1095,7 +1210,17 @@
       "sheet": "dcss:dungeon/statues/orcish_idol.png"
     },
     "column_broken": {
-      "sheet": "dcss:dungeon/statues/crumbled_column.png"
+      "sheet": "dcss:dungeon/statues/crumbled_column.png",
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": false,
+        "cover": "three-quarters",
+        "hp": null,
+        "tags": [
+          "climbable",
+          "heavy"
+        ]
+      }
     },
     "altar_stone": {
       "sheet": "dcss:dungeon/altars/altar_base.png"
@@ -1111,7 +1236,18 @@
         2,
         3
       ],
-      "on": "wall"
+      "on": "wall",
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": false,
+        "cover": "half",
+        "hp": null,
+        "tags": [
+          "heavy",
+          "light-source",
+          "hot"
+        ]
+      }
     },
     "chests": {
       "sheet": "out",
@@ -1120,7 +1256,17 @@
         17,
         2,
         2
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": false,
+        "cover": "half",
+        "hp": 15,
+        "tags": [
+          "heavy",
+          "container"
+        ]
+      }
     },
     "tree": {
       "sheet": "terrain",
@@ -1129,7 +1275,17 @@
         29,
         2,
         3
-      ]
+      ],
+      "board": {
+        "blocks_move": true,
+        "blocks_sight": true,
+        "cover": "none",
+        "hp": null,
+        "tags": [
+          "climbable",
+          "flammable"
+        ]
+      }
     },
     "mushrooms": {
       "sheet": "terrain",

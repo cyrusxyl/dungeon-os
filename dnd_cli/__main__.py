@@ -24,7 +24,7 @@ from dnd_cli.commands import character_cmd
 from dnd_cli.commands import show_cmd
 from dnd_cli.commands import actor_cmd
 from dnd_cli.commands import scene_cmd
-from dnd_cli.commands import site_cmd
+from dnd_cli.commands import arena_cmd, site_cmd
 from dnd_cli.commands import map_cmd
 from dnd_cli.commands import session_cmd
 from dnd_cli.commands import rules_cmd
@@ -420,6 +420,8 @@ def create_parser():
     p = enc_sub.add_parser("start", help="Roll initiative: goblin:3 boss=bugbear <npc-id> ... [--pcs all|a,b]")
     p.add_argument("specs", nargs="*")
     p.add_argument("--pcs", default=None)
+    p.add_argument("--arena", nargs="*", default=None, metavar="KEY=VALUE",
+                   help="Fight on a board: layout= size= light= ambush= seed= theme= feature=<thing>@<where> hazard=<kind>@<where>. Put it last.")
     p.add_argument("--campaign", default=None)
     p = enc_sub.add_parser("add", help="Add creatures to the running combat")
     p.add_argument("specs", nargs="+")
@@ -505,6 +507,15 @@ def create_parser():
         p.add_argument("site_id")
         p.add_argument("--campaign", default=None)
     site_sub.add_parser("options", help="List themes, depths and icons")
+
+    # Arena command group (the board of a fight)
+    arena_parser = subparsers.add_parser("arena", help="The board of the running fight: show or preview it")
+    arena_sub = arena_parser.add_subparsers(dest="arena_command", help="Arena subcommand")
+    for name, text in (("show", "Print the arena: size, light, props, items and where everyone stands"),
+                       ("preview", "Render the whole arena (DM only) to a PNG you can look at")):
+        p = arena_sub.add_parser(name, help=text)
+        p.add_argument("arena_id", nargs="?", default=None, help="Default: the arena of the running fight")
+        p.add_argument("--campaign", default=None)
 
     # Map command group (region and city maps)
     map_parser = subparsers.add_parser("map", help="Region and city maps on the visual stage: places, routes, reveals")
@@ -806,6 +817,14 @@ def main():
 
         elif args.command == "rest":
             return rules_cmd.execute_rest(args.campaign, args.kind, args.who, args.hit_dice)
+
+        elif args.command == "arena":
+            if args.arena_command == "show":
+                return arena_cmd.execute_show(args.campaign, args.arena_id)
+            if args.arena_command == "preview":
+                return arena_cmd.execute_preview(args.campaign, args.arena_id)
+            print("Usage: dnd-cli arena show|preview [<arena-id>] (see --help)", file=sys.stderr)
+            return 1
 
         elif args.command == "site":
             sc = args.site_command

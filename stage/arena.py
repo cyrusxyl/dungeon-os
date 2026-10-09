@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import io
 import json
+import math
+import random
 import re
 from collections import deque
 from functools import cache, lru_cache
@@ -191,3 +193,400 @@ def variant(x: int, y: int, n: int) -> int:
     h = ((x * 374761393) & 0xFFFFFFFF) ^ ((y * 668265263) & 0xFFFFFFFF)
     k = (h ^ (h >> 13)) % (n * 2)
     return k if k < n else 0
+
+
+# -- the combat arena ------------------------------------------------------
+# One room, built for a fight. The DM gives words (layout, size, light, features); the stage makes
+# the room from a seed. A unit walks 8 directions here, so these functions take the blocking tiles
+# as arguments, as the crawl does. The arena file holds the whole layout and the positions.
+
+ARENA_DATA_PATH = Path(__file__).resolve().parent / "data" / "arena.json"
+SIZES = {"small": (12, 8), "medium": (16, 10)}
+LAYOUTS = ("open", "chokepoint", "pillars", "chasm")
+LIGHTS = ("lit", "dim", "dark")
+WHERES = ("party", "center", "foes")
+HAZARDS = ("lava", "water")
+WALL, FLOOR, DOOR, HAZARD = "#", ".", "d", "~"
+STAND = {FLOOR, DOOR}  # tiles a unit can stand on; a prop on one may still block it
+COVER_BONUS = {"none": 0, "half": 2, "three-quarters": 5}
+DEFAULT_BOARD = {"blocks_move": True, "blocks_sight": False, "cover": "none", "hp": None, "tags": []}
+ZONE_ROW = {"back": "top", "mid": "middle", "front": "bottom"}
+MAX_TRIES = 60
+
+
+class ArenaError(ValueError):
+    """A bad arena setting. The message says how to fix it."""
+
+
+@cache
+def arena_data() -> dict:
+    return json.loads(ARENA_DATA_PATH.read_text())
+
+
+def board_of(kind: str) -> dict:
+    """What a prop does on the board: from its `board` entry in scenery.json, else the default (blocks movement, no cover)."""
+    from stage import scenes
+
+    entry = (scenes.catalog()["props"].get(kind) or {}).get("board") or {}
+    return {**DEFAULT_BOARD, **entry}
+
+
+def cheb(a, b) -> int:
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def blocked_cells(a: dict) -> set[tuple[int, int]]:
+    """Tiles no unit can enter: walls, hazards, and props that block movement."""
+    out = {(x, y) for y, row in enumerate(a["grid"]) for x, c in enumerate(row) if c not in STAND}
+    return out | {(p["x"], p["y"]) for p in a["props"] if board_of(p["kind"])["blocks_move"]}
+
+
+def opaque_cells(a: dict) -> set[tuple[int, int]]:
+    """Tiles that stop a line of sight: walls and tall props."""
+    out = {(x, y) for y, row in enumerate(a["grid"]) for x, c in enumerate(row) if c == WALL}
+    return out | {(p["x"], p["y"]) for p in a["props"] if board_of(p["kind"])["blocks_sight"]}
+
+
+def cover_cells(a: dict) -> dict[tuple[int, int], str]:
+    return {(p["x"], p["y"]): c for p in a["props"] if (c := board_of(p["kind"])["cover"]) != "none"}
+
+
+def between(a, b):
+    """The cells strictly between two cells, on the line."""
+    cells = list(line(a[0], a[1], b[0], b[1]))
+    return cells[1:-1]
+
+
+def clear_line(a, b, opaque) -> bool:
+    return not any(c in opaque for c in between(a, b))
+
+
+def cover_between(a, b, cover: dict) -> str:
+    """The best cover on the line from a to b: none, half or three-quarters."""
+    best = "none"
+    for c in between(a, b):
+        if COVER_BONUS[cover.get(c, "none")] > COVER_BONUS[best]:
+            best = cover[c]
+    return best
+
+
+def reach(start, limit: int, blocked, size: tuple[int, int], occupied=frozenset()):
+    """Walk 8 directions from start, up to `limit` steps: (distance by cell, previous cell by cell).
+
+    A diagonal step needs both side cells free of blocking tiles. A unit cannot enter or pass an occupied cell.
+    """
+    w, h = size
+    start = tuple(start)
+    dist, prev, queue = {start: 0}, {}, deque([start])
+    while queue:
+        x, y = queue.popleft()
+        if dist[(x, y)] >= limit:
+            continue
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                n = (x + dx, y + dy)
+                if (dx or dy) and 0 <= n[0] < w and 0 <= n[1] < h and n not in dist and n not in blocked and n not in occupied:
+                    if dx and dy and ((x + dx, y) in blocked or (x, y + dy) in blocked):
+                        continue
+                    dist[n] = dist[(x, y)] + 1
+                    prev[n] = (x, y)
+                    queue.append(n)
+    return dist, prev
+
+
+def path_from(prev: dict, start, target) -> list[tuple[int, int]]:
+    """The steps from start to target (without start), from the `prev` map of `reach`."""
+    out, cur = [], tuple(target)
+    while cur != tuple(start):
+        out.append(cur)
+        cur = prev[cur]
+    return out[::-1]
+
+
+# -- the spec from the DM's tokens ------------------------------------------
+
+
+def _where(word: str, what: str) -> tuple[str, str]:
+    thing, at, where = word.partition("@")
+    if not at or where not in WHERES:
+        raise ArenaError(f"{what}={word}: write {what}=<thing>@<where>, where is one of {', '.join(WHERES)}.")
+    return thing, where
+
+
+def parse(tokens: list[str]) -> dict:
+    """A spec from `key=value` tokens: layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=."""
+    from stage import scenes
+
+    spec: dict = {"features": [], "hazards": []}
+    for token in tokens:
+        key, eq, value = token.partition("=")
+        key = key.strip().lower()
+        if not eq:
+            raise ArenaError(f"{token!r}: write key=value (layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=).")
+        if key == "layout":
+            if value not in LAYOUTS:
+                raise ArenaError(f"layout= is one of {', '.join(LAYOUTS)}.")
+            spec["layout"] = value
+        elif key == "size":
+            if value not in SIZES:
+                raise ArenaError(f"size= is one of {', '.join(SIZES)}.")
+            spec["size"] = value
+        elif key == "light":
+            if value not in LIGHTS:
+                raise ArenaError(f"light= is one of {', '.join(LIGHTS)}.")
+            spec["light"] = value
+        elif key == "ambush":
+            if value not in ("yes", "no"):
+                raise ArenaError("ambush= is yes or no.")
+            spec["ambush"] = value == "yes"
+        elif key == "seed":
+            if not value.isdigit():
+                raise ArenaError("seed= is a whole number.")
+            spec["seed"] = int(value)
+        elif key == "theme":
+            if value not in themes():
+                raise ArenaError(f"no theme {value!r}. Themes: {', '.join(themes())}.")
+            spec["theme"] = value
+        elif key == "feature":
+            thing, where = _where(value, "feature")
+            if thing not in ("cover", "pillar", "barrels") and thing not in scenes.catalog()["props"]:
+                raise ArenaError(f"feature={value}: the thing is cover, pillar, barrels, or a prop of the scene catalog.")
+            spec["features"].append([thing, where])
+        elif key == "hazard":
+            thing, where = _where(value, "hazard")
+            if thing not in HAZARDS:
+                raise ArenaError(f"hazard={value}: the hazard is lava or water.")
+            spec["hazards"].append([thing, where])
+        else:
+            raise ArenaError(f"unknown setting {key!r}. Use layout=, size=, light=, ambush=, seed=, theme=, feature=, hazard=.")
+    return spec
+
+
+# -- where the fight starts: a site room, a saved scene, or nothing ----------
+
+
+def source_of(campaign_dir: Path, stage: dict, spec: dict) -> dict:
+    """What the arena looks like and holds: its tiles (a look), its prop family (decor), its shell and its scene props."""
+    from stage import crawl, scenes
+
+    cfg = arena_data()
+    theme, props = spec.get("theme"), []
+    if stage.get("explore") and (site := crawl.load(campaign_dir, stage["explore"])):
+        theme = theme or site["spec"]["theme"]
+        out = {"kind": "site", "id": stage["explore"], "look": look_of(theme), "shell": "room", "layout": "pillars"}
+        out["decor"] = cfg["site_decor"].get(theme, "dungeon")
+        return out
+    scene = scenes.load(campaign_dir, stage["scene"]) if stage.get("scene") else None
+    if scene and scene.get("template") in cfg["scene_looks"]:
+        template = scene["template"]
+        resolved = scenes.resolve(scene)
+        walls = theme or cfg["scene_looks"][template]
+        look = {**look_of(walls), "floor": "lpc:" + resolved["floor"]}
+        for slot, name in resolved["slots"].items():
+            props.append((name, slot))
+        props += [(name, zone) for name, zone in resolved["add"]]
+        out = {"kind": "scene", "id": stage["scene"], "look": look, "props": props}
+        out["shell"] = "open" if template in cfg["open_templates"] else "room"
+        out["decor"] = "forest" if out["shell"] == "open" else cfg["site_decor"].get(walls, "dungeon")
+        out["layout"] = "open"
+        return out
+    theme = theme or "forest"
+    return {"kind": "none", "id": None, "look": look_of(theme), "shell": "open", "layout": "open", "props": [],
+            "decor": cfg["site_decor"].get(theme, "forest")}
+
+
+# -- the generator -----------------------------------------------------------
+
+
+def generate(spec: dict, source: dict, n_party: int = 2, n_foes: int = 3) -> dict:
+    """A new arena from its spec and its source: shell, layout, source props, DM features, starts. Same seed, same arena."""
+    from stage import scenes
+
+    spec = {"layout": source["layout"], "size": "medium", "light": "lit", "ambush": False, **spec}
+    spec.setdefault("seed", random.randrange(1, 10**6))
+    w, h = SIZES[spec["size"]]
+    cx, my = w // 2, h // 2
+    decor = arena_data()["decor"][source["decor"]]
+    prop_catalog = scenes.catalog()["props"]
+    for attempt in range(MAX_TRIES):
+        rng = random.Random(f"{spec['seed']}:{attempt}")
+        edits = attempt < MAX_TRIES * 2 // 3  # the last tries leave out the DM's features, so the arena still gets made
+        features, hazards = (spec["features"], spec["hazards"]) if edits else ([], [])
+        grid = [[WALL if x in (0, w - 1) or y in (0, h - 1) else FLOOR for x in range(w)] for y in range(h)]
+        if source["shell"] == "room":
+            grid[my][0] = grid[my][w - 1] = DOOR
+        props: list[dict] = []
+        taken: set[tuple[int, int]] = set()
+
+        def free(x, y):
+            return 1 <= x <= w - 2 and 1 <= y <= h - 2 and 3 <= x <= w - 4 and grid[y][x] == FLOOR and (x, y) not in taken
+
+        def put(kind, x, y):
+            if free(x, y):
+                props.append({"id": f"{kind}#{sum(p['kind'] == kind for p in props) + 1}", "kind": kind, "x": x, "y": y})
+                taken.add((x, y))
+
+        def nearest(ax, ay, n):
+            cells = [(x, y) for y in range(1, h - 1) for x in range(3, w - 3) if free(x, y)]
+            return sorted(cells, key=lambda c: (math.hypot(c[0] - ax, c[1] - ay) + rng.random() * 0.8))[:n]
+
+        layout = spec["layout"]
+        if layout == "chokepoint":
+            gap = my + rng.randint(-1, 1)
+            for y in range(1, h - 1):
+                if abs(y - gap) > 1:
+                    grid[y][cx] = WALL
+            put(rng.choice(decor["cover"]), cx - 2, 2)
+            put(rng.choice(decor["cover"]), cx + 2, h - 3)
+        elif layout == "pillars":
+            for x in (cx - 3, cx, cx + 3):
+                for y in (2, my, h - 3):
+                    if not (x == cx and y == my) and rng.random() > 0.2:
+                        put(decor["pillar"], x, y)
+        elif layout == "chasm":
+            gap = my - 1 + rng.randint(0, 1)
+            for x in (cx, cx + 1):
+                for y in range(1, h - 1):
+                    grid[y][x] = FLOOR if gap <= y <= gap + 1 else HAZARD
+        else:
+            for _ in range(3 + rng.randint(0, 2)):
+                put(rng.choice(decor["obstacles"]), rng.randint(3, w - 4), rng.randint(1, h - 2))
+        for _ in range(2):
+            put(rng.choice(decor["small"]), rng.randint(3, w - 4), rng.randint(1, h - 2))
+        for name, slot in source.get("props", []):
+            entry = prop_catalog.get(name) or {}
+            if entry.get("on") == "wall" or entry.get("flat") or "_" not in slot or slot.split("_")[0] not in ZONE_ROW:
+                continue
+            row, col = slot.split("_", 1)
+            y = {"back": 2, "mid": my, "front": h - 3}[row]
+            x = {"left": 3, "center": cx, "right": w - 4}.get(col, cx)
+            for dx in range(2):
+                if free(x + dx, y):
+                    put(name, x + dx, y)
+                    break
+        for thing, where in features:
+            ax = {"party": 3, "center": cx, "foes": w - 4}[where]
+            kind = rng.choice(decor["cover"]) if thing == "cover" else decor["pillar"] if thing == "pillar" else "barrel" if thing == "barrels" else thing
+            for x, y in nearest(ax, my + rng.randint(-1, 1), 2 if thing == "barrels" else 1):
+                put(kind, x, y)
+        for _kind, where in hazards:
+            ax = {"party": 3, "center": cx, "foes": w - 4}[where]
+            for x, y in nearest(ax, my + rng.randint(-1, 1), 4):
+                grid[y][x] = HAZARD
+        items = []
+        spots = nearest(4.5, my, 4)
+        if spots:
+            x, y = spots[rng.randrange(len(spots))]
+            items.append({"id": "item#1", "name": decor["item"], "x": x, "y": y})
+        a = {"w": w, "h": h, "grid": ["".join(r) for r in grid], "props": props, "items": items}
+        blocked = blocked_cells(a)
+        free_tiles = [(x, y) for y in range(h) for x in range(w) if (x, y) not in blocked]
+
+        def pick(ax, ay, n, lo, hi, avoid):
+            cells = [(x, y) for y in range(1, h - 1) for x in range(lo, hi + 1)
+                     if (x, y) not in blocked and (x, y) not in avoid and grid[y][x] == FLOOR]
+            return sorted(cells, key=lambda c: math.hypot(c[0] - ax, c[1] - ay) + rng.random() * 0.6)[:n]
+
+        party = pick(2, my, n_party, 1, 3, set())
+        if spec["ambush"] and n_foes >= 3:
+            top = pick(cx - 2, 1, 1, 1, w - 2, set(party))
+            bottom = pick(cx + 2, h - 2, 1, 1, w - 2, set(party) | set(top))
+            rest = pick(w - 3, my, n_foes - 2, w - 5, w - 2, set(party) | set(top) | set(bottom))
+            foes = top + bottom + rest
+        else:
+            foes = pick(w - 3, my, n_foes, w - 5, w - 2, set(party))
+        if len(party) < n_party or len(foes) < n_foes:
+            continue
+        foes.sort(key=lambda p: min(math.hypot(p[0] - q[0], p[1] - q[1]) for q in party))
+        dist, _ = reach(party[0], w * h, blocked, (w, h))
+        if not all(p in dist for p in party + foes) or len(dist) < 0.9 * len(free_tiles):
+            continue
+        a.update(
+            spec={**spec, "features": spec["features"], "source": source["kind"], "source_id": source["id"], "decor": source["decor"]},
+            look=source["look"], starts={"party": [list(p) for p in party], "foes": [list(p) for p in foes]},
+            units={}, seen=["0" * w for _ in range(h)])
+        return a
+    raise ArenaError("could not make this arena; try another seed=.")
+
+
+# -- files --------------------------------------------------------------------
+
+
+def arenas_dir(campaign_dir: Path) -> Path:
+    return campaign_dir / "stage" / "arenas"
+
+
+def load(campaign_dir: Path, arena_id: str) -> dict | None:
+    from stage.files import read_json
+
+    return read_json(arenas_dir(campaign_dir) / f"{arena_id}.json") if re.fullmatch(r"[a-z0-9-]+", arena_id) else None
+
+
+def save(campaign_dir: Path, arena_id: str, a: dict) -> Path:
+    from stage.files import write_json
+
+    return write_json(arenas_dir(campaign_dir) / f"{arena_id}.json", a)
+
+
+def new_id(campaign_dir: Path) -> str:
+    folder = arenas_dir(campaign_dir)
+    return f"arena-{len(list(folder.glob('arena-*.json'))) + 1 if folder.is_dir() else 1}"
+
+
+# -- the preview ---------------------------------------------------------------
+
+
+def prop_png(kind: str) -> bytes:
+    """A prop as one picture for the board: the scene sprite, scaled down so it does not cover its neighbors."""
+    return _prop_png(kind)
+
+
+@lru_cache(maxsize=64)
+def _prop_png(kind: str) -> bytes:
+    from stage import scenes
+
+    img = scenes.prop_image(kind).convert("RGBA")
+    box = img.getchannel("A").getbbox()
+    if box:
+        img = img.crop(box)
+    scale = min(1.0, T * 1.25 / img.width, T * 1.9 / img.height)
+    if scale < 1.0:
+        img = img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def render_full(a: dict, units: dict | None = None):
+    """The whole arena with props, items, and the start tiles, for the DM's preview (never sent to players)."""
+    from PIL import Image, ImageDraw
+
+    atlas = Image.open(io.BytesIO(atlas_for(a["look"])))
+    counts = look_counts(a["look"])
+    img = Image.new("RGBA", (a["w"] * T, a["h"] * T), (0, 0, 0, 255))
+
+    def tile(col: int, row: int):
+        return atlas.crop((col * T, row * T, (col + 1) * T, (row + 1) * T))
+
+    hazard = icon_png("water" if a["spec"]["decor"] == "forest" else "lava")
+    for y, row in enumerate(a["grid"]):
+        for x, c in enumerate(row):
+            if c == WALL:
+                img.alpha_composite(tile(variant(x, y, counts["walls"]), 0), (x * T, y * T))
+                continue
+            f = (x % 2) + (y % 2) * 2 if counts["pattern"] else variant(x, y, counts["floors"])
+            img.alpha_composite(tile(f, 1), (x * T, y * T))
+            if c == DOOR:
+                img.alpha_composite(tile(1, 2), (x * T, y * T))
+            elif c == HAZARD and hazard:
+                img.alpha_composite(Image.open(io.BytesIO(hazard)).convert("RGBA").crop((0, 0, T, T)), (x * T, y * T))
+    draw = ImageDraw.Draw(img)
+    for p in a["props"]:
+        sprite = Image.open(io.BytesIO(prop_png(p["kind"])))
+        img.alpha_composite(sprite, (p["x"] * T + (T - sprite.width) // 2, (p["y"] + 1) * T - sprite.height))
+    for it in a["items"]:
+        draw.ellipse((it["x"] * T + 10, it["y"] * T + 10, it["x"] * T + 22, it["y"] * T + 22), fill=(127, 178, 214, 255), outline=(232, 244, 255, 255))
+    for side, color in (("party", (95, 168, 224, 255)), ("foes", (229, 83, 79, 255))):
+        for x, y in a["starts"][side]:
+            draw.rectangle((x * T + 2, y * T + 2, x * T + 29, y * T + 29), outline=color, width=2)
+    return img

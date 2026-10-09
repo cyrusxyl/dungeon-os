@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from dnd_cli import character, combat, effects, sheet
 from dnd_cli.api import api_get
-from dnd_cli.commands.show_cmd import run_stage
+from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from dnd_cli.dice import DiceError
+from stage import arena, board, state as stage_state
+from stage.beat import log_path
 
-ERRORS = (combat.RulesError, DiceError, character.CharacterError)
+ERRORS = (combat.RulesError, DiceError, character.CharacterError, arena.ArenaError)
 
 
 def _out(lines: list[str]) -> int:
@@ -36,7 +38,12 @@ def execute_encounter(campaign, action: str, args) -> int:
     def fn(campaign_dir, state):
         if action == "start":
             pcs = None if args.pcs in (None, "all") else [p for p in args.pcs.split(",") if p]
-            return combat.start(campaign_dir, state, args.specs, pcs)
+            lines = combat.start(campaign_dir, state, args.specs, pcs)
+            if args.arena is None:
+                return lines
+            lines += board.start(campaign_dir, state, args.arena, stage_state.replay(log_path(campaign_dir)))
+            notify_stage(campaign_dir, {"type": "arena", "arena": state["active_encounter"]["arena"]})
+            return lines
         if action == "add":
             return combat.add(campaign_dir, state, args.specs)
         if action == "next":
@@ -54,7 +61,11 @@ def execute_encounter(campaign, action: str, args) -> int:
             combat.spend_turn(state, args.target, args.kind, not args.free)
             return [f"{args.target}: {args.kind} {'free' if args.free else 'used'}."]
         if action == "end":
-            return combat.end(campaign_dir, state, award_xp=not args.no_xp)
+            on_board = (state.get("active_encounter") or {}).get("arena")
+            lines = combat.end(campaign_dir, state, award_xp=not args.no_xp)
+            if on_board:
+                notify_stage(campaign_dir, {"type": "arena_end"})
+            return lines
         raise combat.RulesError("encounter start|add|next|status|damage|heal|condition|use|end")
     return _with_state(campaign, fn)
 

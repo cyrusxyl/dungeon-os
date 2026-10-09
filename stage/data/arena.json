@@ -1,0 +1,156 @@
+{
+  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees).",
+  "decor": {
+    "tavern": {
+      "obstacles": [
+        "barrel",
+        "chests",
+        "dresser"
+      ],
+      "cover": [
+        "barrel",
+        "chests"
+      ],
+      "pillar": "barrel_pile",
+      "small": [
+        "stool",
+        "chair"
+      ],
+      "item": "wine bottle"
+    },
+    "dungeon": {
+      "obstacles": [
+        "column_broken",
+        "chests"
+      ],
+      "cover": [
+        "chests",
+        "column_broken"
+      ],
+      "pillar": "column_broken",
+      "small": [
+        "stones"
+      ],
+      "item": "rusty flask"
+    },
+    "crypt": {
+      "obstacles": [
+        "column_broken",
+        "chests"
+      ],
+      "cover": [
+        "chests",
+        "column_broken"
+      ],
+      "pillar": "column_broken",
+      "small": [
+        "stones"
+      ],
+      "item": "old urn"
+    },
+    "forest": {
+      "obstacles": [
+        "tree",
+        "oak",
+        "pine",
+        "stump"
+      ],
+      "cover": [
+        "stump",
+        "bush"
+      ],
+      "pillar": "tree",
+      "small": [
+        "stones",
+        "mushroom"
+      ],
+      "item": "rock"
+    }
+  },
+  "site_decor": {
+    "crypt": "crypt",
+    "tomb": "crypt",
+    "house": "tavern",
+    "tavern": "tavern",
+    "manor": "tavern",
+    "tower": "tavern",
+    "forest": "forest",
+    "overgrown": "forest"
+  },
+  "scene_looks": {
+    "tavern": "tavern",
+    "inn_room": "tavern",
+    "house": "house",
+    "kitchen": "house",
+    "shop": "house",
+    "market": "house",
+    "library": "manor",
+    "alchemist": "tower",
+    "armory": "house",
+    "smithy": "house",
+    "barn": "house",
+    "chapel": "temple",
+    "temple": "temple",
+    "dark_shrine": "temple",
+    "treasury": "castle",
+    "hall": "castle",
+    "prison": "dungeon",
+    "cellar": "dungeon",
+    "dungeon": "dungeon",
+    "sewer": "sewer",
+    "crypt": "crypt",
+    "mine": "mine",
+    "cave": "cave",
+    "cavern": "cave",
+    "ruins": "overgrown",
+    "forest": "forest",
+    "road": "forest",
+    "camp": "forest",
+    "swamp": "forest",
+    "farm": "forest",
+    "graveyard": "forest",
+    "river": "forest",
+    "beach": "forest",
+    "snowfield": "forest",
+    "desert": "forest",
+    "plaza": "forest",
+    "street": "forest",
+    "dock": "forest",
+    "ship": "forest",
+    "training_yard": "forest",
+    "bedroom": "house",
+    "study": "manor",
+    "throne_room": "castle",
+    "courtyard": "forest",
+    "mountain_pass": "forest",
+    "lava_cave": "volcano",
+    "frozen_lake": "forest",
+    "haunted_woods": "forest",
+    "battlefield": "forest",
+    "tavern_cellar": "dungeon",
+    "guild_hall": "castle",
+    "stable": "house"
+  },
+  "open_templates": [
+    "forest",
+    "road",
+    "camp",
+    "swamp",
+    "farm",
+    "graveyard",
+    "river",
+    "beach",
+    "snowfield",
+    "desert",
+    "plaza",
+    "street",
+    "dock",
+    "ship",
+    "training_yard",
+    "courtyard",
+    "mountain_pass",
+    "frozen_lake",
+    "haunted_woods",
+    "battlefield"
+  ]
+}

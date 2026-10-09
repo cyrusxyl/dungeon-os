@@ -142,6 +142,13 @@
       "floor": "lpc:parquet",
       "exit": "dungeon/doors/open_door.png",
       "danger": "low"
+    },
+    "forest": {
+      "style": "cave",
+      "wall": "dungeon/trees/mangrove",
+      "floor": "lpc:grass",
+      "exit": "dungeon/gateways/stone_stairs_up.png",
+      "danger": "low"
     }
   },
   "doors": {
@@ -186,7 +193,9 @@
     "tree": "dungeon/trees/mangrove_1.png",
     "cage": "dungeon/floor/cage_0.png",
     "gems": "item/misc/misc_crystal.png",
-    "bed": "dungeon/vaults/sarcophagus_pedestal_left.png"
+    "bed": "dungeon/vaults/sarcophagus_pedestal_left.png",
+    "lava": "dungeon/floor/lava_0.png",
+    "water": "dungeon/water/deep_water.png"
   },
   "icon_words": {
     "sarcophagus": "coffin",

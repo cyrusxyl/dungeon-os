@@ -51,6 +51,7 @@ def empty() -> dict:
         "versions": {},
         "rolls": [],
         "explore": None,
+        "arena": None,
         "place": None,
         "activity": [],
     }
@@ -70,6 +71,7 @@ UPDATED = {
     "actor_updated": ("", "actor"),
     "site_updated": ("site:", "site"),
     "map_updated": ("map:", "map"),
+    "arena_updated": ("arena:", "arena"),
 }
 
 
@@ -90,13 +92,22 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = None
         s["roll_request"] = None
         s["explore"] = None
+        s["arena"] = None
         s["await"] = None
     elif kind == "explore":
         s["explore"] = event["site"]
+        s["arena"] = None
         s["actors"] = {}
         s["choices"] = None
         # A new @explore can move the party (to a POI): fetch the site again.
         s["versions"]["site:" + event["site"]] = s["seq"]
+    elif kind == "arena":
+        # A fight on the board: the view shows the arena instead of the scene or the site, until the fight ends.
+        s["arena"] = event["arena"]
+        s["choices"] = None
+        s["versions"]["arena:" + event["arena"]] = s["seq"]
+    elif kind == "arena_end":
+        s["arena"] = None
     elif kind == "at":
         s["place"] = {"map": event["map"], "place": event["place"]}
     elif kind in UPDATED:
@@ -152,3 +163,20 @@ def apply(state: dict, event: dict) -> dict:
         if event.get("dm_text"):
             s["dm_log"] = (s["dm_log"] + [event["dm_text"]])[-DM_LOG_LIMIT:]
     return s
+
+
+def replay(log_path) -> dict:
+    """The state after every event of a stage log (the CLI has no running stage to ask)."""
+    import json
+
+    state = empty()
+    try:
+        lines = open(log_path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return state
+    for line in lines:
+        try:
+            state = apply(state, json.loads(line))
+        except ValueError:
+            continue
+    return state
