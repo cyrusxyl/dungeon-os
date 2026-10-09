@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CharacterCreator } from '@/components/CharacterCreator'
 import { ConsoleDrawer } from '@/components/Console'
 import { DiceOverlay } from '@/components/DiceOverlay'
+import { ArenaView } from '@/components/ArenaView'
 import { CrawlView } from '@/components/CrawlView'
 import { DialogueBox } from '@/components/DialogueBox'
 import { JoinQr } from '@/components/JoinQr'
@@ -144,6 +145,14 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const waitingText = awaiting?.who === 'all' && awaiting.waiting.length ? `Waiting for ${awaiting.waiting.map(nameOf).join(', ')}.` : ''
   // Walking and travel wait until the player has read the story so far.
   const canAct = canType && caughtUp
+  // The picture of the world: the board of a fight, the site the party walks, or the scene.
+  const sceneView = state.arena ? (
+    <ArenaView state={state} arenaId={state.arena} actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null} mine={mine} />
+  ) : state.explore ? (
+    <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
+  ) : (
+    <StageView state={state} speaker={speaker} />
+  )
   const waitingWorld = state.party_mode === 'premade' && log.length === 0 && ['starting', 'busy'].includes(state.dm.status)
   const activity = state.activity?.at(-1)
   const baseStatus = waitingWorld ? 'The DM is preparing the world and your party…' : STATUS_TEXT[state.dm.status]
@@ -421,7 +430,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
                 {hand.scene && (
                   <div className="relative aspect-[320/192] w-full border-4 border-[var(--border)] bg-black">
                     <SceneTitle state={state} />
-                    {state.explore ? <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} /> : <StageView state={state} speaker={speaker} />}
+                    {sceneView}
                   </div>
                 )}
                 <DialogueBox line={current} pending={pending} onAdvance={advance} versions={state.versions ?? {}} />
@@ -567,11 +576,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
           <div className="relative min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
             <SceneTitle state={state} />
-            {state.explore ? (
-              <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
-            ) : (
-              <StageView state={state} speaker={speaker} />
-            )}
+            {sceneView}
           </div>
           <DialogueBox line={current} pending={pending} onAdvance={advance} versions={state.versions ?? {}} />
 

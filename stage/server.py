@@ -53,7 +53,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli.sheet import GOLD
-from stage import actors, beat, crawl, lpc, maps, party, scenes, state as stage_state
+from stage import actors, arena, beat, board, crawl, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
@@ -1155,6 +1155,20 @@ def create_app(
             finally:
                 del os.environ["DUNGEON_STAGE_LOG"]
 
+    def with_board(stage: Stage, fn):
+        """Run fn(state, arena) on the running fight under the rules lock, and save both: (arena id, fn's result)."""
+        with rolling:
+            os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
+            try:
+                state = combat.load_state(stage.campaign_dir)
+                arena_id, a = board.running(stage.campaign_dir, state)
+                out = fn(state, a)
+                combat.save_state(stage.campaign_dir, state)
+                arena.save(stage.campaign_dir, arena_id, a)
+                return arena_id, out
+            finally:
+                del os.environ["DUNGEON_STAGE_LOG"]
+
     async def api_effects(request: Request):
         """A party member gives a bonus (a spell they know, Bardic Inspiration). The cost is spent; nothing else is on offer."""
         stage = idle_stage()
@@ -1377,6 +1391,84 @@ def create_app(
             return error("kind is examine or leave.", 400)
         return JSONResponse({"ok": True})
 
+    # -- the board of a fight ---------------------------------------------------
+
+    async def api_arena(request: Request):
+        stage = need()
+        arena_id = request.path_params["arena_id"]
+
+        def build():
+            state = combat.load_state(stage.campaign_dir)
+            a = arena.load(stage.campaign_dir, arena_id)
+            if a is None or (state.get("active_encounter") or {}).get("arena") != arena_id:
+                return None
+            return board.view(stage.campaign_dir, state, arena_id, a)
+        view = await run_in_threadpool(build)
+        return JSONResponse(view) if view else error("No such fight.", 404)
+
+    async def board_call(request: Request, fn, who_key: str = "who"):
+        """A player's action on the board: the character is theirs, it is its turn, the DM is idle. Returns fn's result as JSON."""
+        stage = idle_stage()
+        body = await request.json()
+        who = pc_or_404(stage, body.get(who_key))
+        own(request, stage, who)
+
+        def go(st, a):
+            board.require_turn(st, who)
+            return fn(stage, st, a, who, body)
+        try:
+            arena_id, out = await run_in_threadpool(with_board, stage, go)
+        except (combat.RulesError, character.CharacterError) as e:
+            return error(str(e), 400)
+        await stage._local_event({"type": "arena_updated", "arena": arena_id})
+        return JSONResponse(out)
+
+    async def api_arena_move(request: Request):
+        def go(stage, st, a, who, body):
+            try:
+                to = (int(body["to"][0]), int(body["to"][1]))
+            except (KeyError, TypeError, ValueError, IndexError):
+                raise board.BoardError("give to as [x, y].") from None
+            return board.move(stage.campaign_dir, st, a, who, to)
+        return await board_call(request, go)
+
+    async def api_arena_attack(request: Request):
+        def go(stage, st, a, who, body):
+            target = str(body.get("target"))
+            if target not in a["units"]:
+                raise board.BoardError("no such target on the board.")
+            weapon = str(body.get("weapon") or board.default_weapon(stage.campaign_dir, st, a, who, target))
+            return {"lines": board.attack(stage.campaign_dir, st, a, who, weapon, target, own_turn_only=True)}
+        return await board_call(request, go)
+
+    async def api_arena_react(request: Request):
+        stage = idle_stage()
+        body = await request.json()
+        state = combat.load_state(stage.campaign_dir)
+        arena_id = (state.get("active_encounter") or {}).get("arena")
+        pending = ((arena.load(stage.campaign_dir, arena_id) if arena_id else None) or {}).get("pending")
+        if not pending:
+            return error("No reaction question is waiting.")
+        own(request, stage, pending["who"])  # only the player asked may answer
+        try:
+            arena_id, out = await run_in_threadpool(with_board, stage, lambda st, a: board.answer(stage.campaign_dir, st, a, bool(body.get("take"))))
+        except (combat.RulesError, character.CharacterError) as e:
+            return error(str(e), 400)
+        await stage._local_event({"type": "arena_updated", "arena": arena_id})
+        return JSONResponse(out)
+
+    async def asset_arena(request: Request):
+        a = arena.load(need().campaign_dir, request.path_params["arena_id"])
+        if a is None:
+            return Response(status_code=404)
+        return await png_response(arena.atlas_for, a["look"], static=True)
+
+    async def asset_prop(request: Request):
+        kind = request.path_params["kind"]
+        if kind not in scenes.catalog()["props"]:
+            return Response(status_code=404)
+        return await png_response(arena.prop_png, kind, static=True)
+
     async def api_map_levels(request: Request):
         stage = need()
         found = maps.all_maps(stage.campaign_dir)
@@ -1478,6 +1570,12 @@ def create_app(
         Route("/api/site/{site_id}", api_site),
         Route("/api/site/{site_id}/move", api_site_move, methods=["POST"]),
         Route("/api/site/{site_id}/act", api_site_act, methods=["POST"]),
+        Route("/api/arena/move", api_arena_move, methods=["POST"]),
+        Route("/api/arena/attack", api_arena_attack, methods=["POST"]),
+        Route("/api/arena/react", api_arena_react, methods=["POST"]),
+        Route("/api/arena/{arena_id}", api_arena),
+        Route("/asset/arena/{arena_id}.png", asset_arena),
+        Route("/asset/prop/{kind}.png", asset_prop),
         Route("/api/map", api_map_levels),
         Route("/api/map/travel", api_map_travel, methods=["POST"]),
         Route("/api/map/{map_id}", api_map),

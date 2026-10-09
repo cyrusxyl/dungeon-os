@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { focusTakesText, postJson, type StageState, useIntegerScale, useJson } from '@/lib/stage'
+import { T, useImages, variant } from '@/lib/tiles'
 
 // A window of 15 x 9 tiles of 32 px that follows the party.
-const T = 32
 const VIEW_W = 15
 const VIEW_H = 9
 const W = VIEW_W * T
@@ -36,13 +36,6 @@ const KEYS: Record<string, Facing> = {
   ArrowRight: 'right', d: 'right', D: 'right',
 }
 
-/** A stable tile variant per cell; variant 0 about half of the time, like DCSS maps. */
-function variant(x: number, y: number, n: number): number {
-  const h = (Math.imul(x, 374761393) ^ Math.imul(y, 668265263)) >>> 0
-  const k = ((h ^ (h >>> 13)) >>> 0) % (n * 2)
-  return k < n ? k : 0
-}
-
 function camera(size: number, view: number, at: number): number {
   if (size <= view) return -Math.floor((view - size) / 2)
   return Math.min(Math.max(at - Math.floor(view / 2), 0), size - view)
@@ -52,23 +45,6 @@ function facingOf(from: Cell, to: Cell): Facing {
   if (to[0] > from[0]) return 'right'
   if (to[0] < from[0]) return 'left'
   return to[1] < from[1] ? 'up' : 'down'
-}
-
-/** Images by URL; `tick` changes when one finishes loading, so the canvas redraws. */
-function useImages(): [(url: string) => HTMLImageElement | undefined, number] {
-  const cache = useRef(new Map<string, HTMLImageElement>())
-  const [tick, setTick] = useState(0)
-  const get = useCallback((url: string) => {
-    let img = cache.current.get(url)
-    if (!img) {
-      img = new Image()
-      img.onload = () => setTick((t) => t + 1)
-      img.src = url
-      cache.current.set(url, img)
-    }
-    return img.complete && img.naturalWidth ? img : undefined
-  }, [])
-  return [get, tick]
 }
 
 function draw(ctx: CanvasRenderingContext2D, view: SiteView, pos: Cell, facing: Facing, image: (url: string) => HTMLImageElement | undefined) {

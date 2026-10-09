@@ -233,8 +233,13 @@ def attack_check(campaign_dir: Path, state: dict, a: dict, attacker: str, entry:
 
 
 def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str, target: str, rng=None, cost: str | None = "action",
-           adv: bool = False, dis: bool = False, bonus: int = 0, secret: bool = False) -> list[str]:
-    """An attack with the board's rules: reach or range, line of sight, cover (-2 or -5 to hit), and an enemy next to an archer."""
+           adv: bool = False, dis: bool = False, bonus: int = 0, secret: bool = False, own_turn_only: bool = False) -> list[str]:
+    """An attack with the board's rules: reach or range, line of sight, cover (-2 or -5 to hit), and an enemy next to an archer.
+
+    `own_turn_only`: the stage refuses an attack out of turn. The DM's `attack` command keeps its way of moving the tracker.
+    """
+    if own_turn_only and cost != "reaction" and state["active_encounter"].get("current_turn") != attacker:
+        raise BoardError(f"it is {state['active_encounter'].get('current_turn')}'s turn, not {attacker}'s.")
     rec = combat.combatant(campaign_dir, state, attacker)
     entry = combat._find_attack(rec, weapon)
     check = attack_check(campaign_dir, state, a, attacker, entry, target)
@@ -250,3 +255,58 @@ def approach(campaign_dir: Path, state: dict, a: dict, cid: str, target: str) ->
     goal = pos(a, target)
     best = min(dist, key=lambda c: (arena.cheb(c, goal), dist[c]))
     return best if best != pos(a, cid) and arena.cheb(best, goal) < arena.cheb(pos(a, cid), goal) else None
+
+
+# -- what the browser may know ------------------------------------------------
+
+
+def view(campaign_dir: Path, state: dict, arena_id: str, a: dict) -> dict:
+    """The arena as a player sees it. A creature shows how hurt it is as a band, never as numbers.
+
+    The party sees a lit room whole. The cells a player cannot see never leave the server (light and fog come with
+    the `light` setting).
+    """
+    enc = state["active_encounter"]
+    units = []
+    for cid in a["units"]:
+        rec = combat.combatant(campaign_dir, state, cid)
+        x, y = pos(a, cid)
+        u = {"id": cid, "name": rec["name"], "x": x, "y": y, "pc": not is_foe(state, cid), "down": not standing(rec),
+             "health": combat.health_band(rec), "conditions": [c["condition"] for c in enc.get("conditions", {}).get(cid, [])]}
+        if u["pc"]:
+            u["hp"] = rec["hp"]
+        units.append(u)
+    current = enc.get("current_turn")
+    walk: list[list[int]] = []
+    left = 0
+    if current in a["units"] and not is_foe(state, current) and standing(combat.combatant(campaign_dir, state, current)) and not a.get("pending"):
+        dist, _ = reachable(campaign_dir, state, a, current)
+        walk = [list(c) for c, n in dist.items() if n > 0]
+        left = tiles_left(state, combat.combatant(campaign_dir, state, current)) * TILE_FT
+    pending = a.get("pending")
+    return {
+        "id": arena_id, "w": a["w"], "h": a["h"], "grid": a["grid"], "light": a["spec"]["light"],
+        "hazard": "water" if a["spec"]["decor"] == "forest" else "lava",
+        "tiles": arena.look_counts(a["look"]),
+        "props": [{"id": p["id"], "kind": p["kind"], "x": p["x"], "y": p["y"]} for p in a["props"]],
+        "items": [{"id": i["id"], "name": i["name"], "x": i["x"], "y": i["y"]} for i in a["items"]],
+        "units": units, "current": current, "round": enc.get("round", 1), "walk": walk, "feet_left": left,
+        "pending": {"who": pending["who"], "against": pending["against"]} if pending else None,
+    }
+
+
+def require_turn(state: dict, cid: str) -> None:
+    """The stage lets a player act only on their character's turn."""
+    now = (state.get("active_encounter") or {}).get("current_turn")
+    if now != cid:
+        raise BoardError(f"it is {now}'s turn, not {cid}'s.")
+
+
+def default_weapon(campaign_dir: Path, state: dict, a: dict, attacker: str, target: str) -> str:
+    """The attack a click on a creature means: an equipped weapon that reaches it, else any attack that does."""
+    rec = combat.combatant(campaign_dir, state, attacker)
+    dist = arena.cheb(pos(a, attacker), pos(a, target))
+    armed = [x for x in rec["attacks"] if x["damage"]]
+    reaching = [x for x in armed if dist <= max(x.get("reach_ft", 0), x.get("range_ft", 0)) // TILE_FT]
+    pool = reaching or armed
+    return next((x for x in pool if x.get("equipped")), pool[0])["name"]

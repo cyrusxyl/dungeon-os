@@ -1,7 +1,7 @@
 """Run every test suite, one after the other, and say which failed.
 
     .venv/bin/python tests/run_all.py            # the suites (about 15 seconds)
-    .venv/bin/python tests/run_all.py --visual   # also the browser check (needs Chrome)
+    .venv/bin/python tests/run_all.py --visual   # also the browser checks (need Chrome)
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 def main() -> int:
     suites = sorted(HERE.glob("test_*.py"))
     if "--visual" in sys.argv:
-        suites.append(HERE / "visual_roll_window.py")
+        suites += [HERE / "visual_roll_window.py", HERE / "visual_arena.py"]
     failed = []
     for suite in suites:
         start = time.time()

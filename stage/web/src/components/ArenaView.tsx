@@ -1,0 +1,185 @@
+import { useEffect, useRef, useState } from 'react'
+
+import { Button } from '@/components/ui/8bit/button'
+import type { ArenaUnit, ArenaView as View } from '@/lib/arena'
+import { BAND_FILL } from '@/lib/party'
+import { postJson, type StageState, useIntegerScale, useJson } from '@/lib/stage'
+import { T, useImages, variant } from '@/lib/tiles'
+
+type Image = (url: string) => HTMLImageElement | undefined
+
+function drawTiles(ctx: CanvasRenderingContext2D, view: View, image: Image) {
+  const atlas = image(`/asset/arena/${view.id}.png`)
+  const hazard = image(`/asset/icon/${view.hazard}.png`)
+  const tile = (col: number, row: number, px: number, py: number) => atlas && ctx.drawImage(atlas, col * T, row * T, T, T, px, py, T, T)
+  for (let y = 0; y < view.h; y++) {
+    for (let x = 0; x < view.w; x++) {
+      const c = view.grid[y][x]
+      const px = x * T
+      const py = y * T
+      if (c === '#') {
+        tile(variant(x, y, view.tiles.walls), 0, px, py)
+        continue
+      }
+      tile(view.tiles.pattern ? (x % 2) + (y % 2) * 2 : variant(x, y, view.tiles.floors), 1, px, py)
+      if (c === 'd') tile(1, 2, px, py)
+      if (c === '~' && hazard) ctx.drawImage(hazard, 0, 0, T, T, px, py, T, T)
+    }
+  }
+}
+
+/** A picture stands on its cell, centered, feet at the bottom edge; a tall one overlaps the cell above. */
+function stand(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, alpha = 1) {
+  ctx.globalAlpha = alpha
+  ctx.drawImage(img, x * T + (T - img.width) / 2, (y + 1) * T - img.height)
+  ctx.globalAlpha = 1
+}
+
+function drawUnit(ctx: CanvasRenderingContext2D, u: ArenaUnit, image: Image, current: boolean) {
+  const img = image(`/asset/actor/${encodeURIComponent(u.id)}/full.png`)
+  const alpha = u.down ? 0.35 : 1
+  if (img) {
+    stand(ctx, img, u.x, u.y, alpha)
+  } else {
+    ctx.globalAlpha = alpha
+    ctx.fillStyle = u.pc ? '#5fa8e0' : '#e5534f'
+    ctx.fillRect(u.x * T + 6, u.y * T + 6, T - 12, T - 12)
+    ctx.fillStyle = '#000'
+    ctx.font = 'bold 14px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(u.name.charAt(0), u.x * T + T / 2, u.y * T + T / 2 + 5)
+    ctx.globalAlpha = 1
+  }
+  if (current) {
+    ctx.strokeStyle = '#c9a96e'
+    ctx.lineWidth = 2
+    ctx.strokeRect(u.x * T + 1, u.y * T + 1, T - 2, T - 2)
+  }
+  const fill = u.hp ? (u.hp.current / (u.hp.max || 1)) * 100 : BAND_FILL[u.health]
+  ctx.fillStyle = '#000'
+  ctx.fillRect(u.x * T + 3, u.y * T + T - 5, T - 6, 4)
+  ctx.fillStyle = u.pc ? '#6fcf6f' : '#e05050'
+  ctx.fillRect(u.x * T + 4, u.y * T + T - 4, Math.round(((T - 8) * fill) / 100), 2)
+}
+
+function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number] | null, canWalk: boolean, image: Image) {
+  ctx.imageSmoothingEnabled = false
+  ctx.fillStyle = '#000'
+  ctx.fillRect(0, 0, view.w * T, view.h * T)
+  drawTiles(ctx, view, image)
+  if (canWalk) {
+    ctx.fillStyle = 'rgba(95, 168, 224, 0.28)'
+    for (const [x, y] of view.walk) ctx.fillRect(x * T, y * T, T, T)
+  }
+  if (hover) {
+    ctx.strokeStyle = '#fff'
+    ctx.lineWidth = 1
+    ctx.strokeRect(hover[0] * T + 0.5, hover[1] * T + 0.5, T - 1, T - 1)
+  }
+  for (const item of view.items) {
+    ctx.fillStyle = '#7fb2d6'
+    ctx.beginPath()
+    ctx.arc(item.x * T + T / 2, item.y * T + T / 2, 5, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  // Props and creatures in depth order: one lower on the screen stands in front.
+  const things = [
+    ...view.props.map((p) => ({ y: p.y, draw: () => { const img = image(`/asset/prop/${p.kind}.png`); if (img) stand(ctx, img, p.x, p.y) } })),
+    ...view.units.map((u) => ({ y: u.y + 0.5, draw: () => drawUnit(ctx, u, image, u.id === view.current) })),
+  ]
+  for (const t of things.sort((a, b) => a.y - b.y)) t.draw()
+}
+
+/**
+ * The board of a fight. The server owns the rules: a click on a blue cell walks, a click on a creature attacks with the
+ * weapon that reaches it. A refusal comes back as words ("The goblin is 25 ft away"), which show over the board.
+ */
+export function ArenaView({ state, arenaId, actingAs, mine }: { state: StageState; arenaId: string; actingAs: string | null; mine: string[] }) {
+  const box = useRef<HTMLDivElement>(null)
+  const canvas = useRef<HTMLCanvasElement>(null)
+  const view = useJson<View>(`/api/arena/${encodeURIComponent(arenaId)}`, state.versions?.[`arena:${arenaId}`] ?? 0)
+  // Half steps (1, 1.5, 2...): a small board fills the frame, and each source pixel is still drawn whole or half.
+  const scale = Math.max(1, useIntegerScale(box, ((view?.w ?? 16) * T) / 2, ((view?.h ?? 10) * T) / 2) / 2)
+  const [image, tick] = useImages()
+  const [hover, setHover] = useState<[number, number] | null>(null)
+  const [note, setNote] = useState('')
+  const busy = useRef(false)
+  const canWalk = Boolean(view && actingAs && view.current === actingAs && !view.pending)
+
+  useEffect(() => {
+    const ctx = canvas.current?.getContext('2d')
+    if (ctx && view) draw(ctx, view, hover, canWalk, image)
+  }, [view, hover, canWalk, image, tick])
+  useEffect(() => {
+    if (!note) return
+    const id = window.setTimeout(() => setNote(''), 4000)
+    return () => window.clearTimeout(id)
+  }, [note])
+
+  if (!view) return <div ref={box} className="h-full w-full" />
+
+  const cellAt = (e: React.MouseEvent<HTMLCanvasElement>): [number, number] => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    return [Math.floor(((e.clientX - rect.left) / rect.width) * view.w), Math.floor(((e.clientY - rect.top) / rect.height) * view.h)]
+  }
+  const call = async (path: string, body: Record<string, unknown>) => {
+    if (busy.current) return
+    busy.current = true
+    try {
+      const res = await postJson(path, body)
+      if (!res.ok) setNote(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? 'The board refused that.')
+    } finally {
+      busy.current = false
+    }
+  }
+  const click = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canWalk || !actingAs) return
+    const [x, y] = cellAt(e)
+    const foe = view.units.find((u) => !u.pc && !u.down && u.x === x && u.y === y)
+    if (foe) call('/api/arena/attack', { who: actingAs, target: foe.id })
+    else if (view.walk.some(([wx, wy]) => wx === x && wy === y)) call('/api/arena/move', { who: actingAs, to: [x, y] })
+    else setNote('You cannot walk there this turn.')
+  }
+  const asked = view.pending && mine.includes(view.pending.who) ? view.pending : null
+  const name = (id: string) => view.units.find((u) => u.id === id)?.name ?? id
+
+  return (
+    <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
+      <canvas
+        ref={canvas}
+        width={view.w * T}
+        height={view.h * T}
+        onClick={click}
+        onMouseMove={(e) => setHover(cellAt(e))}
+        onMouseLeave={() => setHover(null)}
+        aria-label="The board of the fight. Click a blue cell to walk. Click a creature to attack it."
+        className={`pixelated shrink-0 ${canWalk ? 'cursor-pointer' : 'cursor-default'}`}
+        style={{ width: view.w * T * scale, height: view.h * T * scale }}
+      />
+      <div className="pointer-events-none absolute top-2 left-2 flex flex-col gap-1">
+        <span className="pixel-font bg-black/60 px-2 py-1 text-[10px] text-[var(--gold)]">
+          Round {view.round}
+          {canWalk ? ` · ${view.feet_left} ft left` : ''}
+        </span>
+        {note && <span className="pixel-font bg-black/70 px-2 py-1 text-[8px] text-[var(--bad)]">{note}</span>}
+      </div>
+      {view.pending && (
+        <div className="absolute inset-x-2 bottom-2 flex flex-wrap items-center justify-center gap-2 border-2 border-[var(--border)] bg-black/80 p-2">
+          {asked ? (
+            <>
+              <span className="text-sm">{name(asked.against)} leaves your reach. Take an opportunity attack?</span>
+              <Button size="sm" onClick={() => call('/api/arena/react', { take: true })} className="text-[10px]">
+                Attack
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => call('/api/arena/react', { take: false })} className="text-[10px]">
+                Skip
+              </Button>
+            </>
+          ) : (
+            <span className="text-sm text-[var(--dim)]">{name(view.pending.who)} decides on a reaction attack…</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

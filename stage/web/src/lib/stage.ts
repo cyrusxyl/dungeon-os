@@ -96,6 +96,8 @@ export interface StageState {
   /** The DM asked a player character for a check or a save: the roll window waits for the player. */
   roll_request: RollRequest | null
   explore: string | null
+  /** The id of the fight on a board (stage/arena.py), or null. The board replaces the scene and the site until the fight ends. */
+  arena: string | null
   place: { map: string; place: string } | null
   creating: boolean
   party_mode: 'create' | 'premade'
