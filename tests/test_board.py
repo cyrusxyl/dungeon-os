@@ -186,7 +186,7 @@ def test_sync_and_start() -> None:
               [board.pos(a, u) for u in a["units"] if u != "goblin#3"] and (x, y) not in arena.blocked_cells(a))
         c2, state2, a2 = setup(Path(tmp) / "ap")
         near = board.approach(c2, state2, a2, "goblin#1", "aragorn")
-        check("approach: the reachable cell nearest the target", near is not None and arena.cheb(near, (2, 3)) == arena.cheb((8, 3), (2, 3)) - 6)
+        check("approach: the reachable cell nearest the target", near is not None and arena.cheb(near, (2, 3)) == 1)
         a2["units"]["goblin#1"] = {"x": 3, "y": 3}
         check("approach: none when it is already next to the target", board.approach(c2, state2, a2, "goblin#1", "aragorn") is None)
         check("units that are placed stay where they are", a["units"]["aragorn"] == {"x": 2, "y": 3})
