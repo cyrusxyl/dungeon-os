@@ -81,6 +81,9 @@ The stage gives a player character a turn like Baldur's Gate 3: the turn bar sho
 uv run dnd-cli encounter end            # XP of defeated foes, split among the party; clears the tracker
 uv run dnd-cli encounter end --no-xp    # the party fled, or the foes surrendered without a fight
 uv run dnd-cli encounter end --resolved goblin#2 mira   # a foe that fled, yielded or was talked down still gives its XP (a named NPC gives the `xp` of its file)
+uv run dnd-cli loot roll --cr 1 --kind hoard --seed 7        # coins and items by CR (individual or hoard); the same seed gives the same list, another seed rerolls
+uv run dnd-cli loot roll --cr 2 --type beast                 # a beast, an ooze or a plant carries nothing
+uv run dnd-cli loot force "Longsword" --to aragorn --perk "keen: it hums near orcs" --rarity uncommon   # give an item you chose, with a perk in your own words
 ```
 
 It prints "LEVEL UP READY" for a character who reached the next level (see the `character-advancement` skill). Then offer a search, loot, or a rest (`uv run dnd-cli rest short` / `rest long`).

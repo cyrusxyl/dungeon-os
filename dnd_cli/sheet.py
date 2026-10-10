@@ -41,7 +41,7 @@ def _find_item(sheet: dict, name: str) -> dict | None:
     return next((i for i in items if i.get("name", "").lower() == name.lower()), None)
 
 
-def add_item(sheet: dict, name: str, qty: int = 1, description: str = "") -> str:
+def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity: str | None = None) -> str:
     if qty < 1:
         raise RulesError("quantity must be 1 or more.")
     item = _find_item(sheet, name)
@@ -51,6 +51,8 @@ def add_item(sheet: dict, name: str, qty: int = 1, description: str = "") -> str
         item = {"name": name, "quantity": qty}
         if description:
             item["description"] = description
+        if rarity:
+            item["rarity"] = rarity
         sheet["inventory"].append(item)
     return f"{sheet['name']}: {item['name']} x{item['quantity']}"
 

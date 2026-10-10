@@ -1,0 +1,16 @@
+{
+  "_comment": "Treasure by challenge rating for `dnd-cli loot roll`. A coin is [dice, times]. `rarity` weights add up to 100 (cumulative is not needed). Item names are 5e SRD magic items; a perk is free text the DM writes (the perk catalog waits: GitHub issue #1). Legendary items are never listed: the DM writes them. See combat-board.md, section 7.",
+  "no_treasure": ["beast", "ooze", "plant", "swarm"],
+  "tiers": [
+    {"max_cr": 4, "individual": {"sp": ["3d6", 1], "gp": ["2d6", 1]}, "hoard": {"sp": ["4d6", 10], "gp": ["4d6", 5]}, "items": "1d3", "rarity": {"common": 70, "uncommon": 30}},
+    {"max_cr": 10, "individual": {"gp": ["4d6", 5]}, "hoard": {"gp": ["6d6", 25], "pp": ["2d6", 1]}, "items": "1d4", "rarity": {"common": 25, "uncommon": 50, "rare": 25}},
+    {"max_cr": 16, "individual": {"gp": ["4d6", 25]}, "hoard": {"gp": ["6d6", 100], "pp": ["4d6", 5]}, "items": "1d4+1", "rarity": {"uncommon": 25, "rare": 50, "very rare": 25}},
+    {"max_cr": 99, "individual": {"gp": ["4d6", 100]}, "hoard": {"gp": ["8d6", 250], "pp": ["6d6", 10]}, "items": "1d4+2", "rarity": {"rare": 30, "very rare": 50, "legendary": 20}}
+  ],
+  "items": {
+    "common": ["Potion of healing", "Potion of climbing", "Spell scroll (cantrip)", "Alchemist's fire", "Acid"],
+    "uncommon": ["Potion of greater healing", "Bag of holding", "Cloak of protection", "Boots of elvenkind", "Gloves of thievery", "Wand of magic missiles", "Weapon, +1", "Ammunition, +1", "Rope of climbing"],
+    "rare": ["Potion of superior healing", "Weapon, +2", "Armor, +1", "Ring of protection", "Cloak of displacement", "Wand of fireballs"],
+    "very rare": ["Potion of supreme healing", "Weapon, +3", "Armor, +2", "Ring of regeneration", "Staff of power"]
+  }
+}

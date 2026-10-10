@@ -524,6 +524,22 @@ def create_parser():
         p.add_argument("arena_id", nargs="?", default=None, help="Default: the arena of the running fight")
         p.add_argument("--campaign", default=None)
 
+    # Loot: the engine rolls, the DM decides
+    loot_parser = subparsers.add_parser("loot", help="Treasure: roll coins and items by challenge rating, or give an item you chose")
+    loot_sub = loot_parser.add_subparsers(dest="loot_command", help="Loot subcommand")
+    p = loot_sub.add_parser("roll", help="roll --cr N [--kind individual|hoard] [--seed N] [--type beast]: the same seed gives the same list")
+    p.add_argument("--cr", type=float, required=True)
+    p.add_argument("--kind", choices=["individual", "hoard"], default="individual")
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--type", default="", help="creature type: a beast, an ooze or a plant carries nothing")
+    p = loot_sub.add_parser("force", help='force "<item>" --to <who> [--perk "free text"] [--rarity uncommon] [--qty N]: give an item you chose')
+    p.add_argument("item")
+    p.add_argument("--to", required=True, metavar="WHO")
+    p.add_argument("--perk", default="", help="what makes it special, in your words: it goes in the item's description")
+    p.add_argument("--rarity", default=None)
+    p.add_argument("--qty", type=int, default=1)
+    p.add_argument("--campaign", default=None)
+
     # Map command group (region and city maps)
     map_parser = subparsers.add_parser("map", help="Region and city maps on the visual stage: places, routes, reveals")
     map_sub = map_parser.add_subparsers(dest="map_command", help="Map subcommand")
@@ -824,6 +840,14 @@ def main():
 
         elif args.command == "rest":
             return rules_cmd.execute_rest(args.campaign, args.kind, args.who, args.hit_dice)
+
+        elif args.command == "loot":
+            if args.loot_command == "roll":
+                return rules_cmd.execute_loot_roll(args.cr, args.kind, args.seed, args.type)
+            if args.loot_command == "force":
+                return rules_cmd.execute_loot_force(args.campaign, args.to, args.item, args.qty, args.perk, args.rarity)
+            print("Usage: dnd-cli loot roll|force (see --help)", file=sys.stderr)
+            return 1
 
         elif args.command == "arena":
             if args.arena_command == "show":

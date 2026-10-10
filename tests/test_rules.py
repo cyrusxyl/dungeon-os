@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from dnd_cli import actions, canon, character, combat, dice, effects, resources, sheet
+from dnd_cli import actions, canon, character, combat, dice, effects, loot, resources, sheet
 from dnd_cli.commands import session_cmd
 
 REPO = Path(__file__).resolve().parents[1]
@@ -458,8 +458,27 @@ def test_session_end(c: Path) -> None:
     check("game time is set", json.loads((c / "state.json").read_text())["game_time"] == "Day 2")
 
 
+def test_loot() -> None:
+    print("loot")
+    a, b = loot.roll(1, "hoard", 7), loot.roll(1, "hoard", 7)
+    check("the same seed gives the same list", a == b and a["seed"] == 7)
+    check("another seed gives another list", any(loot.roll(1, "hoard", n) != a for n in range(8, 20)))
+    check("an individual has coins and no items", bool((r := loot.roll(2, "individual", 3))["coins"]) and not r["items"])
+    check("a hoard has coins and items, each with a rarity of its tier", all(i["rarity"] in ("common", "uncommon") for i in loot.roll(2, "hoard", 4)["items"]) and bool(loot.roll(2, "hoard", 4)["items"]))
+    check("a higher CR pays more", loot.roll(14, "individual", 1)["coins"]["gp"] > loot.roll(1, "individual", 1)["coins"]["gp"])
+    check("the tier follows the CR", loot.tier(0.25)["max_cr"] == 4 and loot.tier(4)["max_cr"] == 4 and loot.tier(5)["max_cr"] == 10 and loot.tier(30)["max_cr"] == 99)
+    check("a beast carries nothing", not (r := loot.roll(1, "hoard", 1, "Beast"))["coins"] and not r["items"] and "no treasure" in r["note"])
+    check("a legendary item is never named: the DM writes it", any(i["rarity"] == "legendary" and i["name"] is None for n in range(40) for i in loot.roll(20, "hoard", n)["items"]))
+    check("a bad kind or CR is refused", raises(lambda: loot.roll(1, "pile")) and raises(lambda: loot.roll(-1)))
+    check("the list says how to give it and totals the coins", "gp in all" in "\n".join(loot.lines(loot.roll(1, "hoard", 7))))
+    data = {"name": "Aragorn", "inventory": []}
+    sheet.add_item(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
+    check("a forced item keeps its perk text and rarity", data["inventory"][0] == {"name": "Longsword", "quantity": 1, "description": "keen: it hums near orcs", "rarity": "uncommon"})
+
+
 if __name__ == "__main__":
     test_dice()
+    test_loot()
     with tempfile.TemporaryDirectory() as tmp:
         c = campaign(Path(tmp))
         test_combat(c)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from dnd_cli import character, combat, effects, sheet
+from dnd_cli import character, combat, effects, loot, sheet
 from dnd_cli.api import api_get
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from dnd_cli.dice import DiceError
@@ -221,6 +221,24 @@ def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon
             lines.append("recorded in canon (items)")
         return lines
     return _edit_sheet(campaign, name, fn)
+
+
+def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str) -> int:
+    try:
+        print("\n".join(loot.lines(loot.roll(cr, kind, seed, creature_type))))
+    except combat.RulesError as e:
+        print(f"Error: {e}")
+        return 1
+    return 0
+
+
+def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None) -> int:
+    """Give an item the DM chose, with a perk written as free text (the lore is the DM's)."""
+    def fn(campaign_dir, data):
+        if rarity and rarity not in loot.RARITIES:
+            raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
+        return [sheet.add_item(data, item, qty, perk, rarity)]
+    return _edit_sheet(campaign, who, fn)
 
 
 def execute_gold(campaign, name: str, delta: str) -> int:
