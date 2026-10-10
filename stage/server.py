@@ -53,7 +53,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli.sheet import GOLD
-from stage import actors, arena, beat, board, crawl, hand, lpc, maps, party, scenes, state as stage_state
+from stage import actors, arena, beat, board, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state
 from stage.assets import AssetError
 from stage.files import read_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
@@ -1578,6 +1578,30 @@ def create_app(
             return {"lines": hand.act(stage.campaign_dir, st, a, who, str(body.get("ability")), body.get("target"), body.get("aim"))}
         return await board_call(request, go)
 
+    async def api_arena_improvise(request: Request):
+        """An improvised action: the DM hears the words, the object and the engine's suggested ruling, and rules on it."""
+        stage = idle_stage()
+        body = await request.json()
+        who = pc_or_404(stage, body.get("who"))
+        own(request, stage, who)
+        text = " ".join(str(body.get("text", "")).split())[:300]
+        if not text:
+            return error("Say what the character tries.", 400)
+
+        def build() -> str:
+            state = combat.load_state(stage.campaign_dir)
+            _, a = board.running(stage.campaign_dir, state)
+            board.require_turn(state, who)
+            if combat.turn_used(state, who)["action"]:
+                raise board.BoardError("the action is used.")
+            return improvise.prompt(stage.campaign_dir, state, a, who, text, body.get("object"))
+        try:
+            line = await run_in_threadpool(build)
+        except (board.BoardError, combat.RulesError) as e:
+            return error(str(e), 400)
+        await stage.submit(line)
+        return JSONResponse({"ok": True})
+
     async def hand_read(request: Request, build):
         """Read-only views of the hand of a character the device plays: build(state, arena, who)."""
         stage = need()
@@ -1742,6 +1766,7 @@ def create_app(
         Route("/api/arena/act", api_arena_act, methods=["POST"]),
         Route("/api/arena/preview", api_arena_preview, methods=["POST"]),
         Route("/api/arena/hand", api_arena_hand),
+        Route("/api/arena/improvise", api_arena_improvise, methods=["POST"]),
         Route("/api/combat/settings", api_combat_settings, methods=["POST"]),
         Route("/api/arena/{arena_id}", api_arena),
         Route("/asset/arena/{arena_id}.png", asset_arena),

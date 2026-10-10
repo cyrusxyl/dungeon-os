@@ -52,8 +52,8 @@ export interface Ability {
   text: string
   stat: string
   why: string | null
-  /** What the player must give: a target from the list, a cell for an area, or nothing. */
-  needs: 'target' | 'aim' | 'none'
+  /** What the player must give: a target from the list, a cell for an area, words for the DM (Improvise), or nothing. */
+  needs: 'target' | 'aim' | 'text' | 'none'
   targets?: { id: string; name: string; dist_ft: number; ok: boolean; why: string | null; odds?: string }[]
   shape?: { type: string; size_ft: number; range_ft: number }
 }

@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from dnd_cli import character, combat  # noqa: E402
-from stage import board, hand  # noqa: E402
+from stage import board, hand, improvise  # noqa: E402
 from tests.test_board import dark, setup  # noqa: E402
 from tests.test_rules import Fixed  # noqa: E402
 
@@ -153,8 +153,31 @@ def test_actions() -> None:
         check("out of turn is refused", "turn" in (raises(lambda: hand.act(c, state, a, "legolas", "dash")) or ""))
 
 
+def test_improvise() -> None:
+    print("hand: improvise")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), props=({"kind": "barrel", "x": 3, "y": 3}, {"kind": "stool", "x": 2, "y": 4}), at={"goblin#1": (8, 3), "goblin#2": (9, 5)})
+        ids = by_id(hand.listing(c, state, a, "aragorn"))
+        check("the hand has Improvise: it needs text, and costs the action", ids["improvise"]["needs"] == "text" and ids["improvise"]["cost"] == "action" and not ids["improvise"]["why"])
+        check("Improvise does not run from act: it goes to the DM", "DM" in (raises(lambda: hand.act(c, state, a, "aragorn", "improvise")) or ""))
+        stool = improvise.suggest(c, state, "aragorn", "I throw the stool at the goblin", improvise.find_object(a, "stool#1"))
+        check("a thrown object is an improvised weapon: Dex attack, 1d4, range 20/60, used up",
+              stool["roll"]["type"] == "attack" and stool["roll"]["bonus"] == 2 and stool["roll"]["range_ft"] == [20, 60] and stool["consume"] and "1d4" in stool["effect"], str(stool))
+        barrel = improvise.suggest(c, state, "aragorn", "I hurl the barrel", improvise.find_object(a, "barrel#0"))
+        check("a heavy object is a Strength check, not a throw", barrel["roll"]["type"] == "check" and barrel["roll"]["dc"] == 15)
+        push = improvise.suggest(c, state, "aragorn", "I kick the barrel over", improvise.find_object(a, "barrel#0"))
+        check("pushing a heavy object is harder", push["roll"]["dc"] == 15 and improvise.suggest(c, state, "aragorn", "I tip the stool", improvise.find_object(a, "stool#1"))["roll"]["dc"] == 10)
+        check("breaking something that is made to break gives a DC from its HP", improvise.suggest(c, state, "aragorn", "I smash the barrel", improvise.find_object(a, "barrel#0"))["roll"]["dc"] == 10)
+        check("a free interaction costs no action", improvise.suggest(c, state, "aragorn", "I pick up the stool", improvise.find_object(a, "stool#1"))["cost"] == "free")
+        other = improvise.suggest(c, state, "aragorn", "I try to impress the goblins with a song", None)
+        check("an action with no rule is a plain check: the engine never refuses", other["roll"]["type"] == "check" and other["roll"]["dc"] == 12)
+        line = improvise.prompt(c, state, a, "aragorn", "I throw the stool at the goblin", "stool#1")
+        check("the DM prompt has the words, the object with its tags and the ruling", line.startswith("[combat] Aragorn (aragorn) improvises") and "stool (portable, breakable, flammable" in line and "Suggested ruling" in line and "5 ft away" in line, line[:300])
+        check("an unknown object is refused", "no object" in (raises(lambda: improvise.prompt(c, state, a, "aragorn", "I throw it", "ghost#9")) or ""))
+
+
 if __name__ == "__main__":
-    for t in (test_listing, test_spells, test_actions):
+    for t in (test_listing, test_spells, test_actions, test_improvise):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

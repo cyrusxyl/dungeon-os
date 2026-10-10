@@ -198,6 +198,25 @@ async def routes(c: Path, state: dict) -> None:
     check("an action the board does not run yet says so", status == 400 and "board" in r["error"], str(r))
     status, r = await api(app, "POST", "/api/action", {"who": "aragorn", "action": "feature:Second Wind"})
     check("a class feature from the card works and is not sent to the DM", status == 200 and not sent and r["lines"])
+
+    # improvise: the DM hears the words and a suggested ruling
+    status, r = await api(app, "POST", "/api/arena/improvise", {"who": "aragorn", "text": "I throw a bottle"})
+    check("an improvised action with the action spent is refused", status == 400 and "action is used" in r["error"] and not sent, str(r))
+    state0 = combat.load_state(c)
+    state0["active_encounter"]["resources"]["aragorn"] = {}
+    combat.save_state(c, state0)
+    status, r = await api(app, "POST", "/api/arena/improvise", {"who": "aragorn", "text": "  "})
+    check("empty words are refused", status == 400)
+    status, r = await api(app, "POST", "/api/arena/improvise", {"who": "legolas", "text": "I throw a bottle"})
+    check("out of turn is refused", status == 400 and "turn" in r["error"])
+    status, r = await api(app, "POST", "/api/arena/improvise", {"who": "aragorn", "text": "I throw a bottle"}, device=OTHER)
+    check("only the player of the character improvises", status == 403)
+    status, r = await api(app, "POST", "/api/arena/improvise", {"who": "aragorn", "text": "I throw a bottle in the goblin's face"})
+    check("the DM hears the words and the suggested ruling", status == 200 and len(sent) == 1 and "improvises" in sent[0] and "Suggested ruling" in sent[0] and "1d4" in sent[0], str(sent))
+    sent.clear()
+    state0 = combat.load_state(c)
+    state0["active_encounter"]["resources"]["aragorn"] = {}
+    combat.save_state(c, state0)
     status, r = await api(app, "POST", "/api/end-turn", {"who": "aragorn"})
     check("End turn moves the tracker and does not call the DM", status == 200 and not sent and combat.load_state(c)["active_encounter"]["current_turn"] == "legolas")
     await api(app, "POST", "/api/end-turn", {"who": "legolas"})

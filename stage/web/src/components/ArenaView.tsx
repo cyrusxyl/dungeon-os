@@ -237,6 +237,11 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
     await call('/api/arena/act', { who: actingAs, ability: ab.id, target, aim: at })
     setPicked(null)
   }
+  const improvise = async (text: string, object?: string) => {
+    if (!actingAs) return
+    await call('/api/arena/improvise', { who: actingAs, text, object })
+    setPicked(null)
+  }
   const pick = (ab: Ability) => {
     if (ab.why) return setNote(ab.why)
     if (ab.needs === 'none') act(ab)
@@ -298,7 +303,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
           </div>
         )}
       </div>
-    {hand && canWalk && <Hand hand={hand} skin={skin} onSkin={flipSkin} selected={selected} onPick={pick} onTarget={act} onCancel={() => setPicked(null)} />}
+    {hand && canWalk && <Hand hand={hand} skin={skin} onSkin={flipSkin} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />}
     </div>
   )
 }

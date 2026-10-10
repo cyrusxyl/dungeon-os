@@ -95,6 +95,13 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     await asyncio.sleep(0.4)
     check("Cancel closes the list and spends nothing", not await page.eval("Boolean(document.querySelector('[aria-label^=\"Targets for\"]'))")
           and not combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action"))
+    await page.eval(f"[...{hand}.querySelectorAll('button')].find(b => b.textContent.includes('Improvise'))?.click()")
+    await asyncio.sleep(0.5)
+    await page.shot("arena-improvise")
+    check("Improvise opens a box for the words", await page.eval("Boolean(document.querySelector('form[aria-label=\"Improvise\"] input'))"))
+    await page.eval("[...document.querySelectorAll('form[aria-label=\"Improvise\"] button')].find(b => b.textContent.trim() === 'Cancel')?.click()")
+    await asyncio.sleep(0.4)
+    check("Cancel closes the box", not await page.eval("Boolean(document.querySelector('form[aria-label=\"Improvise\"]'))"))
 
     await click_cell(page, canvas, a, free)
     await asyncio.sleep(1.5)

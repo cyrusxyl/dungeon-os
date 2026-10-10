@@ -82,7 +82,7 @@ def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
             ab["needs"] = "target"
             ab["targets"] = _target_info(campaign_dir, state, a, cid, ab, visible)
         else:
-            ab["needs"] = "aim" if ab["kind"] == "zone" else "none"
+            ab["needs"] = "aim" if ab["kind"] == "zone" else "text" if ab["kind"] == "improvise" else "none"
         out.append(ab)
 
     for entry in board.attack_rolls(rec):
@@ -100,6 +100,8 @@ def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
         kind = "shove" if spec["id"] == "shove" else "hide" if spec["id"] == "hide" else "feature" if spec["id"].startswith("feature:") else "self"
         why = None if spec["why"] in (None, "No enemy") else spec["why"]
         add({"id": spec["id"], "name": spec["label"], "cost": spec["cost"] or "free", "kind": kind, "text": spec["info"], "stat": ""}, why)
+    add({"id": "improvise", "name": "Improvise", "cost": "action", "kind": "improvise", "text": "Try something else: tell the DM what", "stat": ""},
+        "The action is used." if turn["action"] else None)
     for ab in out:
         if ab["id"] in ("dash", "disengage", "dodge", "help") and not mine_turn:
             ab["why"] = "Not your turn."
@@ -135,6 +137,8 @@ def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, tar
     if ab["why"]:
         raise board.BoardError(ab["why"])
     kind = ab["kind"]
+    if kind == "improvise":
+        raise board.BoardError("an improvised action goes to the DM: send what you try.")
     if kind == "attack":
         return board.player_attack(campaign_dir, state, a, cid, target, ab["entry"]["name"])
     if kind in ("spell_attack", "zone"):

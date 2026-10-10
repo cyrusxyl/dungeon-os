@@ -1,4 +1,6 @@
 import { Button } from '@/components/ui/8bit/button'
+import { useState } from 'react'
+
 import type { Ability, HandView } from '@/lib/arena'
 import type { Skin } from '@/lib/hand'
 
@@ -27,7 +29,36 @@ function Choice({ ab, skin, picked, onPick }: { ab: Ability; skin: Skin; picked:
  * The hand: the pips, then the abilities as cards or a list. A tap on one that needs a target opens the list of
  * targets; one that needs a cell waits for a tap on the board; any other runs at once.
  */
-export function Hand({ hand, skin, onSkin, selected, onPick, onTarget, onCancel }: { hand: HandView; skin: Skin; onSkin: () => void; selected: Ability | null; onPick: (ab: Ability) => void; onTarget: (ab: Ability, target: string) => void; onCancel: () => void }) {
+/** Improvise: the player says what the character tries, and may name an object on the board. The DM rules on it. */
+function ImproviseBox({ objects, onSend, onCancel }: { objects: { id: string; name: string }[]; onSend: (text: string, object?: string) => void; onCancel: () => void }) {
+  const [text, setText] = useState('')
+  const [object, setObject] = useState<string>()
+  return (
+    <form
+      className="flex flex-wrap items-center gap-1"
+      aria-label="Improvise"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (text.trim()) onSend(text.trim(), object)
+      }}
+    >
+      <input autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={300} placeholder="I throw the bottle in the goblin's face…" className="min-w-40 flex-1 border-2 border-[var(--border)] bg-black px-2 py-1 text-xs" />
+      {objects.map((o) => (
+        <Button key={o.id} type="button" size="sm" variant={object === o.id ? 'default' : 'outline'} onClick={() => setObject(object === o.id ? undefined : o.id)} className="text-[10px]" title="The object you use">
+          {o.name}
+        </Button>
+      ))}
+      <Button type="submit" size="sm" disabled={!text.trim()} className="text-[10px]">
+        Ask the DM
+      </Button>
+      <Button type="button" size="sm" variant="outline" onClick={onCancel} className="text-[10px]">
+        Cancel
+      </Button>
+    </form>
+  )
+}
+
+export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, onImprovise, onCancel }: { hand: HandView; skin: Skin; onSkin: () => void; selected: Ability | null; objects: { id: string; name: string }[]; onPick: (ab: Ability) => void; onTarget: (ab: Ability, target: string) => void; onImprovise: (text: string, object?: string) => void; onCancel: () => void }) {
   return (
     <div className="flex max-h-[40%] shrink-0 flex-col gap-1 overflow-y-auto border-t-2 border-[var(--border)] bg-black/85 p-2 text-xs" aria-label="Your hand">
       <div className="flex items-center gap-2 text-[10px]">
@@ -56,6 +87,7 @@ export function Hand({ hand, skin, onSkin, selected, onPick, onTarget, onCancel 
           </Button>
         </div>
       )}
+      {selected?.needs === 'text' && <ImproviseBox objects={objects} onSend={onImprovise} onCancel={onCancel} />}
       {selected?.needs === 'aim' && (
         <div className="flex items-center gap-2">
           <span>Tap a cell on the board to aim {selected.name}.</span>
