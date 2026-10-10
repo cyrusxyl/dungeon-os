@@ -1,0 +1,9 @@
+{
+  "_comment": "Item profiles for the hand: what a common consumable does on the board. Keyed by the lower-case name of the inventory row. `kind` is heal (on the user or an adjacent ally) or throw (a ranged attack as an improvised weapon, range 20 ft). A row of the sheet may carry its own `profile` of the same shape; it wins over this table. See combat-board.md, section 6.",
+  "potion of healing": {"kind": "heal", "cost": "action", "heal": "2d4+2"},
+  "potion of greater healing": {"kind": "heal", "cost": "action", "heal": "4d4+4"},
+  "potion of superior healing": {"kind": "heal", "cost": "action", "heal": "8d4+8"},
+  "potion of supreme healing": {"kind": "heal", "cost": "action", "heal": "10d4+20"},
+  "alchemist's fire": {"kind": "throw", "cost": "action", "range_ft": 20, "damage": ["1d4", "fire"]},
+  "acid": {"kind": "throw", "cost": "action", "range_ft": 20, "damage": ["2d6", "acid"]}
+}

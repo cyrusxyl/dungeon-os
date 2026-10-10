@@ -100,6 +100,6 @@ def prompt(campaign_dir: Path, state: dict, a: dict, cid: str, text: str, object
         where = f" Object: {obj['name']} ({tags}), {arena.cheb(board.pos(a, cid), (obj['x'], obj['y'])) * board.TILE_FT} ft away."
     ruling = suggest(campaign_dir, state, cid, text, obj)
     return (f"[combat] {rec['name']} ({cid}) improvises: \"{text}\".{where} Suggested ruling: {describe(ruling)} "
-            f"Confirm it or change it, then run it with the usual commands (`uv run dnd-cli attack {cid} spell <target> --damage 1d4 --type bludgeoning`, "
+            f"Confirm it or change it, then run it with the usual commands (`uv run dnd-cli attack {cid} improvised <target> --damage 1d4 --type bludgeoning --bonus <to-hit>`, "
             f"`uv run dnd-cli encounter condition <target> add <name> --rounds N`, and `uv run dnd-cli encounter use {cid} action` "
             f"when no attack spends it). Narrate one beat. It is still {rec['name']}'s turn.")

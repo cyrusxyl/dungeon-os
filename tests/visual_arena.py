@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import uvicorn  # noqa: E402
 import websockets  # noqa: E402
 
-from dnd_cli import combat  # noqa: E402
+from dnd_cli import character, combat  # noqa: E402
 from stage import arena, beat, board  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import campaign, fight  # noqa: E402
@@ -95,6 +95,18 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     await asyncio.sleep(0.4)
     check("Cancel closes the list and spends nothing", not await page.eval("Boolean(document.querySelector('[aria-label^=\"Targets for\"]'))")
           and not combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action"))
+    inner = await page.eval(f"{hand}.innerText")
+    check("a pinned potion is in the hand, a rope with no profile is not", "Potion of healing" in inner and "Rope" not in inner)
+    await page.eval(f"[...{hand}.querySelectorAll('button')].find(b => b.textContent.includes('Items'))?.click()")
+    await asyncio.sleep(0.4)
+    await page.shot("arena-items")
+    drawer = await page.eval("document.querySelector('[aria-label=\"Items\"]')?.innerText || ''")
+    check("the Items drawer lists the potion with its count and a Use button", "Potion of healing" in drawer and "x2" in drawer and "Use" in drawer, drawer)
+    await page.eval("[...document.querySelectorAll('[aria-label=\"Items\"] button')].find(b => b.textContent.trim() === 'Use')?.click()")
+    await asyncio.sleep(0.5)
+    check("Use opens the list of who can get it", "Aragorn" in await page.eval("document.querySelector('[aria-label^=\"Targets for\"]')?.innerText || ''"))
+    await page.eval(f"[...document.querySelectorAll('[aria-label^=\"Targets for\"] button')].find(b => b.textContent.trim() === 'Cancel')?.click()")
+    await asyncio.sleep(0.3)
     await page.eval(f"[...{hand}.querySelectorAll('button')].find(b => b.textContent.includes('Improvise'))?.click()")
     await asyncio.sleep(0.5)
     await page.shot("arena-improvise")
@@ -169,6 +181,9 @@ def main() -> int:
     c = campaign(tmp)
     state = fight(c)
     combat.save_state(c, state)
+    sheet = character.load(c, "aragorn")
+    sheet["inventory"] = [{"name": "Potion of healing", "quantity": 2}, {"name": "Rope", "quantity": 1}]
+    character.save(c, "aragorn", sheet)
     board.start(c, state, ["layout=open", "seed=3"], {})
     combat.save_state(c, state)
     arena_id = state["active_encounter"]["arena"]

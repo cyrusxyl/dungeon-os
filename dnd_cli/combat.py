@@ -702,7 +702,10 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     rng = rng or random
     a_rec = combatant(campaign_dir, state, attacker)
     t_rec = combatant(campaign_dir, state, target)
-    act = _find_attack(a_rec, weapon)
+    if weapon.lower() == "improvised" and damage_expr:
+        act = {"name": "improvised", "bonus": 0, "damage": []}  # a thrown item or an improvised weapon: the to-hit is all in `bonus`
+    else:
+        act = _find_attack(a_rec, weapon)
     if "dc" in act:
         abil, dc, _ = act["dc"]
         raise RulesError(f"{act['name']} is a saving throw, not an attack roll: "

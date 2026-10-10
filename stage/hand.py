@@ -12,10 +12,10 @@ from pathlib import Path
 
 from dnd_cli import abilities, actions, character, combat
 from dnd_cli.api import api_get
-from stage import arena, board
+from stage import arena, board, items
 
 ICONS = {"attack": "sword", "spell_attack": "flame", "zone": "flame", "shove": "fist", "hide": "eye", "dash": "boot", "disengage": "boot",
-         "dodge": "shield", "help": "spark", "feature": "spark", "improvise": "spark"}
+         "dodge": "shield", "help": "spark", "heal": "heart", "pickup": "hand", "feature": "spark", "improvise": "spark"}
 
 
 def odds(chance: float) -> str:
@@ -65,6 +65,11 @@ def _target_info(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, v
     return out
 
 
+def _spent(turn: dict, cost: str) -> str | None:
+    """Why an action, bonus action or reaction cannot be paid now, or None (a free cost is always paid)."""
+    return {"action": "The action is used.", "bonus": "The bonus action is used.", "reaction": "The reaction is used."}[cost] if turn.get(cost) else None
+
+
 def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
     """The hand of a character: every ability with `why` (the reason it is off, or None) and, for one that needs a target, `targets`."""
     sheet = character.load(campaign_dir, cid)
@@ -81,6 +86,9 @@ def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
         if ab["kind"] in ("attack", "spell_attack", "shove"):
             ab["needs"] = "target"
             ab["targets"] = _target_info(campaign_dir, state, a, cid, ab, visible)
+        elif ab["kind"] == "heal":
+            ab["needs"] = "target"
+            ab["targets"] = items.ally_targets(campaign_dir, state, a, cid)
         else:
             ab["needs"] = "aim" if ab["kind"] == "zone" else "text" if ab["kind"] == "improvise" else "none"
         out.append(ab)
@@ -100,6 +108,10 @@ def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
         kind = "shove" if spec["id"] == "shove" else "hide" if spec["id"] == "hide" else "feature" if spec["id"].startswith("feature:") else "self"
         why = None if spec["why"] in (None, "No enemy") else spec["why"]
         add({"id": spec["id"], "name": spec["label"], "cost": spec["cost"] or "free", "kind": kind, "text": spec["info"], "stat": ""}, why)
+    for ab in items.listing(sheet, rec):
+        add(ab, _spent(turn, ab["cost"]))
+    for ab in items.pickups(state, a, cid):
+        add(ab, ab.pop("why"))
     add({"id": "improvise", "name": "Improvise", "cost": "action", "kind": "improvise", "text": "Try something else: tell the DM what", "stat": ""},
         "The action is used." if turn["action"] else None)
     for ab in out:
@@ -141,8 +153,17 @@ def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, tar
         raise board.BoardError("an improvised action goes to the DM: send what you try.")
     if kind == "attack":
         return board.player_attack(campaign_dir, state, a, cid, target, ab["entry"]["name"])
+    if kind == "pickup":
+        return items.pick_up(campaign_dir, state, a, cid, ab["id"])
+    if kind == "heal":
+        lines = items.heal(campaign_dir, state, a, cid, ab, target, rng)
+        items.consume(campaign_dir, cid, ab["name"])
+        return lines
     if kind in ("spell_attack", "zone"):
-        return _cast(campaign_dir, state, a, cid, ab, target, aim, rng)
+        lines = _cast(campaign_dir, state, a, cid, ab, target, aim, rng)
+        if ab.get("source") == "item":
+            items.consume(campaign_dir, cid, ab["name"])
+        return lines
     if kind == "shove":
         _need_target(campaign_dir, state, a, target)
         return board.shove(campaign_dir, state, a, cid, target, rng)

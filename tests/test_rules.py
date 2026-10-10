@@ -105,6 +105,12 @@ def test_combat(c: Path) -> None:
     lines = combat.attack(c, state, "aragorn", "longsword", "goblin#1", rng=Fixed(15, 6))
     check("a hit applies damage to the goblin", "hit" in lines[0] and state["active_encounter"]["monsters"]["goblin#1"]["hp"]["current"] == 0)
     check("a downed creature is marked", "DOWN" in lines[1])
+    hp = state["active_encounter"]["monsters"]["goblin#2"]["hp"]["current"]
+    lines = combat.attack(c, state, "aragorn", "improvised", "goblin#2", rng=Fixed(15, 3), damage_expr="1d4", damage_type="bludgeoning", bonus=2, cost=None)
+    check("an improvised attack needs no entry on the record: the to-hit is --bonus", "hit" in lines[0] and "17" in lines[0]
+          and state["active_encounter"]["monsters"]["goblin#2"]["hp"]["current"] == hp - 3)
+    state["active_encounter"]["monsters"]["goblin#2"]["hp"]["current"] = hp
+    check("it needs damage dice", raises(lambda: combat.attack(c, state, "aragorn", "improvised", "goblin#2", rng=Fixed(15))))
     before = character.load(c, "aragorn")["hp"]["current"]
     lines = combat.attack(c, state, "goblin#2", "scimitar", "aragorn", rng=Fixed(20, 3, 4))
     hp = character.load(c, "aragorn")["hp"]["current"]

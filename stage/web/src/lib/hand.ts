@@ -46,3 +46,29 @@ export function useHand(who: string | null, version: number | string): HandView 
   }, [who, key])
   return who && hand?.key === key ? hand.value : null
 }
+
+const PINS = 3
+
+/** The items a player keeps in the hand (up to three) for one character, on this device. Until the player chooses: the first three. */
+export function usePins(who: string | null, items: string[]): [string[], (id: string) => void] {
+  const key = `hand-pins:${who}`
+  const [saved, setSaved] = useState<string[] | null>(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem(key) ?? 'null')
+      return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : null
+    } catch {
+      return null
+    }
+  })
+  const pinned = (saved ?? items).filter((id) => items.includes(id)).slice(0, PINS)
+  const toggle = (id: string) => {
+    const next = pinned.includes(id) ? pinned.filter((x) => x !== id) : [...pinned, id].slice(-PINS)
+    setSaved(next)
+    try {
+      localStorage.setItem(key, JSON.stringify(next))
+    } catch {
+      /* a private window: the choice lasts until reload */
+    }
+  }
+  return [pinned, toggle]
+}

@@ -2,9 +2,9 @@ import { Button } from '@/components/ui/8bit/button'
 import { useState } from 'react'
 
 import type { Ability, HandView } from '@/lib/arena'
-import type { Skin } from '@/lib/hand'
+import { type Skin, usePins } from '@/lib/hand'
 
-const ICON: Record<string, string> = { sword: '⚔', flame: '✹', fist: '✊', eye: '◉', boot: '➤', shield: '⛨', spark: '✦' }
+const ICON: Record<string, string> = { sword: '⚔', flame: '✹', fist: '✊', eye: '◉', boot: '➤', shield: '⛨', spark: '✦', heart: '♥', hand: '✋' }
 
 const Pip = ({ used, label }: { used: boolean; label: string }) => (
   <span className={`border px-1 ${used ? 'border-[var(--dim)] text-[var(--dim)] line-through' : 'border-[var(--gold)] text-[var(--gold)]'}`}>{label}</span>
@@ -59,6 +59,12 @@ function ImproviseBox({ objects, onSend, onCancel }: { objects: { id: string; na
 }
 
 export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, onImprovise, onCancel }: { hand: HandView; skin: Skin; onSkin: () => void; selected: Ability | null; objects: { id: string; name: string }[]; onPick: (ab: Ability) => void; onTarget: (ab: Ability, target: string) => void; onImprovise: (text: string, object?: string) => void; onCancel: () => void }) {
+  const [drawer, setDrawer] = useState(false)
+  // The hand: class abilities and weapons, up to three pinned items, Items, then Improvise.
+  const rows = hand.abilities.filter((ab) => ab.source === 'item')
+  const [pinned, togglePin] = usePins(hand.who, rows.map((ab) => ab.id))
+  const improvise = hand.abilities.find((ab) => ab.id === 'improvise')
+  const shown = [...hand.abilities.filter((ab) => ab.source !== 'item' && ab.id !== 'improvise'), ...rows.filter((ab) => pinned.includes(ab.id))]
   return (
     <div className="flex max-h-[40%] shrink-0 flex-col gap-1 overflow-y-auto border-t-2 border-[var(--border)] bg-black/85 p-2 text-xs" aria-label="Your hand">
       <div className="flex items-center gap-2 text-[10px]">
@@ -96,10 +102,30 @@ export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, 
           </Button>
         </div>
       )}
+      {drawer && (
+        <div className="flex flex-col gap-1 border-2 border-[var(--border)] p-1" aria-label="Items">
+          {rows.map((ab) => (
+            <div key={ab.id} className={`flex items-center gap-2 ${ab.why ? 'opacity-50' : ''}`}>
+              <span className="flex-1">
+                {ab.name} <span className="text-[var(--dim)]">· {ab.cost} · {ab.text}</span>
+                {ab.why && <span className="text-[var(--bad)]"> · {ab.why}</span>}
+              </span>
+              <Button size="sm" variant="outline" disabled={Boolean(ab.why)} onClick={() => onPick(ab)} className="text-[10px]">
+                Use
+              </Button>
+              <Button size="sm" variant={pinned.includes(ab.id) ? 'default' : 'outline'} aria-pressed={pinned.includes(ab.id)} onClick={() => togglePin(ab.id)} className="text-[10px]" title="Keep it in your hand">
+                Pin
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className={skin === 'cards' ? 'flex gap-1 overflow-x-auto' : 'flex flex-col gap-1'}>
-        {hand.abilities.map((ab) => (
+        {shown.map((ab) => (
           <Choice key={ab.id} ab={ab} skin={skin} picked={selected?.id === ab.id} onPick={onPick} />
         ))}
+        {rows.length > 0 && <Choice ab={{ id: 'items', name: 'Items', cost: 'free', kind: 'items', icon: 'spark', text: `${rows.length} usable`, stat: '', why: null, needs: 'none' }} skin={skin} picked={drawer} onPick={() => setDrawer(!drawer)} />}
+        {improvise && <Choice ab={improvise} skin={skin} picked={selected?.id === improvise.id} onPick={onPick} />}
       </div>
     </div>
   )

@@ -56,6 +56,9 @@ export interface Ability {
   needs: 'target' | 'aim' | 'text' | 'none'
   targets?: { id: string; name: string; dist_ft: number; ok: boolean; why: string | null; odds?: string }[]
   shape?: { type: string; size_ft: number; range_ft: number }
+  /** `item` for a row of the inventory (the Items drawer), `board` for an object on a tile. */
+  source?: string
+  qty?: number
 }
 
 export interface HandView {

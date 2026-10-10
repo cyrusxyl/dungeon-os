@@ -589,9 +589,10 @@ def use_spell_attack(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dic
     check = attack_check(campaign_dir, state, a, cid, {"name": ab["name"], **ab["attack"]}, target)
     spend_ability(campaign_dir, state, cid, ab)
     expr, dtype = ab["damage"][0]
-    lines = combat.attack(campaign_dir, state, cid, "spell", target, rng=rng, cost=None, damage_expr=expr, damage_type=dtype,
-                          bonus=-arena.COVER_BONUS[check["cover"]], dis=check["dis"])
-    note(a, brief(campaign_dir, state, a, [ln.replace(" spell ", f" {ab['name']} ", 1) for ln in lines], cid, ab["name"], target))
+    weapon = ab.get("weapon", "spell")  # an item thrown as an improvised weapon rolls with its own to-hit
+    lines = combat.attack(campaign_dir, state, cid, weapon, target, rng=rng, cost=None, damage_expr=expr, damage_type=dtype,
+                          bonus=ab.get("to_hit", 0) - arena.COVER_BONUS[check["cover"]], dis=check["dis"])
+    note(a, brief(campaign_dir, state, a, [ln.replace(f" {weapon} ", f" {ab['name']} ", 1) for ln in lines], cid, ab["name"], target))
     return [f"{cid} casts {ab['name']}."] + lines
 
 

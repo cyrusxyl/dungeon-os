@@ -303,7 +303,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
           </div>
         )}
       </div>
-    {hand && canWalk && <Hand hand={hand} skin={skin} onSkin={flipSkin} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />}
+    {hand && canWalk && <Hand key={hand.who} hand={hand} skin={skin} onSkin={flipSkin} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />}
     </div>
   )
 }

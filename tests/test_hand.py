@@ -176,8 +176,62 @@ def test_improvise() -> None:
         check("an unknown object is refused", "no object" in (raises(lambda: improvise.prompt(c, state, a, "aragorn", "I throw it", "ghost#9")) or ""))
 
 
+def stock(c: Path, who: str, rows: list[dict]) -> None:
+    sheet = character.load(c, who)
+    sheet["inventory"] = rows
+    character.save(c, who, sheet)
+
+
+def test_items() -> None:
+    print("hand: items")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (5, 3), "goblin#2": (9, 5), "legolas": (3, 3)})
+        stock(c, "aragorn", [{"name": "Potion of healing", "quantity": 2}, {"name": "Alchemist's fire", "quantity": 1}, {"name": "Rope", "quantity": 1},
+                             {"name": "Mystery flask", "quantity": 1, "profile": {"kind": "heal", "heal": "1d4", "cost": "bonus"}}])
+        sheet = character.load(c, "aragorn")
+        sheet["hp"]["current"] = 2
+        character.save(c, "aragorn", sheet)
+        ab = by_id(hand.listing(c, state, a, "aragorn"))
+        check("a row with a profile is an ability: the table's, or its own", {"item:Potion of healing", "item:Alchemist's fire", "item:Mystery flask"} <= set(ab) and "item:Rope" not in ab)
+        check("a row with no profile has no card", not any(x["name"] == "Rope" for x in ab.values()))
+        check("an item says its count and its numbers", ab["item:Potion of healing"]["text"].startswith("x2") and ab["item:Potion of healing"]["stat"] == "heals 2d4+2"
+              and ab["item:Alchemist's fire"]["stat"] == "+2 · 1d4 fire")
+        check("its own profile sets its cost", ab["item:Mystery flask"]["cost"] == "bonus")
+        heal_to = by_id(ab["item:Potion of healing"]["targets"])
+        check("a potion goes to the user or a friend next to them", heal_to["aragorn"]["ok"] and heal_to["legolas"]["ok"])
+        lines = hand.act(c, state, a, "aragorn", "item:Potion of healing", target="legolas", rng=Fixed(3, 4))
+        check("a potion for a friend heals them with its dice and costs the action", "legolas heals 9" in lines[1] and combat.turn_used(state, "aragorn")["action"])
+        check("the potion is used up one at a time", next(i for i in character.load(c, "aragorn")["inventory"] if i["name"] == "Potion of healing")["quantity"] == 1)
+        state["active_encounter"]["resources"]["aragorn"] = {}
+        far = raises(lambda: hand.act(c, state, a, "aragorn", "item:Potion of healing", target="goblin#1"))
+        check("a potion does not go to a foe, and a refusal costs nothing", far is not None and not combat.turn_used(state, "aragorn")["action"]
+              and next(i for i in character.load(c, "aragorn")["inventory"] if i["name"] == "Potion of healing")["quantity"] == 1)
+        hand.act(c, state, a, "aragorn", "item:Potion of healing", target="aragorn", rng=Fixed(1, 1))
+        check("the last potion leaves the sheet", not any(i["name"] == "Potion of healing" for i in character.load(c, "aragorn")["inventory"]) and character.load(c, "aragorn")["hp"]["current"] == 6)
+        state["active_encounter"]["resources"]["aragorn"] = {}
+        out = raises(lambda: hand.act(c, state, a, "aragorn", "item:Alchemist's fire", target="goblin#2"))
+        check("a thrown item that is out of range is refused and kept", out and "ft away" in out and any(i["name"] == "Alchemist's fire" for i in character.load(c, "aragorn")["inventory"]))
+        before = combat.combatant(c, state, "goblin#1")["hp"]["current"]
+        lines = hand.act(c, state, a, "aragorn", "item:Alchemist's fire", target="goblin#1", rng=Fixed(15, 3))
+        check("a thrown item is a ranged attack with its damage; it is gone", combat.combatant(c, state, "goblin#1")["hp"]["current"] < before
+              and not any(i["name"] == "Alchemist's fire" for i in character.load(c, "aragorn")["inventory"]) and combat.turn_used(state, "aragorn")["action"])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (8, 3), "goblin#2": (9, 5)})
+        stock(c, "aragorn", [])
+        a["items"] = [{"id": "item#1", "name": "Bottle", "x": 2, "y": 4}, {"id": "item#2", "name": "Stone", "x": 3, "y": 3}, {"id": "item#3", "name": "Far cup", "x": 8, "y": 6}]
+        ab = by_id(hand.listing(c, state, a, "aragorn"))
+        check("only the objects next to the character can be picked up", {"pickup:item#1", "pickup:item#2"} <= set(ab) and "pickup:item#3" not in ab and ab["pickup:item#1"]["cost"] == "free")
+        hand.act(c, state, a, "aragorn", "pickup:item#1")
+        check("a pick-up puts it on the sheet and takes it off the board", [i["name"] for i in character.load(c, "aragorn")["inventory"]] == ["Bottle"] and [i["id"] for i in a["items"]] == ["item#2", "item#3"])
+        check("a pick-up costs no action", not any(combat.turn_used(state, "aragorn").values()))
+        check("a second pick-up in a turn is refused", "free object interaction" in (raises(lambda: hand.act(c, state, a, "aragorn", "pickup:item#2")) or ""))
+        check("the free interaction is back on the next turn", (state["active_encounter"]["resources"].__setitem__("aragorn", {}) or True)
+              and hand.act(c, state, a, "aragorn", "pickup:item#2") == ["aragorn picks up Stone."])
+
+
 if __name__ == "__main__":
-    for t in (test_listing, test_spells, test_actions, test_improvise):
+    for t in (test_listing, test_spells, test_actions, test_improvise, test_items):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)
