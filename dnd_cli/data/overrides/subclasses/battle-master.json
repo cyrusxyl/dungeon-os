@@ -1,0 +1,39 @@
+{
+  "index": "battle-master",
+  "name": "Battle Master",
+  "class": {
+    "index": "fighter",
+    "name": "Fighter"
+  },
+  "subclass_flavor": "Martial Archetype",
+  "desc": [
+    "Battle Master: a fighter subclass. Hand-written summary, not the book text."
+  ],
+  "features": [
+    {
+      "level": 3,
+      "name": "Combat Superiority",
+      "desc": "Learn three maneuvers and gain four superiority dice (d8). Dice come back on a short or long rest."
+    },
+    {
+      "level": 3,
+      "name": "Student of War",
+      "desc": "Gain proficiency with one set of artisan's tools."
+    },
+    {
+      "level": 7,
+      "name": "Know Your Enemy",
+      "desc": "Study a creature for 1 minute to learn how it compares to you in key traits."
+    },
+    {
+      "level": 10,
+      "name": "Improved Combat Superiority",
+      "desc": "Superiority dice become d10."
+    },
+    {
+      "level": 15,
+      "name": "Relentless",
+      "desc": "Regain one die if you roll initiative with none left."
+    }
+  ]
+}

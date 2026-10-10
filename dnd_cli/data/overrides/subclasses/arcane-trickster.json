@@ -1,0 +1,39 @@
+{
+  "index": "arcane-trickster",
+  "name": "Arcane Trickster",
+  "class": {
+    "index": "rogue",
+    "name": "Rogue"
+  },
+  "subclass_flavor": "Roguish Archetype",
+  "desc": [
+    "Arcane Trickster: a rogue subclass. Hand-written summary, not the book text."
+  ],
+  "features": [
+    {
+      "level": 3,
+      "name": "Spellcasting",
+      "desc": "Cast wizard spells (enchantment and illusion mostly). Intelligence is your spell ability."
+    },
+    {
+      "level": 3,
+      "name": "Mage Hand Legerdemain",
+      "desc": "Your mage hand is invisible. It can pick pockets and open locks."
+    },
+    {
+      "level": 9,
+      "name": "Magical Ambush",
+      "desc": "A target has disadvantage on saves against your spell when you are hidden."
+    },
+    {
+      "level": 13,
+      "name": "Versatile Trickster",
+      "desc": "Use mage hand to give yourself advantage against a creature."
+    },
+    {
+      "level": 17,
+      "name": "Spell Thief",
+      "desc": "Steal a spell that a creature casts at you, and cast it yourself."
+    }
+  ]
+}

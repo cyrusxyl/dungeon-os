@@ -606,10 +606,11 @@ def stage_first_prompt(campaign_dir: Path, resumed: bool = False) -> str:
                 "and clocks (canon.json exists: do not run `canon init`). 3: set the look of the starting scene "
                 "(`scene set`) and put it on the map (`map place`). 4: make each character the pitch names: "
                 "`uv run dnd-cli character new` at level 1 (add --help), then `character level-up <id>` up to the "
-                "level the pitch implies (add --asi on an Ability Score Improvement level). The SRD has one "
-                "background (Acolyte) and no drow: use `--race elf --subrace high-elf` and a custom "
-                '`--background "<name>" --background-skills a,b` (two skills that neither the class picks nor the '
-                "race gives), and give the look with `actor set <id> race=drow ...`. 5: set each character's look "
+                "level the pitch implies (add --asi on an Ability Score Improvement level). Races: githyanki, "
+                "`--race elf --subrace drow`, `--subrace wood-elf`. Backgrounds: acolyte, charlatan, folk-hero, outlander, noble; "
+                "sage, soldier and criminal need `--background-bonus con+2,int+1` (the abilities the background lists). For any other "
+                'background use `--background "<name>" --background-skills a,b` (two skills that neither the class picks nor the '
+                "race gives). Give the look with `actor set <id> race=drow ...`. 5: set each character's look "
                 "with `uv run dnd-cli actor set`. 6: open the first scene with `uv run dnd-cli show beat`. "
                 "Do not write files under world/ by hand. In the first beat the program puts the player character "
                 "on stage: write only `@scene`, narration and `@choices`. Use the second person only if the "
@@ -709,7 +710,8 @@ def make_character(campaign_dir: Path, body: dict) -> dict:
         name=name, race=text("race"), subrace=text("subrace") or None, cls=text("class"), background=text("background"),
         scores=csv("scores"), assign=csv("assign"), skills=csv("skills"), background_skills=csv("background_skills") or None,
         cantrips=csv("cantrips") or None, spells=csv("spells") or None, equipment=csv("equipment") or None,
-        alignment=text("alignment"), bonus_abilities=csv("bonus_abilities") or None)
+        alignment=text("alignment"), bonus_abilities=csv("bonus_abilities") or None,
+        background_bonus=csv("background_bonus") or None)
     data = character.load(campaign_dir, char_id)
     for key in ("personality_traits", "ideals", "bonds", "flaws", "backstory"):
         if text(key):

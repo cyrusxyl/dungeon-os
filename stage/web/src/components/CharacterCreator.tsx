@@ -35,6 +35,8 @@ interface Cls extends Ref {
 }
 interface Background extends Ref {
   skills: string[]
+  ability_options: string[]
+  feat: string
 }
 interface Options {
   races: Race[]
@@ -80,6 +82,9 @@ interface Form {
   bg: string
   customName: string
   customSkills: string[]
+  bgSpread: boolean
+  bgPlus2: string
+  bgPlus1: string
   mode: Mode
   pool: number[]
   slot: (number | null)[]
@@ -104,7 +109,7 @@ interface Form {
 }
 
 const blank: Form = {
-  name: '', alignment: 'Neutral Good', race: '', subrace: '', bonus: [], cls: '', bg: '', customName: '', customSkills: [],
+  name: '', alignment: 'Neutral Good', race: '', subrace: '', bonus: [], cls: '', bg: '', customName: '', customSkills: [], bgSpread: false, bgPlus2: '', bgPlus1: '',
   mode: 'standard', pool: STANDARD, slot: Array(6).fill(null), buy: Array(6).fill(8),
   skills: [], cantrips: [], spells: [], gear: [], lookRace: '', body: '', skin: '', eyes: '', hair: '', color: '',
   traits: '', ideals: '', bonds: '', flaws: '', backstory: '', past: '', problem: '',
@@ -241,7 +246,13 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
   const prepared = Boolean(sc && sc.spells === 0)
 
   const base = f.mode === 'buy' ? f.buy : f.slot.map((i) => (i === null ? null : f.pool[i]))
-  const bonus = (a: string) => (race?.ability_bonuses[a] ?? 0) + (sub?.ability_bonuses[a] ?? 0) + (f.bonus.includes(a) ? 1 : 0)
+  // A 2024 background (it lists ability options) gives +2 and +1, or +1 three times, and replaces the race bonus.
+  const bgOpts = f.bg === 'custom' ? [] : (bg?.ability_options ?? [])
+  const bgBonus = (a: string) => (f.bgSpread ? (bgOpts.includes(a) ? 1 : 0) : (a === f.bgPlus2 ? 2 : 0) + (a === f.bgPlus1 ? 1 : 0))
+  const bonus = (a: string) =>
+    bgOpts.length ? bgBonus(a) : (race?.ability_bonuses[a] ?? 0) + (sub?.ability_bonuses[a] ?? 0) + (f.bonus.includes(a) ? 1 : 0)
+  const bgBonusOk = !bgOpts.length || f.bgSpread || Boolean(f.bgPlus2 && f.bgPlus1 && f.bgPlus2 !== f.bgPlus1)
+  const bgBonusText = !bgOpts.length ? [] : f.bgSpread ? bgOpts.map((a) => `${a.slice(0, 3)}+1`) : [`${f.bgPlus2.slice(0, 3)}+2`, `${f.bgPlus1.slice(0, 3)}+1`]
   const final = abilities.map((a, i) => (base[i] ?? 0) + bonus(a))
   const spent = f.buy.reduce((n, v) => n + COST[v], 0)
   const maxPrepared = sc ? Math.max(1, mod(final[abilities.indexOf(sc.ability)] ?? 10) + 1) : 0
@@ -266,7 +277,7 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
       ok: Boolean(race && (race.subraces.length === 0 || sub) && f.bonus.length === (race.bonus_choice?.count ?? 0)),
     },
     { key: 'class', label: 'Class', ok: Boolean(cls) },
-    { key: 'bg', label: 'Background', ok: f.bg === 'custom' ? Boolean(f.customName.trim()) && f.customSkills.length === 2 : Boolean(bg) },
+    { key: 'bg', label: 'Background', ok: f.bg === 'custom' ? Boolean(f.customName.trim()) && f.customSkills.length === 2 : Boolean(bg) && bgBonusOk },
     { key: 'abilities', label: 'Abilities', ok: f.mode === 'buy' ? spent <= 27 : base.every((v) => v !== null) },
     { key: 'skills', label: 'Skills', ok: f.skills.length === (cls?.skill_count ?? 0) },
     ...(sc
@@ -283,7 +294,7 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
     who: 'Enter a player name, a character name and an alignment.',
     race: 'Pick a race, a subrace if it has one, and the bonus abilities if it asks for them.',
     class: 'Pick a class.',
-    bg: 'Pick a background, or fill in the custom one.',
+    bg: 'Pick a background, or fill in the custom one. A background with an ability bonus needs it set.',
     abilities: 'Give every ability a score, or spend at most 27 points.',
     skills: `Pick ${cls?.skill_count ?? 0} skills.`,
     spells: 'Pick the cantrips and spells the class needs.',
@@ -306,6 +317,7 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
       scores: base,
       assign: ['str', 'dex', 'con', 'int', 'wis', 'cha'],
       bonus_abilities: f.bonus,
+      background_bonus: bgBonusText,
       skills: f.skills,
       cantrips: f.cantrips,
       spells: f.spells,
@@ -469,7 +481,7 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
         <>
           <Group label="Background">
             {options.backgrounds.map((b) => (
-              <Pick key={b.index} on={f.bg === b.index} onClick={() => set({ bg: b.index, skills: [] })}>
+              <Pick key={b.index} on={f.bg === b.index} onClick={() => set({ bg: b.index, skills: [], bgPlus2: '', bgPlus1: '', bgSpread: false })}>
                 {b.name}
               </Pick>
             ))}
@@ -477,7 +489,34 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
               Custom background
             </Pick>
           </Group>
-          {bg && f.bg !== 'custom' && <p className="text-lg text-[var(--dim)]">Skills: {bg.skills.map(titleCase).join(', ')}</p>}
+          {bg && f.bg !== 'custom' && (
+            <p className="text-lg text-[var(--dim)]">
+              Skills: {bg.skills.map(titleCase).join(', ')}.{bg.feat ? ` Feat: ${bg.feat}.` : ''}
+            </p>
+          )}
+          {bgOpts.length > 0 && (
+            <>
+              <p className="text-lg text-[var(--dim)]">This background replaces the race bonus with its own.</p>
+              <Group label="Bonus">
+                <Pick on={!f.bgSpread} onClick={() => set({ bgSpread: false })}>+2 and +1</Pick>
+                <Pick on={f.bgSpread} onClick={() => set({ bgSpread: true })}>+1, +1, +1</Pick>
+              </Group>
+              {!f.bgSpread && (
+                <>
+                  <Group label="+2 to">
+                    {bgOpts.map((a) => (
+                      <Pick key={a} on={f.bgPlus2 === a} disabled={f.bgPlus1 === a} onClick={() => set({ bgPlus2: a })}>{titleCase(a)}</Pick>
+                    ))}
+                  </Group>
+                  <Group label="+1 to">
+                    {bgOpts.map((a) => (
+                      <Pick key={a} on={f.bgPlus1 === a} disabled={f.bgPlus2 === a} onClick={() => set({ bgPlus1: a })}>{titleCase(a)}</Pick>
+                    ))}
+                  </Group>
+                </>
+              )}
+            </>
+          )}
           {f.bg === 'custom' && (
             <>
               <label htmlFor="cc-bgname" className="text-lg">Background name</label>

@@ -284,6 +284,8 @@ def create_parser():
     p.add_argument("--skills", required=True, help="The class's skill picks, e.g. athletics,perception")
     p.add_argument("--background-skills", default=None, help="Background skills not in the API")
     p.add_argument("--bonus-abilities", default=None, help="Half-elf: two abilities for +1")
+    p.add_argument("--background-bonus", default=None,
+                   help="A 2024 background (sage, criminal, soldier): con+2,int+1 or con+1,int+1,wis+1. Replaces race bonuses")
     p.add_argument("--languages", default=None, help="Extra languages")
     p.add_argument("--cantrips", default=None)
     p.add_argument("--spells", default=None)

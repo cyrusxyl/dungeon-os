@@ -822,6 +822,14 @@ def test_creator() -> None:
                 status, r = await post("/api/creation/character", {**body, "name": "Hal", "race": "half-elf",
                                                                    "bonus_abilities": ["strength", "constitution"]})
                 check("full-name bonus abilities work", status == 200)
+                status, r = await post("/api/creation/character", {**body, "name": "Sam", "background": "sage",
+                                                                   "background_bonus": ["con+2", "int+1"]})
+                sam = json.loads((c / "characters" / "sam.json").read_text()) if status == 200 else {}
+                check("a 2024 background: the list reaches build and replaces the race bonus",
+                      status == 200 and sam["ability_scores"]["constitution"] == 15 and sam["ability_scores"]["dexterity"] == 14)
+                status, r = await post("/api/creation/character", {**body, "name": "Sue", "background": "sage"})
+                check("a 2024 background with no bonus is 400 and writes nothing",
+                      status == 400 and "--background-bonus" in r["error"] and not (c / "characters" / "sue.json").exists())
                 status, r = await post("/api/creation/character", {**body, "name": "Odd", "look": {**look, "race": "ent"}})
                 check("a bad look is 400 and writes nothing", status == 400 and not (c / "characters" / "odd.json").exists())
                 stage.seen_ids = []

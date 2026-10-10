@@ -1,0 +1,33 @@
+{
+  "index": "wood-elf",
+  "name": "Wood Elf",
+  "race": {
+    "index": "elf",
+    "name": "Elf"
+  },
+  "desc": "Forest elves who are quick and stealthy.",
+  "ability_bonuses": [
+    {
+      "ability_score": {
+        "index": "wis",
+        "name": "WIS"
+      },
+      "bonus": 1
+    }
+  ],
+  "racial_traits": [
+    {
+      "index": "elf-weapon-training",
+      "name": "Elf Weapon Training"
+    },
+    {
+      "index": "fleet-of-foot",
+      "name": "Fleet of Foot"
+    },
+    {
+      "index": "mask-of-the-wild",
+      "name": "Mask of the Wild"
+    }
+  ],
+  "speed": 35
+}

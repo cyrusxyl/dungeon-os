@@ -1,0 +1,10 @@
+{
+  "_extend": {
+    "subclasses": [
+      {
+        "index": "arcane-trickster",
+        "name": "Arcane Trickster"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "index": "noble",
+  "name": "Noble",
+  "starting_proficiencies": [
+    {
+      "index": "skill-history",
+      "name": "Skill: history"
+    },
+    {
+      "index": "skill-persuasion",
+      "name": "Skill: persuasion"
+    }
+  ],
+  "feature": {
+    "name": "Position of Privilege",
+    "desc": [
+      "People think the best of you. High society welcomes you and local officials will make time for you."
+    ]
+  }
+}

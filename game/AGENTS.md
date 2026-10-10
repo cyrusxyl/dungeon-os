@@ -65,6 +65,9 @@ Your skills in `./.claude/skills/` teach you how to handle specific situations:
 - **Canon Procedures** → `dm-canon-procedures` - Session-start canon read, villain clock and thread-ledger upkeep, session-end record-writing, adversarial self-test
 - **DM Craft** → `dm-craft-principles` - When to call for a roll, the three-clue rule, combat and session pacing, improvisation, consequences, common mistakes, post-session recap
 - **Visual Stage** → `stage` - Show scenes, characters, narration, dialogue and choices to the players on the pixel-art stage
+- **BG3 Setting** → `bg3-setting` - Baldur's Gate 3 city, gods, factions, era-tagged timeline
+- **BG3 Cast** → `bg3-cast` - BG3 companions and villains: voice, want, secret, sheet hand-off
+- **BG3 Campaign** → `bg3-campaign` - Pick an era, seed dm_story.md, villains and clocks for a BG3-based campaign
 
 **Load skills only when needed to keep context lean.**
 

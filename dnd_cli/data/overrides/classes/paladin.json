@@ -1,0 +1,10 @@
+{
+  "_extend": {
+    "subclasses": [
+      {
+        "index": "oath-of-vengeance",
+        "name": "Oath of Vengeance"
+      }
+    ]
+  }
+}

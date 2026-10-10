@@ -1,0 +1,20 @@
+{
+  "index": "outlander",
+  "name": "Outlander",
+  "starting_proficiencies": [
+    {
+      "index": "skill-athletics",
+      "name": "Skill: athletics"
+    },
+    {
+      "index": "skill-survival",
+      "name": "Skill: survival"
+    }
+  ],
+  "feature": {
+    "name": "Wanderer",
+    "desc": [
+      "You recall maps and settlements well. You can find food and fresh water for yourself and five others each day in the wild."
+    ]
+  }
+}

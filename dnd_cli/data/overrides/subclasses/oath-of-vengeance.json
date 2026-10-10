@@ -1,0 +1,39 @@
+{
+  "index": "oath-of-vengeance",
+  "name": "Oath of Vengeance",
+  "class": {
+    "index": "paladin",
+    "name": "Paladin"
+  },
+  "subclass_flavor": "Sacred Oath",
+  "desc": [
+    "Oath of Vengeance: a paladin subclass. Hand-written summary, not the book text."
+  ],
+  "features": [
+    {
+      "level": 3,
+      "name": "Channel Divinity: Abjure Enemy",
+      "desc": "Frighten one creature (save ends). A frightened creature's speed is 0."
+    },
+    {
+      "level": 3,
+      "name": "Channel Divinity: Vow of Enmity",
+      "desc": "Gain advantage on attack rolls against one creature for 1 minute."
+    },
+    {
+      "level": 7,
+      "name": "Relentless Avenger",
+      "desc": "After an opportunity attack hits, you can move half your speed toward the target."
+    },
+    {
+      "level": 15,
+      "name": "Soul of Vengeance",
+      "desc": "When your Vow of Enmity target attacks, you can attack it as a reaction."
+    },
+    {
+      "level": 20,
+      "name": "Avenging Angel",
+      "desc": "Become winged and frightening for 1 hour."
+    }
+  ]
+}

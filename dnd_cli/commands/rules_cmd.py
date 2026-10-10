@@ -315,5 +315,6 @@ def execute_new_character(campaign, char_id: str, args) -> int:
             race=args.race, subrace=args.subrace, cls=args.char_class, background=args.background,
             scores=args.scores, assign=args.assign, skills=args.skills, background_skills=args.background_skills,
             cantrips=args.cantrips, spells=args.spells, equipment=args.equipment, alignment=args.alignment,
-            languages=args.languages, bonus_abilities=args.bonus_abilities))
+            languages=args.languages, bonus_abilities=args.bonus_abilities,
+            background_bonus=args.background_bonus))
     return run_stage(campaign, go, *ERRORS)

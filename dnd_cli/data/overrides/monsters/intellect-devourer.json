@@ -1,0 +1,101 @@
+{
+  "index": "intellect-devourer",
+  "name": "Intellect Devourer",
+  "size": "Tiny",
+  "type": "aberration",
+  "alignment": "lawful evil",
+  "armor_class": [
+    {
+      "type": "natural",
+      "value": 12
+    }
+  ],
+  "hit_points": 21,
+  "hit_dice": "6d4+6",
+  "speed": {
+    "walk": "40 ft."
+  },
+  "strength": 6,
+  "dexterity": 14,
+  "constitution": 13,
+  "intelligence": 3,
+  "wisdom": 11,
+  "charisma": 4,
+  "proficiencies": [
+    {
+      "value": 2,
+      "proficiency": {
+        "index": "skill-perception"
+      }
+    },
+    {
+      "value": 4,
+      "proficiency": {
+        "index": "skill-stealth"
+      }
+    }
+  ],
+  "damage_vulnerabilities": [],
+  "damage_resistances": [],
+  "damage_immunities": [],
+  "condition_immunities": [],
+  "senses": {
+    "blindsight": "60 ft.",
+    "passive_perception": 12
+  },
+  "languages": "understands Deep Speech but cannot speak, telepathy 60 ft.",
+  "challenge_rating": 2,
+  "proficiency_bonus": 2,
+  "xp": 450,
+  "special_abilities": [
+    {
+      "name": "Detect Sentience",
+      "desc": "It senses thinking creatures within 300 feet, unless divination magic shields them."
+    },
+    {
+      "name": "Body Thief",
+      "desc": "It can devour the brain of an incapacitated creature within reach and take control of the body, which it keeps until it leaves the body or dies."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "desc": "One Claws attack and one Devour Intellect.",
+      "actions": []
+    },
+    {
+      "name": "Claws",
+      "desc": "Melee attack, +4 to hit, reach 5 ft. Hit: 7 (2d4 + 2) slashing damage.",
+      "attack_bonus": 4,
+      "damage": [
+        {
+          "damage_type": {
+            "index": "slashing"
+          },
+          "damage_dice": "2d4+2"
+        }
+      ]
+    },
+    {
+      "name": "Devour Intellect",
+      "desc": "Targets one creature with a brain that it can see within 10 feet. The target makes a DC 12 Intelligence save. On a failure it takes 11 (2d10) psychic damage, and the devourer rolls 3d6. If the roll equals or beats the target's Intelligence score, that score becomes 0 and the target is stunned until it regains at least 1 point.",
+      "dc": {
+        "dc_type": {
+          "index": "int",
+          "name": "INT"
+        },
+        "dc_value": 12,
+        "success_type": "none"
+      },
+      "damage": [
+        {
+          "damage_type": {
+            "index": "psychic"
+          },
+          "damage_dice": "2d10"
+        }
+      ]
+    }
+  ],
+  "note": "Hand-written override. Check against your own book."
+}

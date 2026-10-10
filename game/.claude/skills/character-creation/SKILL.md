@@ -40,7 +40,7 @@ Ask one question at a time. On the visual stage, use one beat per question, with
 
 1. **Race** (and subrace, if the race has one).
 2. **Class.**
-3. **Background.** The API has few backgrounds. If the background is not in the API, ask which two skills it gives. You pass them with `--background-skills`.
+3. **Background.** Ready backgrounds: acolyte, charlatan, folk-hero, outlander, noble (skills only), and sage, criminal, soldier (2024 SRD). A 2024 background also gives an origin feat and an ability increase: it **replaces** the race bonus. Ask for `+2` and `+1`, or `+1` three times, on the abilities the background lists, and pass `--background-bonus con+2,int+1`. For any other background, ask which two skills it gives and pass `--background-skills`.
 4. **Ability scores.** Offer one method:
    - Standard array: 15, 14, 13, 12, 10, 8.
    - Point buy: 27 points, scores 8 to 15.
@@ -64,6 +64,8 @@ uv run dnd-cli character new <id> --player <player-id> --name "Name" \
 
 Options:
 - `--background-skills a,b`: skills of a background that is not in the API.
+- `--background-bonus con+2,int+1`: required for sage, criminal and soldier. It replaces the race bonuses.
+- Extra races and subraces: githyanki, `--race elf --subrace drow`, `--race elf --subrace wood-elf` (data in `dnd_cli/data/overrides/`).
 - `--bonus-abilities dex,con`: half-elf only.
 - `--languages a,b`: extra languages (for example, human).
 - `--player-name Dana`: the player's name, for a new player file.

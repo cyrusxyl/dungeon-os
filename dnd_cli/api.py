@@ -4,6 +4,7 @@ import json
 import subprocess
 from typing import Optional, Tuple
 from dnd_cli import API_BASE
+from dnd_cli import sources
 from dnd_cli.cache import load_cache, save_cache
 
 
@@ -39,11 +40,19 @@ def safe_api_call(endpoint: str) -> Tuple[Optional[dict], Optional[str]]:
 
 def api_get(endpoint: str, use_cache: bool = True) -> Tuple[Optional[dict], Optional[str], bool]:
     """
-    Get a resource from the API (with caching).
+    Get a resource from the API (with caching), plus the content in `dnd_cli/sources.py`.
 
     Returns: (data, error, was_cached)
     """
     endpoint = endpoint.lstrip("/")
+    if (hit := sources.replacement(endpoint)) is not None:  # hand-written data needs no network
+        return hit, None, True
+    data, error, cached = _api_get(endpoint, use_cache)
+    data, error = sources.extend(endpoint, data, error)
+    return data, error, cached
+
+
+def _api_get(endpoint: str, use_cache: bool) -> Tuple[Optional[dict], Optional[str], bool]:
 
     # Try cache first
     if use_cache:
@@ -69,6 +78,12 @@ def api_list(resource: str, use_cache: bool = True) -> Tuple[Optional[dict], Opt
 
     Returns: (data, error, was_cached)
     """
+    data, error, cached = _api_list(resource, use_cache)
+    data, error = sources.extend(resource, data, error)
+    return data, error, cached
+
+
+def _api_list(resource: str, use_cache: bool) -> Tuple[Optional[dict], Optional[str], bool]:
     endpoint = f"{resource}/_index"
 
     # Try cache first

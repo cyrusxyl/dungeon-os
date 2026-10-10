@@ -123,6 +123,23 @@ def fails(**kw) -> str:
     return ""
 
 
+DATA["backgrounds/sage"] = {"index": "sage", "name": "Sage", "starting_proficiencies": [ref("skill-arcana"), ref("skill-history")],
+                            "ability_options": ["constitution", "intelligence", "wisdom"], "feat": "Magic Initiate (Wizard)"}
+DATA["feats/magic-initiate"] = {"desc": ["You learn two cantrips. More text."]}
+
+
+def test_2024_background() -> None:
+    d = build(background="sage", skills="athletics,survival", background_bonus="con+2,int+1")
+    s = d["ability_scores"]
+    check("2024 background bonus replaces the race bonus", s["constitution"] == 15 and s["intelligence"] == 13 and s["dexterity"] == 14)
+    check("2024 background skills", d["skills"]["arcana"] == 3 and d["skills"]["history"] == 3)
+    check("origin feat is on the sheet", {"name": "Magic Initiate (Wizard)", "description": "You learn two cantrips."} in d["features_and_traits"])
+    check("three +1 are allowed", build(background="sage", skills="athletics,survival", background_bonus="con+1,int+1,wis+1")["ability_scores"]["wisdom"] == 11)
+    check("no bonus is refused", "--background-bonus" in fails(background="sage", skills="athletics,survival"))
+    check("bonus outside the list is refused", "--background-bonus" in fails(background="sage", skills="athletics,survival", background_bonus="str+2,int+1"))
+    check("+2 twice is refused", "--background-bonus" in fails(background="sage", skills="athletics,survival", background_bonus="con+2,int+2"))
+
+
 def test_build() -> None:
     d = build(subrace="high-elf", equipment="longsword,chain-mail,shield")
     s = d["ability_scores"]
@@ -210,7 +227,7 @@ def test_options() -> None:
     check("wizard spells: ability, counts, level 0 and 1 options", sp["ability"] == "intelligence" and sp["cantrips"] == 3
           and sp["spells"] == 6 and [x["index"] for x in sp["cantrip_options"]] == ["fire-bolt"]
           and [x["index"] for x in sp["spell_options"]] == ["magic-missile"])
-    check("background skills are SKILLS keys", o["backgrounds"] == [{"index": "acolyte", "name": "Acolyte", "skills": ["insight", "religion"]}])
+    check("background skills are SKILLS keys", o["backgrounds"] == [{"index": "acolyte", "name": "Acolyte", "ability_options": [], "feat": "", "skills": ["insight", "religion"]}])
     look = o["look"]
     check("look block", look["bodies"] == ["male", "female", "muscular"] and "green" in look["eyes"]
           and look["races"]["drow"] == {"skins": ["blue", "black", "lavender"], "default_skin": "blue"}
@@ -269,6 +286,7 @@ def test_create() -> None:
 
 if __name__ == "__main__":
     test_build()
+    test_2024_background()
     test_errors()
     test_classes()
     test_equipment_quantity()

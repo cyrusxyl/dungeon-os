@@ -1,0 +1,39 @@
+{
+  "index": "circle-of-the-moon",
+  "name": "Circle of the Moon",
+  "class": {
+    "index": "druid",
+    "name": "Druid"
+  },
+  "subclass_flavor": "Druid Circle",
+  "desc": [
+    "Circle of the Moon: a druid subclass. Hand-written summary, not the book text."
+  ],
+  "features": [
+    {
+      "level": 2,
+      "name": "Combat Wild Shape",
+      "desc": "Use Wild Shape as a bonus action. Spend a spell slot to heal while in beast form."
+    },
+    {
+      "level": 2,
+      "name": "Circle Forms",
+      "desc": "Wild Shape into stronger beasts than normal, up to CR 1 at level 2."
+    },
+    {
+      "level": 6,
+      "name": "Primal Strike",
+      "desc": "Your beast-form attacks count as magical."
+    },
+    {
+      "level": 10,
+      "name": "Elemental Wild Shape",
+      "desc": "Spend two uses of Wild Shape to become an elemental."
+    },
+    {
+      "level": 14,
+      "name": "Thousand Forms",
+      "desc": "Cast alter self at will."
+    }
+  ]
+}

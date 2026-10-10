@@ -1,0 +1,88 @@
+{
+  "index": "githyanki-warrior",
+  "name": "Githyanki Warrior",
+  "size": "Medium",
+  "type": "humanoid",
+  "alignment": "lawful evil",
+  "armor_class": [
+    {
+      "type": "armor",
+      "value": 17
+    }
+  ],
+  "hit_points": 49,
+  "hit_dice": "9d8+9",
+  "speed": {
+    "walk": "30 ft."
+  },
+  "strength": 15,
+  "dexterity": 14,
+  "constitution": 12,
+  "intelligence": 13,
+  "wisdom": 13,
+  "charisma": 10,
+  "proficiencies": [
+    {
+      "value": 3,
+      "proficiency": {
+        "index": "saving-throw-con"
+      }
+    },
+    {
+      "value": 3,
+      "proficiency": {
+        "index": "saving-throw-int"
+      }
+    },
+    {
+      "value": 3,
+      "proficiency": {
+        "index": "saving-throw-wis"
+      }
+    }
+  ],
+  "damage_vulnerabilities": [],
+  "damage_resistances": [],
+  "damage_immunities": [],
+  "condition_immunities": [],
+  "senses": {
+    "passive_perception": 11
+  },
+  "languages": "Gith",
+  "challenge_rating": 3,
+  "proficiency_bonus": 2,
+  "xp": 700,
+  "special_abilities": [
+    {
+      "name": "Innate Spellcasting (Psionics)",
+      "desc": "Spell ability is Intelligence, save DC 11, no components. At will: mage hand (the hand is invisible). Three times per day each: jump, misty step, nondetection (itself only)."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "desc": "Two Greatsword attacks.",
+      "actions": []
+    },
+    {
+      "name": "Greatsword",
+      "desc": "Melee attack, +4 to hit, reach 5 ft. Hit: 9 (2d6 + 2) slashing damage plus 7 (2d6) psychic damage.",
+      "attack_bonus": 4,
+      "damage": [
+        {
+          "damage_type": {
+            "index": "slashing"
+          },
+          "damage_dice": "2d6+2"
+        },
+        {
+          "damage_type": {
+            "index": "psychic"
+          },
+          "damage_dice": "2d6"
+        }
+      ]
+    }
+  ],
+  "note": "Hand-written override. Check against your own book."
+}

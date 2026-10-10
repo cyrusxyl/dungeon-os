@@ -287,5 +287,18 @@
       "pantaloons:navy",
       "bandana:navy"
     ]
+  },
+  "githyanki-warrior": {
+    "name": "Githyanki Warrior",
+    "body": "male",
+    "skin": "olive",
+    "eyes": "yellow",
+    "items": [
+      "hair_plain:black",
+      "leather",
+      "pants:brown",
+      "boots_basic:brown",
+      "weapon_sword_arming"
+    ]
   }
 }

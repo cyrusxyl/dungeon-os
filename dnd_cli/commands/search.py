@@ -2,6 +2,7 @@
 
 import sys
 from typing import List, Dict, Optional
+from dnd_cli import sources
 from dnd_cli.api import api_list
 from dnd_cli.cache import load_cache
 from dnd_cli.fuzzy import fuzzy_match_multi_algorithm
@@ -31,6 +32,8 @@ def load_full_resources(resource: str, index_list: List[dict]) -> List[dict]:
 
         if cached:
             full_resources.append(cached['data'])
+        elif (own := sources.replacement(endpoint)) is not None:  # hand-written data is never cached
+            full_resources.append(own)
         # Skip if not in cache (warmup needed)
 
     return full_resources

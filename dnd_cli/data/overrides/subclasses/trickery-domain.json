@@ -1,0 +1,39 @@
+{
+  "index": "trickery-domain",
+  "name": "Trickery Domain",
+  "class": {
+    "index": "cleric",
+    "name": "Cleric"
+  },
+  "subclass_flavor": "Divine Domain",
+  "desc": [
+    "Trickery Domain: a cleric subclass. Hand-written summary, not the book text."
+  ],
+  "features": [
+    {
+      "level": 1,
+      "name": "Blessing of the Trickster",
+      "desc": "Touch a willing creature to give it advantage on Stealth checks for 1 hour. One creature at a time."
+    },
+    {
+      "level": 2,
+      "name": "Channel Divinity: Invoke Duplicity",
+      "desc": "Make an illusory copy of yourself for 1 minute. You can cast spells from its space, and you have advantage on attacks when you and it both threaten a target."
+    },
+    {
+      "level": 6,
+      "name": "Channel Divinity: Cloak of Shadows",
+      "desc": "Become invisible until the end of your next turn."
+    },
+    {
+      "level": 8,
+      "name": "Divine Strike",
+      "desc": "Once per turn, add extra poison damage to a weapon hit (1d8, more at level 14)."
+    },
+    {
+      "level": 17,
+      "name": "Improved Duplicity",
+      "desc": "You can make up to four copies of yourself."
+    }
+  ]
+}

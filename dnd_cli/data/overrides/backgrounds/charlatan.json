@@ -1,0 +1,20 @@
+{
+  "index": "charlatan",
+  "name": "Charlatan",
+  "starting_proficiencies": [
+    {
+      "index": "skill-deception",
+      "name": "Skill: deception"
+    },
+    {
+      "index": "skill-sleight-of-hand",
+      "name": "Skill: sleight-of-hand"
+    }
+  ],
+  "feature": {
+    "name": "False Identity",
+    "desc": [
+      "You keep a second, well-made identity with papers, contacts and a cover story. You can forge simple documents you have seen."
+    ]
+  }
+}

@@ -88,19 +88,40 @@ def _scores(scores: str, assign: str, race_bonuses: list[tuple[str, int]]) -> di
     return {a: out[a] for a in ABILITIES}
 
 
+def _background_bonus(text: str | None, options: list[str], name: str) -> list[tuple[str, int]]:
+    """A 2024 background gives +2 and +1, or +1 three times, to its listed abilities."""
+    asked = ", ".join(a[:3] for a in options)
+    try:
+        pairs = [(ability(a), int(n)) for a, n in (p.strip().split("+") for p in (text or "").split(",") if p.strip())]
+    except ValueError:
+        pairs = []
+    if sorted(n for _, n in pairs) not in ([1, 2], [1, 1, 1]) or len({a for a, _ in pairs}) != len(pairs) \
+            or not {a for a, _ in pairs} <= {ability(o) for o in options}:
+        raise RulesError(f"{name} adds +2 and +1, or +1 three times, to {asked}. "
+                         f"Give --background-bonus, for example {options[0][:3]}+2,{options[1][:3]}+1.")
+    return pairs
+
+
 def build(fetch, *, player: str, name: str, race: str, cls: str, background: str, scores: str, assign: str,
           skills: str, subrace: str | None = None, background_skills: str | None = None,
           cantrips: str | None = None, spells: str | None = None, equipment: str | None = None,
-          alignment: str = "", languages: str | None = None, bonus_abilities: str | None = None) -> dict:
+          alignment: str = "", languages: str | None = None, bonus_abilities: str | None = None,
+          background_bonus: str | None = None) -> dict:
     """Return a level 1 sheet. Raises RulesError, with a message that says how to fix the call."""
     r = _lookup(fetch, f"races/{slug(race)}", "race")
     sub = _lookup(fetch, f"subraces/{slug(subrace)}", "subrace") if subrace else {}
     c = _lookup(fetch, f"classes/{slug(cls)}", "class")
     lvl = _lookup(fetch, f"classes/{c['index']}/levels/1", "class level")
 
+    try:
+        bg = fetch(f"backgrounds/{slug(background)}")
+    except RulesError:
+        bg = None
     bonuses = [(ability(b["ability_score"]["index"]), b["bonus"]) for b in r.get("ability_bonuses", []) + sub.get("ability_bonuses", [])]
     opt = r.get("ability_bonus_options")
-    if opt:
+    if bg and bg.get("ability_options"):  # a 2024 background: its increase replaces the race's
+        bonuses = _background_bonus(background_bonus, bg["ability_options"], bg["name"])
+    elif opt:
         picked = [ability(a) for a in _names(bonus_abilities)]
         allowed = {ability(o["ability_score"]["index"]) for o in opt["from"]["options"]}
         if len(set(picked)) != opt["choose"] or not set(picked) <= allowed:
@@ -116,10 +137,6 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
     if len(chosen) != need or len(set(chosen)) != need or not set(chosen) <= set(options):
         raise RulesError(f"{c['name']} picks {need} different skills from: {', '.join(options)}. "
                          f"Fix --skills (got {skills!r}).")
-    try:
-        bg = fetch(f"backgrounds/{slug(background)}")
-    except RulesError:
-        bg = None
     bg_skills = [_skill(p["index"]) for p in (bg or {}).get("starting_proficiencies", []) if p["index"].startswith("skill-")]
     bg_skills += [s for s in _skills(background_skills) if s not in bg_skills]
     if bg is None and not bg_skills:
@@ -145,7 +162,7 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
         "skills": {s: m[SKILLS[s]] + prof for s in proficient},
         "saving_throws": {a: m[a] + prof for a in saves},
         "hp": {"current": max(1, die + m["constitution"]), "max": max(1, die + m["constitution"]), "temp": 0},
-        "armor_class": sheet.base_ac(c["name"], m), "initiative": m["dexterity"], "speed": r.get("speed", 30),
+        "armor_class": sheet.base_ac(c["name"], m), "initiative": m["dexterity"], "speed": sub.get("speed", r.get("speed", 30)),
         "hit_dice": {"total": 1, "remaining": 1, "type": f"d{die}"},
         "death_saves": {"successes": 0, "failures": 0},
         "languages": [*(_l["name"] for _l in r.get("languages", [])), *(_title(x) for x in _names(languages))],
@@ -167,6 +184,8 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
         if fname not in seen:
             seen.add(fname)
             data["features_and_traits"].append({"name": fname, "description": _desc(fetch, endpoint)})
+    if bg and bg.get("feat"):  # the origin feat of a 2024 background, e.g. "Magic Initiate (Wizard)"
+        data["features_and_traits"].append({"name": bg["feat"], "description": _desc(fetch, f"feats/{slug(bg['feat'].split(' (')[0])}")})
     if sheet.hp_bonus_per_level(data):
         data["hp"]["max"] += 1
         data["hp"]["current"] += 1
@@ -342,7 +361,7 @@ def _race_options(fetch, index: str) -> dict:
 
 def _background_options(fetch, index: str) -> dict:
     b = fetch(f"backgrounds/{index}")
-    return {"index": index, "name": b["name"],
+    return {"index": index, "name": b["name"], "ability_options": b.get("ability_options", []), "feat": b.get("feat", ""),
             "skills": [_skill(p["index"]) for p in b.get("starting_proficiencies", []) if p["index"].startswith("skill-")]}
 
 

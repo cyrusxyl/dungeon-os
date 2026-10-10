@@ -1,0 +1,46 @@
+{
+  "index": "githyanki",
+  "name": "Githyanki",
+  "speed": 30,
+  "size": "Medium",
+  "ability_bonuses": [
+    {
+      "ability_score": {
+        "index": "str",
+        "name": "STR"
+      },
+      "bonus": 2
+    },
+    {
+      "ability_score": {
+        "index": "int",
+        "name": "INT"
+      },
+      "bonus": 1
+    }
+  ],
+  "languages": [
+    {
+      "name": "Common"
+    },
+    {
+      "name": "Gith"
+    }
+  ],
+  "starting_proficiencies": [],
+  "traits": [
+    {
+      "index": "decadent-mastery",
+      "name": "Decadent Mastery"
+    },
+    {
+      "index": "martial-prodigy",
+      "name": "Martial Prodigy"
+    },
+    {
+      "index": "githyanki-psionics",
+      "name": "Githyanki Psionics"
+    }
+  ],
+  "subraces": []
+}

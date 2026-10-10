@@ -1,0 +1,20 @@
+{
+  "index": "folk-hero",
+  "name": "Folk Hero",
+  "starting_proficiencies": [
+    {
+      "index": "skill-animal-handling",
+      "name": "Skill: animal-handling"
+    },
+    {
+      "index": "skill-survival",
+      "name": "Skill: survival"
+    }
+  ],
+  "feature": {
+    "name": "Rustic Hospitality",
+    "desc": [
+      "Common folk shelter and hide you if the law is not at your door. They will not risk their lives for you."
+    ]
+  }
+}

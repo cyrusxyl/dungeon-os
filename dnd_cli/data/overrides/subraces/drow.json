@@ -1,0 +1,36 @@
+{
+  "index": "drow",
+  "name": "Drow",
+  "race": {
+    "index": "elf",
+    "name": "Elf"
+  },
+  "desc": "Underdark elves with dark skin and white hair. They see far in the dark and shun the sun.",
+  "ability_bonuses": [
+    {
+      "ability_score": {
+        "index": "cha",
+        "name": "CHA"
+      },
+      "bonus": 1
+    }
+  ],
+  "racial_traits": [
+    {
+      "index": "superior-darkvision",
+      "name": "Superior Darkvision"
+    },
+    {
+      "index": "sunlight-sensitivity",
+      "name": "Sunlight Sensitivity"
+    },
+    {
+      "index": "drow-magic",
+      "name": "Drow Magic"
+    },
+    {
+      "index": "drow-weapon-training",
+      "name": "Drow Weapon Training"
+    }
+  ]
+}
