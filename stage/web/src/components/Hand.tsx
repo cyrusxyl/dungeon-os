@@ -71,7 +71,7 @@ export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, 
         <Pip used={hand.turn.action} label="Action" />
         <Pip used={hand.turn.bonus} label="Bonus" />
         <Pip used={hand.turn.reaction} label="Reaction" />
-        <span className="text-[var(--dim)]">{hand.feet_left} ft left</span>
+        {hand.feet_left !== null && <span className="text-[var(--dim)]">{hand.feet_left} ft left</span>}
         <Button size="sm" variant="outline" className="ml-auto text-[10px]" onClick={onSkin}>
           {skin === 'cards' ? 'List' : 'Cards'}
         </Button>
@@ -82,7 +82,7 @@ export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, 
           {selected.targets?.length ? (
             selected.targets.map((t) => (
               <Button key={t.id} size="sm" variant="outline" disabled={!t.ok} title={t.why ?? undefined} onClick={() => onTarget(selected, t.id)} className="text-[10px]">
-                {t.name} · {t.dist_ft} ft{t.odds ? ` · ${t.odds}` : ''}
+                {t.name}{t.dist_ft === undefined ? '' : ` · ${t.dist_ft} ft`}{t.odds ? ` · ${t.odds}` : ''}
               </Button>
             ))
           ) : (

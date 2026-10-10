@@ -52,6 +52,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const [consoleOpen, setConsoleOpen] = useState(false)
   const [mapOpen, setMapOpen] = useState(false)
   const [showParty, setShowParty] = useState(true)
+  const [partyOpen, setPartyOpen] = useState(false) // the party panel as an overlay, on a screen too small to hold it
   const [sheet, setSheet] = useState<string | null>(null)
   const { party, refresh } = useParty(`${state?.dm.status ?? 'starting'}:${state?.seats.length ?? 0}`)
   const me = useMe(state)
@@ -154,6 +155,9 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   ) : (
     <StageView state={state} speaker={speaker} />
   )
+  // The fight's own hand (on the board) lists the actions; the table screen takes no input. Cards then skip their action buttons.
+  const handOnBoard = Boolean(state.arena) && (mode === 'full' || (mode === 'hand' && hand.scene))
+  const hideActions = mode === 'table' || handOnBoard
   const waitingWorld = state.party_mode === 'premade' && log.length === 0 && ['starting', 'busy'].includes(state.dm.status)
   const activity = state.activity?.at(-1)
   const baseStatus = waitingWorld ? 'The DM is preparing the world and your party…' : STATUS_TEXT[state.dm.status]
@@ -455,6 +459,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
                       onSheet={() => setSheet(c.id)}
                       seat={state.seats.find((x) => x.who === c.id)}
                       mineIds={mine}
+                      hideActions={hideActions}
                     />
                   ))}
                 {me && mine.length === 0 && <p className="text-[var(--dim)]">You have no character. Tap Seat to pick one.</p>}
@@ -480,6 +485,9 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           {connected ? statusText : 'Reconnecting…'}
         </span>
         <Button size="sm" variant="outline" onClick={() => setShowParty((v) => !v)} className="hidden text-[10px] lg:inline-flex">
+          Party
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => setPartyOpen(true)} className="text-[10px] lg:hidden">
           Party
         </Button>
         {!showCreator && !lobby && (
@@ -593,12 +601,22 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           <div className="hidden min-h-0 flex-col gap-3 lg:flex">
             {mode === 'table' && !lobby && <JoinQr />}
             <div className="flex min-h-0 flex-1">
-              <PartyPanel party={party} refresh={refresh} onSheet={setSheet} canAct={canAct && !state.roll_request} seats={state.seats} mine={mine} />
+              <PartyPanel party={party} refresh={refresh} onSheet={setSheet} canAct={canAct && !state.roll_request} seats={state.seats} mine={mine} hideActions={hideActions} />
             </div>
           </div>
         )}
       </main>
 
+      {partyOpen && (
+        <div role="dialog" aria-label="Party" className="fixed inset-0 z-40 flex flex-col gap-2 bg-black/90 p-2 lg:hidden">
+          <Button size="sm" variant="outline" onClick={() => setPartyOpen(false)} className="self-end text-[10px]">
+            Close
+          </Button>
+          <div className="flex min-h-0 flex-1">
+            <PartyPanel party={party} refresh={refresh} onSheet={setSheet} canAct={canAct && !state.roll_request} seats={state.seats} mine={mine} hideActions={hideActions} />
+          </div>
+        </div>
+      )}
       {overlays}
     </div>
   )

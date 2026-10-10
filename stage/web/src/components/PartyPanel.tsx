@@ -1,8 +1,11 @@
 import { memo, useState } from 'react'
 
+import { Hand } from '@/components/Hand'
 import { Progress } from '@/components/ui/8bit/progress'
+import type { Ability, HandView } from '@/lib/arena'
+import { useSkin } from '@/lib/hand'
 import { postJson, type Seat } from '@/lib/stage'
-import { act, type CardAction, type EffectPreset, type Offer, type Party, type PartyChar, ROMAN, TONE } from '@/lib/party'
+import { act, type EffectPreset, type Offer, type Party, type PartyChar, ROMAN, TONE } from '@/lib/party'
 
 const TURN_KINDS = [
   { kind: 'action', label: 'Action', color: 'var(--action)' },
@@ -114,68 +117,43 @@ function TurnPips({ c }: { c: PartyChar }) {
   )
 }
 
-/** The common actions and class features. A greyed button says why; Attack and Shove ask for a target next. */
+/** The card's action hand: the same Hand as on the board (cards or list), fed by the card's actions. Attack and Shove ask for a target next. */
 function Actions({ c, party, canAct, refresh }: { c: PartyChar; party: Party; canAct: boolean; refresh: () => void }) {
-  const [picking, setPicking] = useState<{ action: CardAction; weapon?: string } | null>(null)
+  const [skin, flipSkin] = useSkin()
+  const [picked, setPicked] = useState<string | null>(null)
   const enemies = (party.combat?.order ?? []).filter((o) => !o.pc && o.health !== 'down')
-  const run = (action: string, extra: Record<string, unknown> = {}) => {
-    setPicking(null)
-    act('/api/action', { who: c.id, action, ...extra }, refresh)
+  // Outside a fight a blocked action is only noise. In a fight the grey card says why (the turn, the action used).
+  const listed = c.in_combat ? c.actions : c.actions.filter((a) => !a.why)
+  if (listed.length === 0) return null
+  const abilities: Ability[] = listed.flatMap((a): Ability[] => {
+    const why = a.why ?? (canAct ? null : 'Not now.')
+    const base = { cost: a.cost ?? 'free', kind: a.id, icon: ICON_OF[a.id] ?? 'spark', text: a.info, stat: '', why } as const
+    if (a.target !== 'enemy') return [{ ...base, id: a.id, name: a.label, needs: 'none' as const }]
+    const targets = enemies.map((o) => ({ id: o.id, name: o.name, ok: true, why: null, odds: o.health }))
+    // One card per weapon: the weapon is part of the choice.
+    const weapons = a.id === 'attack' && c.attacks.length > 1 ? c.attacks : [null]
+    return weapons.map((w) => ({
+      ...base,
+      id: w ? `${a.id}:${w.name}` : a.id,
+      name: w ? w.name : a.label,
+      stat: w ? `${w.bonus >= 0 ? '+' : ''}${w.bonus} · ${w.damage}` : '',
+      needs: 'target' as const,
+      targets,
+    }))
+  })
+  const selected = abilities.find((ab) => ab.id === picked && !ab.why) ?? null
+  const run = (ab: Ability, target?: string) => {
+    setPicked(null)
+    const weapon = ab.kind === 'attack' && ab.id.startsWith('attack:') ? ab.id.slice('attack:'.length) : undefined
+    act('/api/action', { who: c.id, action: ab.kind, target, weapon }, refresh)
   }
-  const click = (a: CardAction) => (a.target === 'enemy' ? setPicking({ action: a }) : run(a.id))
-  const weapons = picking?.action.id === 'attack' && !picking.weapon && c.attacks.length > 1
-  return (
-    <section aria-label="Actions" className="flex flex-col gap-1">
-      <h3 className="pixel-font text-[8px] text-[var(--dim)]">Actions</h3>
-      <div className="flex flex-wrap gap-1">
-        {c.actions.map((a) => {
-          const off = Boolean(a.why) || !canAct
-          return (
-            <button
-              key={a.id}
-              type="button"
-              disabled={off}
-              onClick={() => click(a)}
-              title={`${a.info}${a.why ? ` (${a.why})` : ''}`}
-              className={`flex items-center gap-1 border-2 px-1.5 py-0.5 text-sm leading-none ${off ? 'border-[var(--border)] text-[var(--dim)] opacity-60' : 'border-[var(--border)] hover:border-[var(--gold)]'}`}
-            >
-              {a.cost && <TurnShape kind={a.cost} color={a.cost === 'action' ? 'var(--action)' : 'var(--bonus-action)'} used={false} />}
-              {a.label}
-            </button>
-          )
-        })}
-      </div>
-      {picking && (
-        <div className="flex flex-col border-2 border-[var(--gold)] bg-[var(--ink)]">
-          <div className="flex items-center justify-between px-2 py-1 text-sm text-[var(--gold)]">
-            <span>{weapons ? `${picking.action.label} with…` : `${picking.action.label}: choose a target`}</span>
-            <button type="button" onClick={() => setPicking(null)} className="pixel-font text-[8px] text-[var(--dim)] hover:text-[var(--parchment)]">
-              Cancel
-            </button>
-          </div>
-          {weapons
-            ? c.attacks.map((w) => (
-                <button key={w.name} type="button" onClick={() => setPicking({ ...picking, weapon: w.name })} className="flex justify-between px-2 py-1 text-left hover:bg-[var(--panel-2)]">
-                  <span>{w.name}</span>
-                  <span className="text-sm text-[var(--dim)]">
-                    {w.bonus >= 0 ? '+' : ''}
-                    {w.bonus} · {w.damage}
-                  </span>
-                </button>
-              ))
-            : enemies.map((o) => (
-                <button key={o.id} type="button" onClick={() => run(picking.action.id, { target: o.id, weapon: picking.weapon })} className="flex justify-between px-2 py-1 text-left hover:bg-[var(--panel-2)]">
-                  <span className="text-[var(--bad)]">{o.name}</span>
-                  <span className="text-sm text-[var(--dim)]">{o.health}</span>
-                </button>
-              ))}
-        </div>
-      )}
-    </section>
-  )
+  const hand: HandView = { who: c.id, abilities, turn: c.turn, feet_left: null, current: null }
+  return <Hand hand={hand} skin={skin} onSkin={flipSkin} selected={selected} objects={[]} onPick={(ab) => (ab.why ? undefined : ab.needs === 'none' ? run(ab) : setPicked(ab.id))} onTarget={run} onImprovise={() => {}} onCancel={() => setPicked(null)} />
 }
 
-export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds }: { c: PartyChar; party: Party; active: boolean; canAct: boolean; refresh: () => void; onSheet: () => void; seat?: Seat; mineIds: string[] }) {
+const ICON_OF: Record<string, string> = { attack: 'sword', shove: 'fist', hide: 'eye', dash: 'boot', disengage: 'boot', dodge: 'shield', help: 'spark' }
+
+export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds, hideActions }: { hideActions?: boolean; c: PartyChar; party: Party; active: boolean; canAct: boolean; refresh: () => void; onSheet: () => void; seat?: Seat; mineIds: string[] }) {
   const mine = mineIds.includes(c.id)
   const [portraitOk, setPortraitOk] = useState(true)
   const [endError, setEndError] = useState<string | null>(null)
@@ -250,7 +228,7 @@ export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds
         </div>
       )}
       <TurnPips c={c} />
-      <Actions c={c} party={party} canAct={canAct && (active || !c.in_combat)} refresh={refresh} />
+      {!hideActions && <Actions c={c} party={party} canAct={canAct && (active || !c.in_combat)} refresh={refresh} />}
 
       {c.spell && <SlotPips slots={c.spell.slots} />}
 
@@ -306,7 +284,7 @@ export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds
 }
 
 /** The party: who acts now, each character's HP, turn actions, slots, bonuses, and a way into the sheet. */
-export const PartyPanel = memo(function PartyPanel({ party, refresh, onSheet, canAct, seats, mine }: { party: Party | null; refresh: () => void; onSheet: (id: string) => void; canAct: boolean; seats: Seat[]; mine: string[] }) {
+export const PartyPanel = memo(function PartyPanel({ party, refresh, onSheet, canAct, seats, mine, hideActions }: { party: Party | null; refresh: () => void; onSheet: (id: string) => void; canAct: boolean; seats: Seat[]; mine: string[]; hideActions?: boolean }) {
   if (!party) return null
   return (
     <aside className="flex w-full flex-col gap-3 overflow-y-auto border-4 border-[var(--border)] bg-[var(--panel)] p-3">
@@ -318,7 +296,7 @@ export const PartyPanel = memo(function PartyPanel({ party, refresh, onSheet, ca
         </section>
       )}
       {party.characters.map((c) => (
-        <Card key={c.id} c={c} party={party} active={party.combat?.current === c.id} canAct={canAct && mine.includes(c.id)} refresh={refresh} onSheet={() => onSheet(c.id)} seat={seats.find((s) => s.who === c.id)} mineIds={mine} />
+        <Card key={c.id} c={c} party={party} active={party.combat?.current === c.id} canAct={canAct && mine.includes(c.id)} refresh={refresh} onSheet={() => onSheet(c.id)} seat={seats.find((s) => s.who === c.id)} mineIds={mine} hideActions={hideActions} />
       ))}
       {party.quests.length > 0 && (
         <section>

@@ -54,7 +54,7 @@ export interface Ability {
   why: string | null
   /** What the player must give: a target from the list, a cell for an area, words for the DM (Improvise), or nothing. */
   needs: 'target' | 'aim' | 'text' | 'none'
-  targets?: { id: string; name: string; dist_ft: number; ok: boolean; why: string | null; odds?: string }[]
+  targets?: { id: string; name: string; dist_ft?: number; ok: boolean; why: string | null; odds?: string }[]
   shape?: { type: string; size_ft: number; range_ft: number }
   /** `item` for a row of the inventory (the Items drawer), `board` for an object on a tile. */
   source?: string
@@ -65,7 +65,7 @@ export interface HandView {
   who: string
   abilities: Ability[]
   turn: { action: boolean; bonus: boolean; reaction: boolean }
-  feet_left: number
+  feet_left: number | null
   current: string | null
 }
 
