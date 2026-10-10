@@ -36,6 +36,14 @@ from visual_roll_window import Page, check, click_starting, free_port  # noqa: E
 import visual_roll_window as base  # noqa: E402
 
 
+async def click_cell(page: Page, canvas: str, a: dict, cell) -> None:
+    """A click on a board cell. The rectangle is read each time: the hand below the board changes the canvas size."""
+    rect = await page.eval(f"(() => {{ const r = {canvas}.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }})()")
+    size = rect[2] / a["w"]
+    for kind in ("mousePressed", "mouseReleased"):
+        await page.call("Input.dispatchMouseEvent", type=kind, x=rect[0] + (cell[0] + 0.5) * size, y=rect[1] + (cell[1] + 0.5) * size, button="left", clickCount=1)
+
+
 async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     beat.append(c, [{"type": "arena", "arena": arena_id}, {"type": "dm_status", "status": "idle"}])
     await asyncio.sleep(2.5)
@@ -51,11 +59,7 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     ax, ay = board.pos(a, "aragorn")
     dist, _ = board.reachable(c, state, a, "aragorn")
     target = next(cell for cell, n in dist.items() if n == 2)
-    rect = await page.eval(f"(() => {{ const r = {canvas}.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }})()")
-    cell_px = rect[2] / a["w"]
-    x, y = rect[0] + (target[0] + 0.5) * cell_px, rect[1] + (target[1] + 0.5) * cell_px
-    for kind in ("mousePressed", "mouseReleased"):
-        await page.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left", clickCount=1)
+    await click_cell(page, canvas, a, target)
     await asyncio.sleep(1.5)
     now = board.pos(arena.load(c, arena_id), "aragorn")
     await page.shot("arena-walked")
@@ -65,11 +69,11 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
 
     far = arena.load(c, arena_id)
     wall = next((cx, cy) for cy in range(far["h"]) for cx in range(far["w"]) if far["grid"][cy][cx] == "#")
-    x, y = rect[0] + (wall[0] + 0.5) * cell_px, rect[1] + (wall[1] + 0.5) * cell_px
-    for kind in ("mousePressed", "mouseReleased"):
-        await page.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left", clickCount=1)
+    await click_cell(page, canvas, far, wall)
     await asyncio.sleep(0.5)
-    check("a click on a wall says why it cannot be done", "cannot walk there" in await page.eval("document.body.innerText"))
+    txt = await page.eval("document.body.innerText")
+    await page.shot("arena-wall")
+    check("a click on a wall says why it cannot be done", "cannot walk there" in txt)
 
     # a creature next to aragorn: a click on it attacks with the weapon that reaches it
     a = arena.load(c, arena_id)
@@ -80,12 +84,24 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     arena.save(c, arena_id, a)
     beat.append(c, [{"type": "arena_updated", "arena": arena_id}])
     await asyncio.sleep(1)
-    x, y = rect[0] + (free[0] + 0.5) * cell_px, rect[1] + (free[1] + 0.5) * cell_px
-    for kind in ("mousePressed", "mouseReleased"):
-        await page.call("Input.dispatchMouseEvent", type=kind, x=x, y=y, button="left", clickCount=1)
+    hand = "document.querySelector('[aria-label=\"Your hand\"]')"
+    await page.shot("arena-hand")
+    check("the hand shows the pips and the abilities", await page.eval(f"Boolean({hand}) && {hand}.innerText.includes('Action') && {hand}.innerText.includes('Dash')"))
+    await page.eval(f"[...{hand}.querySelectorAll('button')].find(b => b.title.startsWith('Reach') || b.title.startsWith('Range'))?.click()")
+    await asyncio.sleep(0.6)
+    targets = await page.eval(f"document.querySelector('[aria-label^=\"Targets for\"]')?.innerText || ''")
+    check("a weapon opens the list of targets with distance and odds", "Goblin" in targets and " ft" in targets and "odds" in targets, targets)
+    await page.eval(f"[...document.querySelectorAll('[aria-label^=\"Targets for\"] button')].find(b => b.textContent.trim() === 'Cancel')?.click()")
+    await asyncio.sleep(0.4)
+    check("Cancel closes the list and spends nothing", not await page.eval("Boolean(document.querySelector('[aria-label^=\"Targets for\"]'))")
+          and not combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action"))
+
+    await click_cell(page, canvas, a, free)
     await asyncio.sleep(1.5)
     await page.shot("arena-attacked")
     check("a click on a creature attacked it: the action is spent", combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action") is True)
+
+    check("after the attack the weapon says the action is used", "The action is used." in await page.eval(f"{hand}?.innerText || ''"))
 
     # a reaction question for aragorn
     a = arena.load(c, arena_id)
@@ -95,10 +111,10 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     await asyncio.sleep(1.2)
     await page.shot("arena-reaction")
     text = await page.eval("document.body.innerText")
-    check("the player is asked about a reaction attack", "opportunity attack" in text and "Skip" in text)
+    check("the player is asked about a reaction attack", "Take an opportunity attack?" in text and "Skip" in text)
     await click_starting(page, "Skip")  # the button counts down: "Skip (10)"
     await asyncio.sleep(1.2)
-    check("the answer closes the question", arena.load(c, arena_id)["pending"] is None and "opportunity attack" not in await page.eval("document.body.innerText"))
+    check("the answer closes the question", arena.load(c, arena_id)["pending"] is None and "Take an opportunity attack?" not in await page.eval("document.body.innerText"))
 
 
 async def foe_turns(page: Page, c: Path, arena_id: str) -> None:

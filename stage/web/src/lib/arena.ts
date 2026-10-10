@@ -41,3 +41,35 @@ export interface ArenaView {
   pending: { who: string; against: string; seconds_left: number | null } | null
   settings: { reaction_seconds: number; round_summary: boolean }
 }
+
+/** One thing a character can do now: GET /api/arena/hand (stage/hand.py `listing`). `why` is the reason it is off, or null. */
+export interface Ability {
+  id: string
+  name: string
+  cost: 'action' | 'bonus' | 'reaction' | 'free'
+  kind: string
+  icon: string
+  text: string
+  stat: string
+  why: string | null
+  /** What the player must give: a target from the list, a cell for an area, or nothing. */
+  needs: 'target' | 'aim' | 'none'
+  targets?: { id: string; name: string; dist_ft: number; ok: boolean; why: string | null; odds?: string }[]
+  shape?: { type: string; size_ft: number; range_ft: number }
+}
+
+export interface HandView {
+  who: string
+  abilities: Ability[]
+  turn: { action: boolean; bonus: boolean; reaction: boolean }
+  feet_left: number
+  current: string | null
+}
+
+/** The cells and creatures an area would cover: POST /api/arena/preview. */
+export interface Preview {
+  ok: boolean
+  why: string | null
+  cells: Cell[]
+  units: string[]
+}
