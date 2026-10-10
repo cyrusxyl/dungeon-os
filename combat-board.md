@@ -16,22 +16,23 @@ Today a fight is a scene: the DM runs the rules with `dnd-cli encounter`, `attac
 
 ## Status
 
-Built (section numbers are those of this file):
+Built (the numbers are the sections of this file):
 
-- **1, 2.** The arena generator and the shared grid code (`stage/arena.py`), `encounter start --arena`, light and fog, the board rules (walk, reach, sight, cover, reaction attacks, areas, shove, hide).
-- **3, 4.** One ability format (`dnd_cli/abilities.py`); the foe planner with styles and traits (`stage/foes.py`); the DM plays only tier 3 foes; one round summary for the DM.
-- **5.** The hand in the browser: cards or list (a choice kept on the device), the pips, the target list with odds in words, an area aimed on the board with a preview, and the reasons an ability is off. The reaction question with its countdown.
-- **6.** Improvise (`stage/improvise.py`): the engine suggests a ruling, the DM confirms it. Item profiles for healing potions, alchemist's fire and acid (`stage/data/items.json`), a profile of its own on a sheet row (`character item ... profile`), the Items drawer with up to three pinned items, and pick up of objects next to the character.
-- **7.** XP for NPCs (`xp` in the NPC file) and for foes resolved without a kill (`encounter end --resolved`). `loot roll` and `loot force`.
-- **8, 9.** Settings and the routes. `POST /api/arena/improvise` and `GET /api/arena/hand` were added to the draft.
+- **1 and 2.** The arena generator and the shared grid code (`stage/arena.py`). `encounter start --arena`. Light and fog. The board rules: walk, reach, sight, cover, reaction attacks, areas, shove and hide.
+- **3 and 4.** One ability format (`dnd_cli/abilities.py`). The foe planner with styles and traits (`stage/foes.py`). The DM plays only tier 3 foes. The DM hears one round summary.
+- **5.** The hand in the browser. It shows cards or a list. The player picks the skin on the device. It shows the pips, the target list with odds in words, and the reason an ability is off. A player aims an area on the board. The first tap shows the preview. A second tap on the same cell casts. The reaction question has a countdown.
+- **6.** Improvise (`stage/improvise.py`): the engine suggests a ruling and the DM confirms it. Item profiles for healing potions, alchemist's fire and acid (`stage/data/items.json`). A sheet row can have its own profile (`character item ... profile`). The Items drawer has up to three pinned items. A character can pick up an object next to it.
+- **7.** XP for NPCs (`xp` in the NPC file). XP for foes resolved without a kill (`encounter end --resolved`). `loot roll` and `loot force`.
+- **8 and 9.** The settings and the routes. `POST /api/arena/improvise`, `GET /api/arena/hand` and `POST /api/arena/preview` are added to the draft.
 
 Not built:
 
-- **Return:** the room is not marked cleared. The party does stand on the same tile, and `@scene` shows the next beat.
-- **Items:** a weapon change and ammunition counts; items that a fallen foe leaves on its tile; profiles for oil, holy water, antitoxin, caltrops and ball bearings (they work through Improvise, a DM ruling, or a saved profile); throwing an item that is not in a profile, without Improvise.
-- **Improvise:** the board cannot remove a prop or move an object after a ruling. The DM narrates it.
-- **Loot:** the perk catalog (GitHub issue #1). A perk is free text. The list is printed in the console, which the players can read, so there is no DM-only view yet.
-- The browser check of an aimed area ability is not in `tests/visual_arena.py`: the fighter of the example campaign has none. The route and the preview have server tests.
+- **Return.** The room is not marked cleared. The party does stand on the same tile. `@scene` shows the next beat.
+- **Items.** A weapon change and the ammunition count. Items that a fallen foe leaves on its tile. Profiles for oil, holy water, antitoxin, caltrops and ball bearings. These items work through Improvise, a DM ruling or a saved profile.
+- **Improvise.** The board cannot remove a prop or move an object after a ruling. The DM narrates it.
+- **Loot.** The perk catalog (GitHub issue #1). A perk is free text. The console shows the list, and the players can read the console. There is no DM-only view yet.
+- **Seats.** The design says the skin is a setting of the seat. The skin and the pinned items are kept on the device (browser storage). The server does not keep them.
+- **Browser tests.** The phone drag and the touch screen are not tested. The tests use mouse clicks.
 
 ## Rules that apply everywhere
 
