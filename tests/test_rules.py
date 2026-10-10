@@ -386,6 +386,12 @@ def test_sheet(c: Path) -> None:
     sheet.add_item(data, "Healing Potion", 2)
     check("removing the last unit removes the entry", "no Healing Potion left" in sheet.remove_item(data, "Healing Potion", 2)
           and not any(i["name"] == "Healing Potion" for i in data["inventory"]))
+    sheet.add_item(data, "Smoke bomb", 1)
+    sheet.set_profile(data, "Smoke bomb", {"kind": "throw", "range_ft": 20, "damage": ["1d6", "fire"]})
+    check("a DM ruling is saved on the row as its profile", next(i for i in data["inventory"] if i["name"] == "Smoke bomb")["profile"]["kind"] == "throw")
+    check("a bad profile is refused", all(raises(lambda p=p: sheet.set_profile(data, "Smoke bomb", p)) for p in
+          ({"kind": "bless"}, {"kind": "heal"}, {"kind": "throw", "range_ft": 20, "damage": ["1d6"]}, {"kind": "heal", "heal": "lots"}, {"kind": "heal", "heal": "1d4", "cost": "reaction"})))
+    check("a profile for an item that is not carried is refused", raises(lambda: sheet.set_profile(data, "Ghost", {"kind": "heal", "heal": "1d4"})))
     check("gold cannot go below zero", raises(lambda: sheet.gold(data, -5)))
     check("gold is an item", sheet.gold(data, 30) == "Aragorn: 30 gp")
     mail = {"name": "Chain Mail", "equipment_category": {"index": "armor"}, "armor_category": "Heavy",

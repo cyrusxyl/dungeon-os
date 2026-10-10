@@ -137,7 +137,8 @@
           "weight": {"type": "number"},
           "description": {"type": "string"},
           "rarity": {"type": "string", "enum": ["common", "uncommon", "rare", "very rare", "legendary"]},
-          "equipped": {"type": "boolean"}
+          "equipped": {"type": "boolean"},
+          "profile": {"type": "object", "description": "What the item does in a fight (kind heal or throw): a DM ruling that was saved. See stage/data/items.json"}
         },
         "required": ["name"]
       }

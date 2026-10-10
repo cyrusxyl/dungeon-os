@@ -6,6 +6,8 @@ story, not on arithmetic. Logic lives in dnd_cli/combat.py and dnd_cli/sheet.py.
 
 from __future__ import annotations
 
+import json
+
 from dnd_cli import character, combat, effects, sheet
 from dnd_cli.api import api_get
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
@@ -201,8 +203,13 @@ def _edit_sheet(campaign, name: str, fn) -> int:
     return run_stage(campaign, go, *ERRORS)
 
 
-def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool) -> int:
+def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool, profile: str | None = None) -> int:
     def fn(campaign_dir, data):
+        if op == "profile":
+            try:
+                return [sheet.set_profile(data, item, json.loads(profile or ""))]
+            except json.JSONDecodeError:
+                raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
         if op == "remove":
             return [sheet.remove_item(data, item, qty)]
         lines = [sheet.add_item(data, item, qty)]

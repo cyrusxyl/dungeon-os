@@ -69,6 +69,33 @@ def remove_item(sheet: dict, name: str, qty: int = 1) -> str:
     return f"{sheet['name']}: {item['name']} x{item['quantity']}"
 
 
+def set_profile(sheet: dict, name: str, profile: dict) -> str:
+    """Give an inventory row what it does on the board (stage/data/items.json has the shape): a ruling the DM approved, kept for the next use."""
+    item = _find_item(sheet, name)
+    if not item:
+        raise RulesError(f"{sheet['name']} has no {name!r}.")
+    kind = profile.get("kind")
+    if kind == "heal":
+        need = {"heal": str}
+    elif kind == "throw":
+        need = {"range_ft": int, "damage": list}
+    else:
+        raise RulesError("a profile has kind heal or throw.")
+    for key, typ in need.items():
+        if not isinstance(profile.get(key), typ):
+            raise RulesError(f"a {kind} profile needs {key}.")
+    if kind == "throw" and len(profile["damage"]) != 2:
+        raise RulesError('damage is ["1d6", "fire"]: dice and type.')
+    if profile.get("cost", "action") not in ("action", "bonus"):
+        raise RulesError("cost is action or bonus.")
+    try:
+        dice.parse(profile["heal"] if kind == "heal" else profile["damage"][0])
+    except dice.DiceError as e:
+        raise RulesError(str(e)) from None
+    item["profile"] = profile
+    return f"{sheet['name']}: {item['name']} now does something in a fight ({kind})"
+
+
 def gold(sheet: dict, delta: int) -> str:
     item = _find_item(sheet, GOLD)
     have = item.get("quantity", 0) if item else 0

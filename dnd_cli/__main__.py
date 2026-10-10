@@ -241,9 +241,10 @@ def create_parser():
     p = character_sub.add_parser("item", help="add|remove an inventory item: item <campaign> <name> add|remove \"<item>\" [--qty N] [--canon]")
     p.add_argument("campaign")
     p.add_argument("name")
-    p.add_argument("op", choices=["add", "remove"])
+    p.add_argument("op", choices=["add", "remove", "profile"])
     p.add_argument("item")
     p.add_argument("--qty", type=int, default=1)
+    p.add_argument("--profile", default=None, help='for op profile: what the item does in a fight, as JSON: {"kind": "heal", "heal": "2d4"} or {"kind": "throw", "range_ft": 20, "damage": ["1d6", "fire"]}')
     p.add_argument("--canon", action="store_true", help="Also record the item as given this session (canon Part E)")
 
     p = character_sub.add_parser("gold", help="Change gold: gold <campaign> <name> +N|-N")
@@ -720,7 +721,7 @@ def main():
             elif cc == "restore-slots":
                 return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
             if cc == "item":
-                return rules_cmd.execute_item(args.campaign, args.name, args.op, args.item, args.qty, args.canon)
+                return rules_cmd.execute_item(args.campaign, args.name, args.op, args.item, args.qty, args.canon, args.profile)
             if cc == "gold":
                 return rules_cmd.execute_gold(args.campaign, args.name, args.delta)
             if cc == "equip":
