@@ -1,6 +1,6 @@
 # Combat Board
 
-Design for fights on the visual stage. This file is a design only. Nothing here is built. The browser demo that shows it is a prototype of the look and the rules, not of the architecture (see rule 1).
+Design for fights on the visual stage. Most of it is built: see **Status** below for what is done and what is not. The browser demo was a prototype of the look and the rules, not of the architecture (see rule 1).
 
 Today a fight is a scene: the DM runs the rules with `dnd-cli encounter`, `attack` and `save`, and the stage shows dice and a party panel. There is no movement. The board adds movement, reach, sight and area effects, and it keeps the DM in control of the story.
 
@@ -13,6 +13,25 @@ Today a fight is a scene: the DM runs the rules with `dnd-cli encounter`, `attac
 | Named foes and bosses | The same, but the DM chooses | The DM |
 | Improvised action | Anything the abilities do not cover | The player and the DM, with engine defaults |
 | After the fight | XP, loot, return to the crawl or the scene | The engine rolls; the DM can force or change |
+
+## Status
+
+Built (section numbers are those of this file):
+
+- **1, 2.** The arena generator and the shared grid code (`stage/arena.py`), `encounter start --arena`, light and fog, the board rules (walk, reach, sight, cover, reaction attacks, areas, shove, hide).
+- **3, 4.** One ability format (`dnd_cli/abilities.py`); the foe planner with styles and traits (`stage/foes.py`); the DM plays only tier 3 foes; one round summary for the DM.
+- **5.** The hand in the browser: cards or list (a choice kept on the device), the pips, the target list with odds in words, an area aimed on the board with a preview, and the reasons an ability is off. The reaction question with its countdown.
+- **6.** Improvise (`stage/improvise.py`): the engine suggests a ruling, the DM confirms it. Item profiles for healing potions, alchemist's fire and acid (`stage/data/items.json`), a profile of its own on a sheet row (`character item ... profile`), the Items drawer with up to three pinned items, and pick up of objects next to the character.
+- **7.** XP for NPCs (`xp` in the NPC file) and for foes resolved without a kill (`encounter end --resolved`). `loot roll` and `loot force`.
+- **8, 9.** Settings and the routes. `POST /api/arena/improvise` and `GET /api/arena/hand` were added to the draft.
+
+Not built:
+
+- **Return:** the room is not marked cleared. The party does stand on the same tile, and `@scene` shows the next beat.
+- **Items:** a weapon change and ammunition counts; items that a fallen foe leaves on its tile; profiles for oil, holy water, antitoxin, caltrops and ball bearings (they work through Improvise, a DM ruling, or a saved profile); throwing an item that is not in a profile, without Improvise.
+- **Improvise:** the board cannot remove a prop or move an object after a ruling. The DM narrates it.
+- **Loot:** the perk catalog (GitHub issue #1). A perk is free text. The list is printed in the console, which the players can read, so there is no DM-only view yet.
+- The browser check of an aimed area ability is not in `tests/visual_arena.py`: the fighter of the example campaign has none. The route and the preview have server tests.
 
 ## Rules that apply everywhere
 
@@ -246,7 +265,7 @@ A ruling has a fixed shape:
 | `effect` | Damage, a condition with rounds, a push, a terrain change, an object moved |
 | `consume` | The object, yes or no |
 
-The engine applies a ruling with the commands that exist: `attack <who> spell <target> --damage 1d4 --type bludgeoning --cost action`, `encounter condition <target> add blinded --rounds 1`, and `encounter use`. It does not add a second rules path.
+The engine applies a ruling with the commands that exist: `attack <who> improvised <target> --damage 1d4 --type bludgeoning --bonus <to-hit>` (`improvised` has no attack bonus of its own: `--bonus` is the whole to-hit), `encounter condition <target> add blinded --rounds 1`, and `encounter use`. It does not add a second rules path.
 
 **Example.** "I throw the wine bottle in the goblin's face." Default: a free interaction to pick it up, the action to throw, Dex attack against AC. The DM adds: on a hit, the goblin is blinded until the end of its next turn.
 
@@ -297,7 +316,7 @@ The engine rolls. The DM decides.
 - **Control.** The DM can accept, reroll, swap an item, or force one: `loot force longsword perk=keen`. A perk can be free text. The DM writes the lore.
 - **Effects.** A perk compiles to an effect (see `dnd-cli effect add`). A +1 weapon changes the roll without new code.
 
-I did not check whether the 5e data has the DMG treasure tables. If it does not, a small table by CR is enough for a first version.
+The 5e API has no treasure tables, so the first version uses a small table by CR tier in `stage/data/loot.json`. It has coins for an individual or a hoard, and item names by rarity. A legendary item is never named: the DM writes it.
 
 ### Return
 
@@ -327,7 +346,9 @@ Two settings change how a fight feels. A host can change both during play.
 | `POST /api/arena/move` | `{to: [x, y]}`: walks, spends speed, returns the new view and the reasons it stopped. |
 | `POST /api/arena/act` | `{ability, target}` or `{ability, at: [x, y]}`: runs the ability through `combat.py`. |
 | `POST /api/arena/react` | `{id, take: true\|false}`: answers a reaction question. |
-| `POST /api/arena/improvise` | `{text, object?}`: sends the text and the engine suggestion to the DM. |
+| `POST /api/arena/improvise` | `{who, text, object?}`: sends the text and the engine suggestion to the DM. |
+| `GET /api/arena/hand?who=` | The hand of a character: abilities with the reason each is off, the pips, the feet left. |
+| `POST /api/arena/preview` | `{who, ability, aim}`: the cells and the creatures an area ability would cover. |
 | `POST /api/combat/settings` | Host only. `{reaction_seconds?, round_summary?, make_default?}`. |
 | `POST /api/end-turn` | Exists today. Ends the turn. |
 
@@ -352,7 +373,7 @@ Settled:
 - **Perk catalog.** It waits. It is tracked as GitHub issue #1, not in this file.
 - **First prop entries.** The 15 props of the tavern, cellar, dungeon, forest and street templates (section 6). Other props work with stats given on the fly. The DM note goes into the combat skill when the board ships.
 
-Open:
+Also settled (answered by the project owner, 2026-10-09):
 
-- **Item profiles.** Is the hand-written table of common consumables enough for the first version? Which items does the first campaign need?
-- **Attunement and encumbrance.** Not enforced in this version. Do you want either one?
+- **Item profiles.** The hand-written table of common consumables is enough for the first version (healing potions, alchemist's fire, acid). The DM can save a ruling as the profile of a row.
+- **Attunement and encumbrance.** Neither is enforced in this version.

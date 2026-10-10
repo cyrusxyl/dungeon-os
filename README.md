@@ -42,6 +42,17 @@ generated floor plan with the arrow keys, WASD, or a click. Sight, fog, and
 wandering-monster checks run in the stage; the DM is called only when the
 party finds something. Design: `dungeon-crawl.md`.
 
+A fight can run on a board: `dnd-cli encounter start goblin:3 --arena` builds a
+room with cover, hazards, light and fog from where the party is. Players walk
+and attack on the table screen or on their phones. The phone shows the hand of
+the character: weapons, spells and the common actions as cards or a list, the
+Items drawer with pinned items, and **Improvise** for anything else (the DM
+confirms a ruling the engine suggests). The stage plays the ordinary creatures
+from a score and a style; the DM plays only named creatures and bosses and
+hears one summary each round. After the fight, `dnd-cli encounter end`
+splits the XP and `dnd-cli loot roll` rolls treasure for the DM to give.
+Design and status: `combat-board.md`.
+
 **New Game** asks for a name, an optional pitch, and who makes the party:
 the player (default) or the DM, from the pitch (for example, the characters
 of a known story). While the DM builds the world in the background, the game
