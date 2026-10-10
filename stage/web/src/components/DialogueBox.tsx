@@ -97,7 +97,9 @@ export function DialogueBox({
         <p className={`text-xl leading-snug sm:text-2xl ${speaking ? '' : 'italic text-[var(--parchment)]/90'}`}>{typed}</p>
       </div>
       {done && pending > 0 && (
-        <span className="pixel-font absolute right-3 bottom-2 animate-pulse text-[10px] text-[var(--ember)]">▶ {pending}</span>
+        <span className="pixel-font absolute right-3 bottom-2 animate-pulse border-2 border-[var(--ember)] bg-[var(--ink)] px-2 py-1 text-xs text-[var(--ember)]">
+          Next ▶ · {pending} more
+        </span>
       )}
     </button>
   )
