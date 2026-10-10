@@ -33,7 +33,7 @@ EOF
 | `@scene <location-id>` | Change the room. The same room again keeps its characters, so you need not repeat it in every beat. The player characters join the scene by themselves; do not `@enter` them. |
 | `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. Position is optional. |
 | `@exit <actor-id>` | A character leaves. Send it in the same beat that says they leave: the stage does not read the story, and the sprite stays until you send it. |
-| `@narrate <text>` | A narration line in the dialogue box, with no portrait. |
+| `@narrate <text>` | A narration line in the dialogue box, with no portrait. Add a mood tag with `@narrate[mood] <text>` (see Narration mood below). |
 | `@say <actor-id> [emotion] <text>` | A character speaks, with portrait. Emotions: `neutral` `happy` `angry` `sad` `shock` `blush` `shame` `eyeroll` `closed`. |
 | `@choices <a> \| <b> \| <c>` | Choice buttons. Put it last. The player can still type a free action. |
 | `@choices-for <pc-id> <a> \| <b>` | Choice buttons for one player character. Only that player sees them. |
@@ -43,6 +43,20 @@ EOF
 | `@roll <pc-id> <skill\|ability\|abil-save> [dc N] [hide]` | Ask a player character to roll a check or a saving throw, for example `@roll sireth stealth dc 14` or `@roll sireth dex-save dc 13`. Put it last and end your turn. See rule 4. |
 | `@clear` | Remove all characters, keep the room. |
 | `@explore <site-id> [<poi-id>\|entrance]` | Show a site the players walk through (see Sites). |
+
+**Narration mood.** Voiced narration may carry a mood tag: `@narrate[mood] text`. The tag goes right after `@narrate`, with no space. Set the mood of a beat when it is not neutral. Use at most one tag for each `@narrate`. Omit it for plain description. Example: `@narrate[ominous] The torches die one by one.` The moods are:
+
+- `neutral`: plain description
+- `ominous`: dread, a threat builds
+- `warm`: kind, safe, gentle
+- `wry`: dry humor, irony
+- `tense`: quiet danger, held breath
+- `intense`: strong anger or force
+- `urgent`: sudden shock, act now
+- `action`: fast, physical fight
+- `bright`: joy, relief, wonder
+- `somber`: grief, loss, shame
+
 
 A line with no `@` continues the line before it.
 

@@ -44,6 +44,7 @@ from pathlib import Path
 from stage.files import read_json
 
 EMOTIONS = ("neutral", "happy", "angry", "sad", "shock", "blush", "shame", "eyeroll", "closed")
+MOODS = ("neutral", "ominous", "warm", "wry", "tense", "intense", "urgent", "action", "bright", "somber")  # narrator styles
 POSITIONS = ("left", "center", "right", "far-left", "far-right")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # a file id: sites, maps, places
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*(#\d+)?$")  # a slug, or an actor of a kind: goblin#2
@@ -56,7 +57,7 @@ def title(slug: str) -> str:
 
 USAGE = (
     "Beat lines: @scene <location-id> (the party comes with it) | @enter <actor-id> [position] | "
-    "@exit <actor-id> | @narrate <text> | @say <actor-id> [emotion] <text> | "
+    "@exit <actor-id> | @narrate[mood] <text> (mood is optional: " + ", ".join(MOODS) + ") | @say <actor-id> [emotion] <text> | "
     "@choices <a> | <b> | ... | @choices-for <pc-id> <a> | <b> | @whisper <pc-id> <text> | @await all|<pc-id> | "
     "@roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
     "@explore <site-id> [<poi-id>|entrance]"
@@ -92,6 +93,11 @@ def parse(text: str) -> list[dict]:
 
         command, _, rest = line[1:].partition(" ")
         command, rest = command.lower(), rest.strip()
+        mood = None
+        if m := re.fullmatch(r"(narrate)\[([^\]]*)\]", command):
+            command, mood = m.group(1), m.group(2).strip()
+            if mood not in MOODS:
+                raise BeatError(f"line {line_no}: mood {mood!r} is not one of {', '.join(MOODS)}.")
 
         if command == "scene":
             if not rest:
@@ -115,7 +121,7 @@ def parse(text: str) -> list[dict]:
         elif command == "narrate":
             if not rest:
                 raise BeatError(f"line {line_no}: @narrate needs text. {USAGE}")
-            events.append({"type": "narrate", "text": rest})
+            events.append({"type": "narrate", "text": rest, **({"mood": mood} if mood else {})})
         elif command == "say":
             actor, _, after = rest.partition(" ")
             if not actor or not after.strip():

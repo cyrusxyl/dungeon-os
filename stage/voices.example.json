@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to <campaign>/stage/voices.json. Keys are actor ids. Values are voice slugs (folder names in the voice library). Narration always uses 'narrator'. An actor that is not listed stays silent.",
+  "innkeeper": "minsc",
+  "villain": "emperor",
+  "cleric": "shadowheart"
+}

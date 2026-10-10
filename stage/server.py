@@ -46,14 +46,14 @@ from starlette.requests import Request
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
-from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli.sheet import GOLD
-from stage import actors, arena, beat, board, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state
+from stage import actors, arena, beat, board, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, voice
 from stage.assets import AssetError
 from stage.files import read_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
@@ -371,6 +371,7 @@ class Stage:
             was_busy = self.state["dm"].get("status") != "idle"
             events += self.inventory_notices()  # a notice is for the owner's snapshot only (see `snapshot`); it is not in the log
             if self.fold(events):
+                voice.warm([voice.item(e, self.campaign_dir) for e in events])
                 self.pump_due = True
                 await self.broadcast()
             session = next((e["session"] for e in reversed(events) if e.get("session")), None)
@@ -1712,6 +1713,25 @@ def create_app(
     async def asset_icon(request: Request):
         return await png_response(crawl.icon_png, request.path_params["name"], static=True)
 
+    async def api_tts_line(request: Request):
+        """The spoken form of one narrate or say line, streamed from the TTS service. 204 when there is nothing to hear."""
+        try:
+            seq = int(request.path_params["seq"])
+        except ValueError:
+            return Response(status_code=204)
+        entry = next((e for e in (table.stage.state["log"] if table.stage else []) if e.get("seq") == seq), None)
+        spoken = voice.item(entry, table.stage.campaign_dir) if entry else None
+        if not spoken:
+            return Response(status_code=204)  # not narration, or a speaker with no voice mapped
+        speech = await voice.speak(spoken["text"], spoken["voice"], spoken["style"], id=str(seq))
+        if speech is None:
+            return Response(status_code=204)
+        headers = {k: speech.headers[k] for k in ("x-sample-rate", "x-cache") if k in speech.headers}
+        return StreamingResponse(speech.chunks(), media_type="application/octet-stream", headers=headers)
+
+    async def api_tts_health(request: Request):
+        return JSONResponse({"ok": await voice.healthy()})
+
     @asynccontextmanager
     async def lifespan(app):
         table.loop = asyncio.get_running_loop()
@@ -1719,6 +1739,7 @@ def create_app(
             await table.start(campaign_dir, dm_command)
         yield
         await table.stop()
+        await voice.close()
 
     routes = [
         Route("/", index),
@@ -1752,6 +1773,8 @@ def create_app(
         Route("/api/creation/open", api_creation_open, methods=["POST"]),
         Route("/api/creation/done", api_creation_done, methods=["POST"]),
         Route("/api/read", api_read, methods=["POST"]),
+        Route("/api/tts/line/{seq}", api_tts_line),
+        Route("/api/tts/health", api_tts_health),
         Route("/asset/look.png", asset_look),
         Route("/asset/scene/{location}.png", asset_scene),
         Route("/api/scene/{location}", api_scene),

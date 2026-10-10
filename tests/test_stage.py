@@ -7,6 +7,7 @@ Plain asserts so no test runner is needed.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import tempfile
@@ -74,6 +75,8 @@ def test_parse() -> None:
     check("choices split on |", events[5]["options"] == ["Talk", "Fight", "Leave"])
     check("enter keeps position", events[1]["position"] == "right")
     check("a bare first line is narration", beat.parse("Rain falls.")[0] == {"type": "narrate", "text": "Rain falls."})
+    check("narrate mood is read", beat.parse("@narrate[ominous] Dark.")[0] == {"type": "narrate", "text": "Dark.", "mood": "ominous"})
+    check("no mood, no field", "mood" not in beat.parse("@narrate Dark.")[0])
     check("an emotion word alone is text, not emotion",
           beat.parse("@say toblen happy")[0]["text"] == "happy")
 
@@ -85,6 +88,8 @@ def test_parse_errors() -> None:
     check("say without text", raises(lambda: beat.parse("@say toblen")))
     check("bad id", raises(lambda: beat.parse("@enter Sister Gareth")))
     check("bad position", raises(lambda: beat.parse("@enter toblen upstairs")))
+    check("unknown mood", raises(lambda: beat.parse("@narrate[spooky] Dark.")))
+    check("empty mood", raises(lambda: beat.parse("@narrate[] Dark.")))
     check("one choice only", raises(lambda: beat.parse("@choices Leave")))
 
 

@@ -30,6 +30,7 @@ COMBAT_DEFAULTS: dict = {"reaction_seconds": 10, "round_summary": True}  # see c
 DEFAULTS: dict = {
     "agent_framework": "claude",
     "model": "sonnet",
+    "tts_url": "",  # narration voice service, e.g. http://pc:8770; env DUNGEON_TTS_URL wins
     "combat": COMBAT_DEFAULTS,
 }
 
