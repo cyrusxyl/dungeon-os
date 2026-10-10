@@ -92,11 +92,10 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = None
         s["roll_request"] = None
         s["explore"] = None
-        s["arena"] = None
         s["await"] = None
+        # s["arena"] stays: only `arena_end` ends a fight. A beat line in a fight must not hide the board, or the creatures stop.
     elif kind == "explore":
         s["explore"] = event["site"]
-        s["arena"] = None
         s["actors"] = {}
         s["choices"] = None
         # A new @explore can move the party (to a POI): fetch the site again.

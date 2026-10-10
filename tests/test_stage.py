@@ -542,6 +542,9 @@ def test_explore_beat() -> None:
         s = state.apply(s, e)
     check("the state knows the site and the place", s["explore"] == "crypt" and s["place"] == {"map": "city", "place": "inn"})
     check("@scene leaves the site", state.apply(s, {"type": "scene", "location": "x"})["explore"] is None)
+    fight = state.apply(s, {"type": "arena", "arena": "arena-1"})
+    check("@scene in a fight keeps the board", state.apply(fight, {"type": "scene", "location": "x"})["arena"] == "arena-1")
+    check("arena_end ends the board", state.apply(state.apply(fight, {"type": "scene", "location": "x"}), {"type": "arena_end"})["arena"] is None)
     room = state.apply(state.apply(state.empty(), {"type": "scene", "location": "inn"}), {"type": "enter", "actor": "pc"})
     check("@scene of the same place keeps who is on stage",
           "pc" in state.apply(room, {"type": "scene", "location": "inn"})["actors"])

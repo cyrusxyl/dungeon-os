@@ -215,8 +215,8 @@ def test_state() -> None:
     check("a fight inside a site keeps the site", s3["arena"] == "arena-2" and s3["explore"] == "vault")
     s4 = stage_state.apply(s3, {"type": "arena_end"})
     check("the end of the fight shows the site again", s4["arena"] is None and s4["explore"] == "vault")
-    check("a scene clears the arena", stage_state.apply(s, {"type": "scene", "location": "inn", "party": []})["arena"] is None)
-    check("an explore clears the arena", stage_state.apply(s, {"type": "explore", "site": "vault"})["arena"] is None)
+    check("a scene keeps the arena", stage_state.apply(s, {"type": "scene", "location": "inn", "party": []})["arena"] == s["arena"])
+    check("an explore keeps the arena", stage_state.apply(s, {"type": "explore", "site": "vault"})["arena"] == s["arena"])
     with tempfile.TemporaryDirectory() as tmp:
         log = Path(tmp) / "events.ndjson"
         log.write_text('{"type": "scene", "location": "inn", "party": []}\nnot json\n{"type": "arena", "arena": "arena-1"}\n')

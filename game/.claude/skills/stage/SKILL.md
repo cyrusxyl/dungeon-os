@@ -32,7 +32,7 @@ EOF
 |---|---|
 | `@scene <location-id>` | Change the room. The same room again keeps its characters, so you need not repeat it in every beat. The player characters join the scene by themselves; do not `@enter` them. |
 | `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. Position is optional. |
-| `@exit <actor-id>` | A character leaves. |
+| `@exit <actor-id>` | A character leaves. Send it in the same beat that says they leave: the stage does not read the story, and the sprite stays until you send it. |
 | `@narrate <text>` | A narration line in the dialogue box, with no portrait. |
 | `@say <actor-id> [emotion] <text>` | A character speaks, with portrait. Emotions: `neutral` `happy` `angry` `sad` `shock` `blush` `shame` `eyeroll` `closed`. |
 | `@choices <a> \| <b> \| <c>` | Choice buttons. Put it last. The player can still type a free action. |
@@ -151,7 +151,7 @@ uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=me
 
 ## Fights on a board
 
-A fight with `--arena` (see the `combat` skill) replaces the scene or the site on the stage with a board until `encounter end`. The players walk and attack on it, and the stage plays the creatures. You are called only for the creatures you play, and at the end. Keep narrating with beats as usual; do not describe the layout or give movement choices. `@scene` or `@explore` after the fight shows the story again.
+A fight with `--arena` (see the `combat` skill) replaces the scene or the site on the stage with a board until `encounter end`. The players walk and attack on it, and the stage plays the creatures. You are called only for the creatures you play, and at the end. Keep narrating with beats as usual; do not describe the layout or give movement choices. The board stays until `encounter end`, even if you send `@scene`. `@scene` or `@explore` after the fight shows the story again.
 
 ## Rules
 

@@ -40,6 +40,7 @@ const NO_SEATS: string[] = []
 export function GameView({ onMenu }: { onMenu: () => void }) {
   const { state, campaign, connected } = useStage(onMenu)
   const [confirmQuit, setConfirmQuit] = useState(false)
+  const [dismissed, setDismissed] = useState<number[]>([]) // whispers this device closed (by seq)
   // Save: null = closed, a string = the name being typed; `saved` flashes after a save.
   const [saveName, setSaveName] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -195,10 +196,15 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       : `The DM waits for ${nameOf(awaiting.who)}.`
   const extras = (
     <>
-      {state.private.slice(-3).map((p) => (
-        <p key={p.seq} className="border-2 border-[var(--gold)] bg-[var(--panel-2)] px-2 py-1 text-lg">
-          <span className="pixel-font mr-2 text-[9px] text-[var(--gold)]">Only you · {nameOf(p.who)}</span>
-          {p.text}
+      {state.private.slice(-3).filter((p) => !dismissed.includes(p.seq)).map((p) => (
+        <p key={p.seq} className="flex items-start gap-2 border-2 border-[var(--gold)] bg-[var(--panel-2)] px-2 py-1 text-lg">
+          <span className="flex-1">
+            <span className="pixel-font mr-2 text-[9px] text-[var(--gold)]">Only you · {nameOf(p.who)}</span>
+            {p.text}
+          </span>
+          <button type="button" aria-label="Dismiss" title="Dismiss" className="px-1 text-[var(--dim)] hover:text-[var(--gold)]" onClick={() => setDismissed((d) => [...d, p.seq])}>
+            ✕
+          </button>
         </p>
       ))}
       {inputError && (

@@ -1083,8 +1083,8 @@
       "rect": [
         24,
         12,
-        2,
-        2
+        3,
+        3
       ],
       "board": {
         "blocks_move": false,
@@ -1166,7 +1166,7 @@
     "rocks": {
       "sheet": "terrain",
       "rect": [
-        27,
+        28,
         21,
         2,
         2
@@ -3672,7 +3672,7 @@
         "back_center": "menhir",
         "back_right": "boulder_big",
         "mid_left": "pine",
-        "mid_right": "rocks",
+        "mid_center": "rocks",
         "front_left": "stones",
         "front_right": "bush"
       }
