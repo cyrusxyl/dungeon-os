@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TTS voice test</title>
+<style>
+:root{color-scheme:dark;--bg:#14151a;--card:#1e2028;--line:#2e313c;--fg:#e8e6e1;--dim:#9a9aa5;--acc:#d6a84a;--bad:#e06c6c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif;padding:12px;max-width:760px;margin-inline:auto}
+h1{font-size:1.2rem;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+label{display:block;font-size:.8rem;color:var(--dim);margin:0 0 4px}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row>div{flex:1 1 200px}
+select,textarea,button{font:inherit;color:var(--fg);background:#13141a;border:1px solid var(--line);border-radius:8px;padding:10px;width:100%}
+textarea{min-height:110px;resize:vertical;margin-top:10px}
+button{cursor:pointer;width:auto;background:#2a2d38}
+button.primary{background:var(--acc);color:#1a1405;border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.presets button{padding:6px 10px;font-size:.85rem}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.actions button{flex:1 1 120px}
+#status{font-size:.9rem;color:var(--dim);margin-top:10px;min-height:1.3em}
+#status.err{color:var(--bad)}
+.item{border-top:1px solid var(--line);padding:10px 0}
+.item:first-child{border-top:0}
+.item b{color:var(--acc)}
+.meta{font-size:.82rem;color:var(--dim);margin:4px 0;font-variant-numeric:tabular-nums}
+.txt{font-size:.85rem;margin:2px 0 6px;overflow-wrap:anywhere}
+.item button{padding:6px 12px;font-size:.85rem;margin-right:6px}
+</style></head><body>
+<h1>TTS voice test</h1>
+<div class="card">
+  <div class="row">
+    <div><label for="voice">Voice</label><select id="voice"></select></div>
+    <div><label for="style">Style</label><select id="style"></select></div>
+  </div>
+  <textarea id="text" aria-label="Text"></textarea>
+  <div class="presets" id="presets"></div>
+  <div class="actions">
+    <button class="primary" id="speak">Speak</button>
+    <button id="all">Play all voices</button>
+    <button id="stop" disabled>Stop</button>
+  </div>
+  <div id="status"></div>
+</div>
+<div class="card"><label>History</label><div id="hist"><div class="meta">Nothing yet.</div></div></div>
+<script>
+"use strict";
+const PRESETS = {
+  "Narration": "The torches gutter... and somewhere below, something ancient stirs — patient, hungry, and awake.",
+  "Question": "Do you truly believe the door was left unlocked by accident?",
+  "Shout": "Run! The roof is collapsing, get out now!",
+  "Whisper": "Quiet now... do not move. It is right behind you, and it is listening.",
+  "Quoted": "The innkeeper leaned in and said, \"Nobody leaves tonight,\" then smiled without warmth.",
+  "Long": "You descend the worn stairs into the dark. The air grows cold, and the walls weep with old water. Far ahead, a faint blue glow pulses like a slow heartbeat. Behind you, the door grinds shut, and the last light fades. Whatever waits here has waited a very long time, and it has never once been disturbed."
+};
+const $ = id => document.getElementById(id);
+const els = {voice:$("voice"), style:$("style"), text:$("text"), speak:$("speak"), all:$("all"),
+  stop:$("stop"), status:$("status"), hist:$("hist"), presets:$("presets")};
+let lib = {}, ctx = null, abort = null, sources = [], cancelled = false, busy = false, nid = 0;
+const hist = [];
+
+els.text.value = PRESETS.Narration;
+for (const [name, t] of Object.entries(PRESETS)) {
+  const b = document.createElement("button");
+  b.textContent = name;
+  b.onclick = () => { els.text.value = t; };
+  els.presets.appendChild(b);
+}
+
+function setStatus(msg, err) { els.status.textContent = msg; els.status.className = err ? "err" : ""; }
+function setBusy(v) {
+  busy = v;
+  els.speak.disabled = els.all.disabled = v;
+  els.stop.disabled = !v;
+}
+function fillStyles() {
+  const cur = els.style.value;
+  const labels = lib[els.voice.value] || ["neutral"];
+  els.style.innerHTML = "";
+  for (const l of labels) els.style.add(new Option(l, l));
+  els.style.value = labels.includes(cur) ? cur : (labels.includes("neutral") ? "neutral" : labels[0]);
+}
+async function loadVoices() {
+  try {
+    const r = await fetch("/voices");
+    lib = (await r.json()).voices || {};
+  } catch (e) { setStatus("Cannot load /voices: " + e.message, true); return; }
+  for (const [slug, labels] of Object.entries(lib))
+    els.voice.add(new Option(slug + " (" + labels.join(", ") + ")", slug));
+  if (lib.narrator) els.voice.value = "narrator";
+  fillStyles();
+}
+els.voice.onchange = fillStyles;
+
+function audio() {
+  if (!ctx) // Run the context at the stream rate: a browser resamples every small buffer on its own, and each edge clicks.
+  ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+  if (ctx.state === "suspended") ctx.resume();
+  return ctx;
+}
+function stopSources() {
+  for (const s of sources) { s.onended = null; try { s.stop(); } catch (e) {} }
+  sources = [];
+}
+function schedule(ac, f32, sr, at) {
+  const buf = ac.createBuffer(1, f32.length, sr);
+  buf.copyToChannel(f32, 0);
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  src.connect(ac.destination);
+  src.start(at);
+  sources.push(src);
+  src.onended = () => { sources = sources.filter(s => s !== src); };
+  return at + buf.duration;
+}
+function toF32(i16) {
+  const f = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
+  return f;
+}
+
+// Speak one request. Resolves with a history item (or null on error/abort).
+async function speakOne(voice, style, text) {
+  const ac = audio();
+  abort = new AbortController();
+  const t0 = performance.now();
+  const chunks = [];
+  let sr = 24000, cache = "?", first = null, nextAt = 0, total = 0, carry = null;
+  try {
+    const r = await fetch("/speak", {method: "POST", signal: abort.signal,
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({text, voice, style, id: "test-" + (++nid)})});
+    if (!r.ok) {
+      let msg = r.status + "";
+      try { msg += " " + (await r.json()).error; } catch (e) {}
+      throw new Error(msg);
+    }
+    sr = parseInt(r.headers.get("X-Sample-Rate") || "24000", 10);
+    cache = r.headers.get("X-Cache") || "?";
+    const rd = r.body.getReader();
+    for (;;) {
+      const {done, value} = await rd.read();
+      if (done) break;
+      let bytes = value;
+      if (carry) {
+        const m = new Uint8Array(carry.length + bytes.length);
+        m.set(carry); m.set(bytes, carry.length);
+        bytes = m; carry = null;
+      }
+      if (bytes.length & 1) { carry = bytes.slice(bytes.length - 1); bytes = bytes.subarray(0, bytes.length - 1); }
+      if (!bytes.length) continue;
+      const i16 = new Int16Array(bytes.slice().buffer);
+      chunks.push(i16);
+      total += i16.length;
+      if (first === null) first = performance.now() - t0;
+      nextAt = schedule(ac, toF32(i16), sr, Math.max(nextAt, ac.currentTime + 0.05));
+      setStatus(`${voice}/${style}: receiving ${(total / sr).toFixed(1)} s of audio...`);
+    }
+  } catch (e) {
+    if (e.name === "AbortError") return null;
+    setStatus(`${voice}: ${e.message}`, true);
+    return null;
+  }
+  const totalMs = performance.now() - t0;
+  const pcm = new Int16Array(total);
+  let o = 0;
+  for (const c of chunks) { pcm.set(c, o); o += c.length; }
+  const item = {voice, style, text, sr, cache, pcm, firstMs: first, totalMs,
+    len: total / sr, rtf: total ? (totalMs / 1000) / (total / sr) : 0};
+  addHistory(item);
+  // wait for playback to finish (or Stop)
+  await new Promise(res => {
+    const left = Math.max(0, nextAt - ac.currentTime);
+    const t = setTimeout(res, left * 1000 + 100);
+    abort.signal.addEventListener("abort", () => { clearTimeout(t); res(); });
+  });
+  return item;
+}
+
+async function run(list) {
+  if (busy) return;
+  cancelled = false;
+  setBusy(true);
+  const text = els.text.value.trim();
+  if (!text) { setStatus("Enter some text.", true); setBusy(false); return; }
+  try {
+    for (const v of list) {
+      if (cancelled) break;
+      const labels = lib[v] || [];
+      const style = labels.includes(els.style.value) ? els.style.value : "neutral";
+      await speakOne(v, style, text);
+    }
+    if (!cancelled && !els.status.className) setStatus("Done.");
+  } finally { setBusy(false); abort = null; }
+}
+els.speak.onclick = () => run([els.voice.value]);
+els.all.onclick = () => run(Object.keys(lib));
+els.stop.onclick = () => {
+  cancelled = true;
+  if (abort) abort.abort();
+  stopSources();
+  setStatus("Stopped.");
+};
+
+function wavBlob(pcm, sr) {
+  const n = pcm.length * 2, b = new ArrayBuffer(44 + n), v = new DataView(b);
+  const s = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  s(0, "RIFF"); v.setUint32(4, 36 + n, true); s(8, "WAVE"); s(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); s(36, "data"); v.setUint32(40, n, true);
+  new Int16Array(b, 44).set(pcm);
+  return new Blob([b], {type: "audio/wav"});
+}
+function addHistory(it) {
+  if (!hist.length) els.hist.innerHTML = "";
+  hist.unshift(it);
+  const d = document.createElement("div");
+  d.className = "item";
+  const head = document.createElement("div");
+  const b = document.createElement("b");
+  b.textContent = it.voice + " / " + it.style;
+  head.append(b, " · cache " + it.cache);
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.textContent = `first audio ${Math.round(it.firstMs ?? 0)} ms · total ${(it.totalMs / 1000).toFixed(2)} s · audio ${it.len.toFixed(2)} s · RTF ${it.rtf.toFixed(2)}`;
+  const tx = document.createElement("div");
+  tx.className = "txt";
+  tx.textContent = it.text.length > 90 ? it.text.slice(0, 90) + "..." : it.text;
+  const play = document.createElement("button");
+  play.textContent = "Replay";
+  play.onclick = () => {
+    const ac = audio();
+    stopSources();
+    schedule(ac, toF32(it.pcm), it.sr, ac.currentTime + 0.05);
+  };
+  const dl = document.createElement("button");
+  dl.textContent = "Download WAV";
+  dl.onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(wavBlob(it.pcm, it.sr));
+    a.download = `${it.voice}-${it.style}.wav`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  d.append(head, meta, tx);
+  d.append(play, dl);
+  els.hist.prepend(d);
+}
+loadVoices();
+</script></body></html>

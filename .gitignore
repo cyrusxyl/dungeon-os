@@ -110,3 +110,8 @@ assets/
 stage/web/node_modules/
 stage/web/dist/
 game/campaigns/*/stage/events.ndjson
+
+# TTS service: voice data, models, audio cache
+tts/data/
+tts/models/
+tts/cache/

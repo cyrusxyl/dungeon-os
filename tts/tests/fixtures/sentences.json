@@ -1,0 +1,11 @@
+[
+  {"in": "The door opens. A cold wind blows.", "sentences": ["The door opens.", "A cold wind blows."]},
+  {"in": "Mr. Smith greets Dr. Jones. They talk.", "sentences": ["Mr. Smith greets Dr. Jones.", "They talk."]},
+  {"in": "Wait... what was that? The torch dies.", "sentences": ["Wait... what was that?", "The torch dies."]},
+  {"in": "He paused... The door creaked open.", "sentences": ["He paused...", "The door creaked open."]},
+  {"in": "\"Run,\" he said. \"Now!\" She ran.", "sentences": ["\"Run,\" he said.", "\"Now!\"", "She ran."]},
+  {"in": "\"Stop.\" He froze.", "sentences": ["\"Stop.\"", "He froze."]},
+  {"in": "\"Who goes there?\" asked the guard.", "sentences": ["\"Who goes there?\" asked the guard."]},
+  {"in": "J. R. Tolkien wrote it. Yes.", "sentences": ["J. R. Tolkien wrote it.", "Yes."]},
+  {"in": "No end punctuation", "sentences": ["No end punctuation"]}
+]
