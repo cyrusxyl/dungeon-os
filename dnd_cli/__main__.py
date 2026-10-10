@@ -455,6 +455,7 @@ def create_parser():
     p.add_argument("--campaign", default=None)
     p = enc_sub.add_parser("end", help="End combat: split XP of defeated foes, clear the tracker")
     p.add_argument("--no-xp", action="store_true")
+    p.add_argument("--resolved", nargs="+", default=[], metavar="ID", help="creatures that fled, yielded or were talked down: they give XP too")
     p.add_argument("--campaign", default=None)
 
     p = subparsers.add_parser("attack", help="Attack roll vs AC, damage on a hit, applied to the target")

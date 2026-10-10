@@ -79,6 +79,7 @@ The stage gives a player character a turn like Baldur's Gate 3: the turn bar sho
 ```bash
 uv run dnd-cli encounter end            # XP of defeated foes, split among the party; clears the tracker
 uv run dnd-cli encounter end --no-xp    # the party fled, or the foes surrendered without a fight
+uv run dnd-cli encounter end --resolved goblin#2 mira   # a foe that fled, yielded or was talked down still gives its XP (a named NPC gives the `xp` of its file)
 ```
 
 It prints "LEVEL UP READY" for a character who reached the next level (see the `character-advancement` skill). Then offer a search, loot, or a rest (`uv run dnd-cli rest short` / `rest long`).

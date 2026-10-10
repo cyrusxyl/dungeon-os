@@ -70,7 +70,7 @@ def execute_encounter(campaign, action: str, args) -> int:
             return [f"{args.target}: {args.kind} {'free' if args.free else 'used'}."]
         if action == "end":
             on_board = board.arena_id_of(state)
-            lines = combat.end(campaign_dir, state, award_xp=not args.no_xp)
+            lines = combat.end(campaign_dir, state, award_xp=not args.no_xp, resolved=args.resolved)
             if on_board:
                 notify_stage(campaign_dir, {"type": "arena_end"})
             return lines

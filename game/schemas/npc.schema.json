@@ -18,6 +18,11 @@
       "type": "number",
       "description": "CR for monsters, or level equivalent for NPCs"
     },
+    "xp": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "XP the party gets when the NPC is beaten in a fight (default 0)"
+    },
     "hp": {
       "type": "object",
       "properties": {

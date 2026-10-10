@@ -311,7 +311,7 @@ def npc_record(data: dict, cid: str) -> dict:
         "id": cid, "kind": "npc", "name": data.get("name", cid), "ac": data.get("armor_class", 10),
         "hp": {"current": hp.get("current", hp.get("max", 1)), "max": hp.get("max", 1)},
         "mods": mods, "saves": {}, "skills": {},
-        "attacks": attacks, "init": mods["dexterity"], "xp": 0, "speed_ft": _feet(data.get("speed")),
+        "attacks": attacks, "init": mods["dexterity"], "xp": data.get("xp", 0), "speed_ft": _feet(data.get("speed")),
         "resist": [], "immune": [], "vuln": [],
     }
 
@@ -638,9 +638,14 @@ def status(campaign_dir: Path, state: dict) -> list[str]:
     return lines
 
 
-def end(campaign_dir: Path, state: dict, award_xp: bool = True) -> list[str]:
-    """Split the XP of defeated creatures among the party; write NPC HP back; clear the encounter."""
+def end(campaign_dir: Path, state: dict, award_xp: bool = True, resolved: list[str] | None = None) -> list[str]:
+    """Split the XP of defeated creatures among the party; write NPC HP back; clear the encounter.
+
+    A creature in `resolved` (fled, yielded, talked down) counts as beaten without a kill."""
     enc = encounter(state)
+    for cid in resolved or []:
+        if cid not in enc["monsters"]:
+            raise RulesError(f"--resolved: {cid!r} is not a creature of this fight. Creatures: {', '.join(enc['monsters']) or 'none'}.")
     pcs = [p for p in enc["participants"] if p not in enc["monsters"]]
     lines = []
     for cid, rec in enc["monsters"].items():
@@ -650,7 +655,7 @@ def end(campaign_dir: Path, state: dict, award_xp: bool = True) -> list[str]:
             if npc is not None:
                 npc["hp"] = {**npc.get("hp", {}), "current": rec["hp"]["current"]}
                 write_json(path, npc, indent=2)
-    xp = sum(r.get("xp", 0) for r in enc["monsters"].values() if r["hp"]["current"] == 0)
+    xp = sum(r.get("xp", 0) for cid, r in enc["monsters"].items() if r["hp"]["current"] == 0 or cid in (resolved or []))
     if award_xp and xp and pcs:
         lines += award(campaign_dir, pcs, xp // len(pcs))
         lines.insert(0, f"Defeated foes give {xp} XP: {xp // len(pcs)} each.")

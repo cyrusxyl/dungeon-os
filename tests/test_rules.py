@@ -141,6 +141,13 @@ def test_combat(c: Path) -> None:
           and character.load(c, "aragorn")["experience_points"] == 900 + 50)
     check("end clears the encounter", state["active_encounter"] is None)
 
+    state = fight(c)
+    state["active_encounter"]["monsters"]["goblin#1"]["xp"] = 30
+    combat.damage(c, state, "goblin#2", 10)
+    check("--resolved on an unknown id is refused and the fight stays", raises(lambda: combat.end(c, state, resolved=["orc#1"])) and state["active_encounter"] is not None)
+    lines = combat.end(c, state, resolved=["goblin#1"])
+    check("a creature resolved without a kill gives its XP", lines[0].startswith("Defeated foes give 80 XP: 40 each"))
+
 
 def staged(c: Path, fn) -> list[dict]:
     """The roll events a rules call sends to the stage."""
