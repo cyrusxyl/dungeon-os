@@ -302,7 +302,7 @@ def test_rolls() -> None:
           hook.roll_event({"tool_input": {"command": "uv run roll 1d20 -v"}, "tool_output": "Rolled: 1d20: [20]\n20"})["total"] == 20)
     s = state.apply(state.empty(), e)
     check("the state keeps the roll", s["rolls"][-1]["total"] == 13 and s["rolls"][-1]["seq"] == 1)
-    for _ in range(8):
+    for _ in range(state.ROLL_LIMIT + 2):
         s = state.apply(s, {**e, "detail": {"kind": "check"}})
     check("the roll queue is short and keeps the detail", len(s["rolls"]) == state.ROLL_LIMIT and s["rolls"][-1]["detail"] == {"kind": "check"})
 
