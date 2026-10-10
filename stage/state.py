@@ -10,7 +10,7 @@ from __future__ import annotations
 
 
 LOG_LIMIT = 60
-ROLL_LIMIT = 6
+ROLL_LIMIT = 12
 DM_LOG_LIMIT = 30
 ACTIVITY_LIMIT = 12
 PRIVATE_LIMIT = 20

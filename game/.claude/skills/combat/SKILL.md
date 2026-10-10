@@ -56,6 +56,7 @@ uv run dnd-cli encounter next                                # next living comba
 - `attack <attacker> <weapon or action> <target>`. The weapon name can be part of the name (`long` for Longsword). A natural 20 is a critical hit (dice doubled), a natural 1 misses. `--bonus 2` for Bless or `--bonus -2` for half cover.
 - A PC's spells: cast first with `uv run dnd-cli character cast <name> <level>` (it refuses when no slot is left), then `attack ... spell ...` or `save ...`.
 - Multiattack is narration: make each attack with its own `attack` command.
+- A weapon or spell hit always goes through `attack` (or `save`), so the players see the roll. Never use `encounter damage` for a hit. Use it only for what has no roll: a trap, a fall, a hazard. It shows a line in the log.
 - Damage or healing outside an attack: `uv run dnd-cli encounter damage goblin#2 7 --type fire`, `uv run dnd-cli encounter heal sireth 8`. A hit on a creature that is `concentrating` prints the concentration DC.
 - Conditions: `uv run dnd-cli encounter condition goblin#1 add poisoned --rounds 3 --save con:11`, `... remove poisoned`. `encounter next` counts rounds down on the creature's turn, ends expired conditions, and says which saves are due. Mark concentration with the condition `concentrating`.
 - `uv run dnd-cli encounter status` prints the order, HP, AC and conditions — use it instead of reading files.

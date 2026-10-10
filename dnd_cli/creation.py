@@ -242,15 +242,54 @@ def _bonuses(data: dict) -> dict[str, int]:
     return {ability(b["ability_score"]["index"]): b["bonus"] for b in data.get("ability_bonuses", [])}
 
 
-def _simple_choices(cls: dict) -> list[dict]:
-    """Starting-gear choices of one plain item each (the rest the DM can hand out later)."""
+MAX_GEAR_OPTIONS = 80
+
+
+def _gear_sets(fetch, o: dict) -> list[list[tuple[str, str, int]]]:
+    """The alternatives one API option stands for, each a list of (index, name, count). A nested choice from a category
+    ("a martial weapon") gives one alternative per item of the category. [] means the stage cannot read the option."""
+    kind = o.get("option_type")
+    if kind == "counted_reference":
+        return [[(o["of"]["index"], o["of"]["name"], o["count"])]]
+    if kind == "choice":
+        ch = o["choice"]
+        src = ch.get("from", {})
+        if src.get("option_set_type") == "equipment_category":
+            cat = fetch(f"equipment-categories/{src['equipment_category']['index']}")
+            return [[(e["index"], e["name"], ch.get("choose", 1))] for e in cat.get("equipment", [])]
+        if src.get("option_set_type") == "options_array" and ch.get("choose", 1) == 1:
+            return [s for sub in src["options"] for s in _gear_sets(fetch, sub)]
+        return []
+    if kind == "multiple":
+        sets = [[]]
+        for item in o["items"]:
+            alts = _gear_sets(fetch, item)
+            if not alts:
+                return []
+            sets = [a + b for a in sets for b in alts]
+            if len(sets) > MAX_GEAR_OPTIONS:
+                return []
+        return sets
+    return []
+
+
+def _gear_option(items: list[tuple[str, str, int]]) -> dict:
+    """One option for the creator: the indexes joined by commas (a repeat is a quantity), and a name to read."""
+    name = ", ".join(n if c == 1 else f"{n} \u00d7{c}" for _, n, c in items)
+    return {"index": ",".join(i for i, _, c in items for _ in range(c)), "name": name}
+
+
+def _simple_choices(fetch, cls: dict) -> list[dict]:
+    """The starting-gear choices of a class: pick one of several sets of items. The stage skips a choice it cannot read
+    (the DM can hand out the gear later)."""
     out = []
     for ch in cls.get("starting_equipment_options", []):
-        opts = ch.get("from", {}).get("options", [])
-        if ch.get("choose") == 1 and len(opts) > 1 and all(
-                o.get("option_type") == "counted_reference" and o.get("count") == 1 for o in opts):
-            out.append({"label": re.sub(r"\([a-z]\)\s*", "", ch["desc"]),
-                        "options": [{"index": o["of"]["index"], "name": o["of"]["name"]} for o in opts]})
+        src = ch.get("from", {})
+        if ch.get("choose") != 1 or src.get("option_set_type") != "options_array":
+            continue
+        sets = [s for o in src["options"] for s in _gear_sets(fetch, o)]
+        if 1 < len(sets) <= MAX_GEAR_OPTIONS:
+            out.append({"label": re.sub(r"\([a-z]\)\s*", "", ch["desc"]), "options": [_gear_option(s) for s in sets]})
     return out
 
 
@@ -269,7 +308,7 @@ def _class_options(fetch, index: str) -> dict:
         "skill_count": n, "skill_options": skills, "spellcasting": None,
         "equipment": {"fixed": [{"index": e["equipment"]["index"], "name": e["equipment"]["name"], "quantity": e["quantity"]}
                                 for e in c.get("starting_equipment", [])],
-                      "choices": _simple_choices(c)},
+                      "choices": _simple_choices(fetch, c)},
     }
     if sc.get("cantrips_known") or any(sc.get(f"spell_slots_level_{i}") for i in range(1, 10)):
         out["spellcasting"] = {

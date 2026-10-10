@@ -278,6 +278,18 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
     { key: 'review', label: 'Review', ok: true },
   ]
   const cur = steps[step]
+  // Why Next is off: a shut button with no reason looks broken.
+  const NEED: Record<string, string> = {
+    who: 'Enter a player name, a character name and an alignment.',
+    race: 'Pick a race, a subrace if it has one, and the bonus abilities if it asks for them.',
+    class: 'Pick a class.',
+    bg: 'Pick a background, or fill in the custom one.',
+    abilities: 'Give every ability a score, or spend at most 27 points.',
+    skills: `Pick ${cls?.skill_count ?? 0} skills.`,
+    spells: 'Pick the cantrips and spells the class needs.',
+    gear: 'Make every gear choice.',
+    look: 'Pick a body, eyes and hair.',
+  }
 
   const create = async () => {
     if (!race || !cls) return
@@ -299,7 +311,7 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
       spells: f.spells,
       equipment: [
         ...cls.equipment.fixed.flatMap((i) => Array<string>(i.quantity || 1).fill(i.index)),
-        ...f.gear,
+        ...f.gear.flatMap((g) => g.split(',')),
       ],
       alignment: f.alignment,
       personality_traits: f.traits,
@@ -337,6 +349,7 @@ export function CharacterCreator({ dmStatus, activity, finishLabel }: { dmStatus
           Next
         </Button>
       )}
+      {cur.key !== 'review' && !cur.ok && <span role="status" className="text-sm text-[var(--dim)]">{NEED[cur.key] ?? 'Finish this step to go on.'}</span>}
       {!madeAny && hadParty && (
         <Button variant="outline" disabled={busy} onClick={finish} className="ml-auto text-[10px]">
           Cancel

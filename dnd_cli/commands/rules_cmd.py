@@ -64,6 +64,9 @@ def execute_encounter(campaign, action: str, args) -> int:
             amount, rolled = _amount(args.amount, action)
             line = (combat.damage(campaign_dir, state, args.target, amount, args.type or "") if action == "damage"
                     else combat.heal(campaign_dir, state, args.target, amount))
+            # No roll shows for this, so the players get a line in the log. A creature's HP stays behind the screen.
+            rec = combat.combatant(campaign_dir, state, args.target)
+            combat.stage_feed(line if rec["kind"] == "pc" else f"{rec['name']} {'takes damage' if action == 'damage' else 'is healed'}.")
             return [rolled + line] if rolled else [line]
         if action == "condition":
             return [combat.condition(state, args.target, args.op, args.name, args.rounds, args.save)]

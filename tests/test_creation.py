@@ -88,7 +88,14 @@ DATA.update({
     "classes/fighter": {**DATA["classes/fighter"], "starting_equipment": [{"equipment": ref("shield"), "quantity": 1}],
                         "starting_equipment_options": [opt([("longsword", 1), ("chain-mail", 1)]),
                                                        opt([("shield", 1), ("longsword", 2)]),
-                                                       {"desc": "a martial weapon", "choose": 1, "from": {"option_set_type": "equipment_category"}}]},
+                                                       {"desc": "a martial weapon", "choose": 1, "from": {"option_set_type": "equipment_category"}},
+                                                       {"desc": "(a) a martial weapon and a shield or (b) two martial weapons", "choose": 1, "type": "equipment",
+                                                        "from": {"option_set_type": "options_array", "options": [
+                                                            {"option_type": "multiple", "items": [
+                                                                {"option_type": "choice", "choice": {"choose": 1, "from": {"option_set_type": "equipment_category", "equipment_category": {"index": "martial-weapons"}}}},
+                                                                {"option_type": "counted_reference", "count": 1, "of": ref("shield")}]},
+                                                            {"option_type": "choice", "choice": {"choose": 2, "from": {"option_set_type": "equipment_category", "equipment_category": {"index": "martial-weapons"}}}}]}}]},
+    "equipment-categories/martial-weapons": {"equipment": [ref("longsword"), ref("rapier")]},
     "classes/wizard/spells": {"results": [{**ref("fire-bolt"), "level": 0}, {**ref("magic-missile"), "level": 1}, {**ref("fireball"), "level": 3}]},
     "equipment/explorers-pack": {"index": "explorers-pack", "name": "Explorer's Pack", "equipment_category": {"index": "adventuring-gear"}},
 })
@@ -193,8 +200,11 @@ def test_options() -> None:
     check("class: die, saves, skills", f["hit_die"] == 10 and f["saves"] == ["strength", "constitution"]
           and f["skill_count"] == 2 and "athletics" in f["skill_options"])
     check("no spellcasting at level 1 is null", f["spellcasting"] is None)
-    check("only plain single-item choices; fixed gear",
-          [c["options"][0]["index"] for c in f["equipment"]["choices"]] == ["longsword"]
+    gear = f["equipment"]["choices"]
+    check("gear choices: sets of items, repeats as quantity, a category choice expanded; fixed gear",
+          [c["options"][0]["index"] for c in gear] == ["longsword", "shield", "longsword,shield"]
+          and [x["index"] for x in gear[2]["options"]] == ["longsword,shield", "rapier,shield", "longsword,longsword", "rapier,rapier"]
+          and gear[2]["options"][2]["name"] == "Longsword \u00d72"
           and f["equipment"]["fixed"] == [{"index": "shield", "name": "Shield", "quantity": 1}])
     sp = w["spellcasting"]
     check("wizard spells: ability, counts, level 0 and 1 options", sp["ability"] == "intelligence" and sp["cantrips"] == 3

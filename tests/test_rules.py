@@ -116,6 +116,16 @@ def test_combat(c: Path) -> None:
     hp = character.load(c, "aragorn")["hp"]["current"]
     check("a natural 20 crits and doubles dice; the PC sheet is saved",
           any("CRITICAL" in ln for ln in lines) and hp == before - 9)
+    from dnd_cli.commands import rules_cmd
+    import argparse
+
+    disk = (c / "state.json").read_bytes()  # the later checks need the state as it was
+    combat.save_state(c, state)
+    ev = staged(c, lambda: rules_cmd.execute_encounter(str(c), "damage", argparse.Namespace(target="aragorn", amount="3", type=None)))
+    check("damage with no roll still leaves a line in the log for a hero", [e["type"] for e in ev] == ["feed"] and "HP" in ev[0]["text"])
+    ev = staged(c, lambda: rules_cmd.execute_encounter(str(c), "damage", argparse.Namespace(target="goblin#2", amount="1", type=None)))
+    check("and hides the HP of a creature", len(ev) == 1 and "HP" not in ev[0]["text"] and "takes damage" in ev[0]["text"])
+    (c / "state.json").write_bytes(disk)
     check("an attack moves the turn to the attacker", state["active_encounter"]["current_turn"] == "goblin#2")
     check("a natural 1 misses", "miss" in combat.attack(c, state, "goblin#2", "scimitar", "aragorn", rng=Fixed(1))[-1])
     state["active_encounter"]["current_turn"] = "aragorn"

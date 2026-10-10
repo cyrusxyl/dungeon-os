@@ -85,6 +85,13 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
     if (state && readSeq === null) setReadSeq(state.log.at(-1)?.seq ?? 0)
   }, [state, readSeq])
 
+  // In a fight on the board the view follows the newest beat: a backlog of beats must not hold the scene back or shut the turn buttons.
+  const newest = state?.log.at(-1)?.seq
+  const fighting = Boolean(state?.arena)
+  useEffect(() => {
+    if (fighting && newest !== undefined && readSeq !== null && readSeq < newest) setReadSeq(newest)
+  }, [fighting, newest, readSeq])
+
   useEffect(() => {
     if (state?.dm.status === 'waiting') setConsoleOpen(true)
   }, [state?.dm.status])

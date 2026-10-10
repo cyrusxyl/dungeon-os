@@ -1,7 +1,7 @@
 import { memo, useState } from 'react'
 
 import { Progress } from '@/components/ui/8bit/progress'
-import { type Seat } from '@/lib/stage'
+import { postJson, type Seat } from '@/lib/stage'
 import { act, type CardAction, type EffectPreset, type Offer, type Party, type PartyChar, ROMAN, TONE } from '@/lib/party'
 
 const TURN_KINDS = [
@@ -178,6 +178,13 @@ function Actions({ c, party, canAct, refresh }: { c: PartyChar; party: Party; ca
 export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds }: { c: PartyChar; party: Party; active: boolean; canAct: boolean; refresh: () => void; onSheet: () => void; seat?: Seat; mineIds: string[] }) {
   const mine = mineIds.includes(c.id)
   const [portraitOk, setPortraitOk] = useState(true)
+  const [endError, setEndError] = useState<string | null>(null)
+  const endTurn = async () => {
+    setEndError(null)
+    const r = await postJson('/api/end-turn', { who: c.id })
+    if (!r.ok) setEndError(((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? 'The turn did not end.')
+    refresh()
+  }
   const cur = c.hp.current ?? 0
   const max = c.hp.max || 1
   const catalogue = party.effects
@@ -233,11 +240,13 @@ export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds
           <button
             type="button"
             disabled={!canAct}
-            onClick={() => act('/api/end-turn', { who: c.id }, refresh)}
+            title={canAct ? undefined : 'Read the new story first, or wait for the DM.'}
+            onClick={endTurn}
             className="pixel-font border-2 border-[var(--gold)] bg-[var(--gold)] px-2 py-1 text-[9px] text-[var(--ink)] hover:bg-[var(--parchment)] disabled:opacity-50"
           >
             End turn
           </button>
+          {endError && <span role="alert" className="text-sm text-[var(--bad)]">{endError}</span>}
         </div>
       )}
       <TurnPips c={c} />

@@ -25,6 +25,22 @@ Built (the numbers are the sections of this file):
 - **7.** XP for NPCs (`xp` in the NPC file). XP for foes resolved without a kill (`encounter end --resolved`). `loot roll` and `loot force`.
 - **8 and 9.** The settings and the routes. `POST /api/arena/improvise`, `GET /api/arena/hand` and `POST /api/arena/preview` are added to the draft.
 
+- **Playtest round 2 (2026-10-10).** Fixes:
+  - `encounter damage` and `encounter heal` now write a line in the log. A hero's line shows the HP. A creature's line does not. The combat skill tells the DM to use `attack` for every weapon or spell hit.
+  - The stage keeps 12 rolls (was 6), so a burst of attacks does not drop a roll.
+  - In a fight on the board, the view follows the newest beat. A backlog of beats no longer holds the old scene text or shuts the End turn button.
+  - The End turn button in the character panel shows the error from the server. Its tooltip says why it is off.
+  - A class now shows all its starting gear choices (armor, weapons, ammunition). Before, only plain one-item choices showed, so a Fighter had no weapon.
+  - The creator says why the Next button is off.
+  - Not fixed: the missing hit roll (bug 1). The cause is not proved. See "Open".
+
+Open:
+
+- **Missing hit roll.** The playtest showed two misses and 5 HP of damage. Read `stage/events.ndjson` of "Muse Playtest 2" on the Pi. Count the `roll` events of that round. Two rolls mean the DM did the damage by hand (the new log line now shows this). Three rolls mean the browser did not play one.
+- **Mountain Dwarf and other backgrounds.** The SRD data has only Hill Dwarf and Acolyte. More options need hand-written content. This is a decision for the owner.
+- **Story step.** The source never blocks Next on the Story step. Deploy the new build to the Pi, then test again.
+- **"a armed".** This is DM prose, not a template. No code change.
+
 Not built:
 
 - **Return.** The room is not marked cleared. The party does stand on the same tile. `@scene` shows the next beat.
