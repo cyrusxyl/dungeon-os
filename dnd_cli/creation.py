@@ -255,7 +255,10 @@ def _gear_sets(fetch, o: dict) -> list[list[tuple[str, str, int]]]:
         ch = o["choice"]
         src = ch.get("from", {})
         if src.get("option_set_type") == "equipment_category":
-            cat = fetch(f"equipment-categories/{src['equipment_category']['index']}")
+            try:
+                cat = fetch(f"equipment-categories/{src['equipment_category']['index']}")
+            except RulesError:  # the 5e API does not answer: skip this choice, do not fail the whole creator
+                return []
             return [[(e["index"], e["name"], ch.get("choose", 1))] for e in cat.get("equipment", [])]
         if src.get("option_set_type") == "options_array" and ch.get("choose", 1) == 1:
             return [s for sub in src["options"] for s in _gear_sets(fetch, sub)]

@@ -115,7 +115,8 @@ def main() -> int:
             after = effects.active(c, who)
             tag = f"#{i} {kind} {who} {flags} effects={before}"
             if secret:
-                if events:
+                # No dice, no DC. A hero hit by a secret attack still gets a log line (a feed event with the damage).
+                if any(e["type"] != "feed" or "DC" in e["text"] or "AC" in e["text"] for e in events):
                     failed[tag] = ["a secret roll reached the stage"]
             elif len(events) != 1:
                 failed[tag] = [f"expected one stage event, got {len(events)}"]

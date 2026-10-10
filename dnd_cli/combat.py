@@ -82,6 +82,12 @@ def stage_feed(text: str) -> None:
             f.write(json.dumps({"type": "feed", "text": text}) + "\n")
 
 
+def _secret_feed(secret: bool, recs: list[dict], text: str) -> None:
+    """A secret roll hides the dice, but a hero who loses HP to it still gets a line in the log."""
+    if secret and any(r["kind"] == "pc" for r in recs):
+        stage_feed(text)
+
+
 def _d20_groups(faces: list[int], kept: int) -> list[dict]:
     """The kept d20 first (the legacy dice box colours a natural 20 or 1 from it)."""
     rest = list(faces)
@@ -741,7 +747,8 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
             f"{_fx_note(r)} vs AC {t_rec['ac']}")
     if not hit:
         stage_roll(f"{a_rec['name']}: {act['name']}", to_hit, groups, secret, detail())
-        return turn_lines + [head + (" — natural 1, miss" if fumble else " — miss")]
+        _secret_feed(secret, [t_rec], f"{a_rec['name']}'s {act['name']} misses {t_rec['name']}.")
+        return turn_lines + [head + (" \u2014 natural 1, miss" if fumble else " \u2014 miss")]
     lines, total_text, shown_dmg = [], [], []
     for expr, dtype in parts:
         amount, dmg_groups = dice.roll(expr, rng, crit=crit)
@@ -751,6 +758,7 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
         lines.append(damage(campaign_dir, state, target, amount, dtype, crit=crit))
     stage_roll(f"{a_rec['name']}: {act['name']} — {' + '.join(total_text)} damage", to_hit, groups, secret,
                detail(shown_dmg))
+    _secret_feed(secret, [t_rec], f"{a_rec['name']}'s {act['name']} hits {t_rec['name']}: " + "; ".join(lines))
     return turn_lines + [head + (" — CRITICAL HIT" if crit else " — hit") + f", {' + '.join(total_text)} damage"] + lines
 
 
@@ -803,6 +811,8 @@ def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, 
     # One target: its save total. Several: how many succeeded.
     stage_roll(shown, total if len(targets) == 1 else successes, groups + (dmg_groups if amount is not None else []),
                secret, detail)
+    if hurt := [ln for ln in lines if " takes " in ln]:  # not the save lines: they show a hidden DC
+        _secret_feed(secret, recs, "; ".join(hurt))
     return lines
 
 

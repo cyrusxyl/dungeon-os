@@ -126,6 +126,16 @@ def test_combat(c: Path) -> None:
     ev = staged(c, lambda: rules_cmd.execute_encounter(str(c), "damage", argparse.Namespace(target="goblin#2", amount="1", type=None)))
     check("and hides the HP of a creature", len(ev) == 1 and "HP" not in ev[0]["text"] and "takes damage" in ev[0]["text"])
     (c / "state.json").write_bytes(disk)
+    ev = staged(c, lambda: combat.attack(c, state, "goblin#2", "scimitar", "aragorn", rng=Fixed(20, 3, 4), secret=True, cost=None, catch_up=False))
+    check("a secret hit on a hero hides the dice but shows a line", [e["type"] for e in ev] == ["feed"] and "takes" in ev[0]["text"] and "AC" not in ev[0]["text"])
+    ev = staged(c, lambda: combat.attack(c, state, "goblin#2", "scimitar", "aragorn", rng=Fixed(2), secret=True, cost=None, catch_up=False))
+    check("a secret miss on a hero shows a line", [e["type"] for e in ev] == ["feed"] and "misses" in ev[0]["text"])
+    ev = staged(c, lambda: combat.attack(c, state, "aragorn", "longsword", "goblin#2", rng=Fixed(2), secret=True, cost=None, catch_up=False))
+    check("a secret attack on a creature stays hidden", ev == [])
+    from dnd_cli.commands import character_cmd
+
+    ev = staged(c, lambda: character_cmd.execute_apply_damage(str(c), "aragorn", 2))
+    check("hand damage on a sheet leaves a line", [e["type"] for e in ev] == ["feed"] and "aragorn takes 2" in ev[0]["text"])
     check("an attack moves the turn to the attacker", state["active_encounter"]["current_turn"] == "goblin#2")
     check("a natural 1 misses", "miss" in combat.attack(c, state, "goblin#2", "scimitar", "aragorn", rng=Fixed(1))[-1])
     state["active_encounter"]["current_turn"] = "aragorn"

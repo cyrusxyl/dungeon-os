@@ -4,6 +4,7 @@ import json
 import sys
 
 from dnd_cli import canon, character
+from dnd_cli.combat import stage_feed
 
 
 def _print(obj) -> int:
@@ -41,6 +42,7 @@ def execute_apply_damage(campaign: str, name: str, amount: int) -> int:
         data = character.load(campaign_dir, name)
         result = character.apply_damage(data, amount)
         character.save(campaign_dir, name, data)
+        stage_feed(f"{name} takes {amount}: HP {result['hp_current']}/{result['hp_max']}")  # no roll shows for this
         return _print(result)
     return _run(campaign, go)
 
