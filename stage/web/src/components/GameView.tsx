@@ -8,6 +8,8 @@ import { CrawlView } from '@/components/CrawlView'
 import { DialogueBox } from '@/components/DialogueBox'
 import { JoinQr } from '@/components/JoinQr'
 import { HostControls } from '@/components/HostControls'
+import { SoundGate } from '@/components/VoiceToggle'
+import { Narrator } from '@/components/Narrator'
 import { Lobby } from '@/components/Lobby'
 import { LogDrawer } from '@/components/LogDrawer'
 import { MapOverlay } from '@/components/MapOverlay'
@@ -474,6 +476,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
 
   return (
     <div className="flex h-full flex-col gap-3 p-3 sm:p-4">
+      <Narrator current={current} mode={mode} />
+      <SoundGate mode={mode} />
       <header className="flex flex-wrap items-center gap-3">
         <h1 className="pixel-font text-xs text-[var(--gold)]">DungeonOS</h1>
         <span className="text-lg text-[var(--dim)]">{titleCase(campaign)}</span>
@@ -496,7 +500,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           </Button>
         )}
         {sharedButtons}
-        {me && <HostControls me={me} />}
+        {me && <HostControls me={me} mode={mode} />}
         {isHost && state.creating && !state.new_party && !showCreator && (
           <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/done', { force: true })} title="Close the character creator that another device left open." className="text-[10px]">
             Close creator

@@ -66,6 +66,7 @@ export interface StoryLine {
   text: string
   actor?: string
   emotion?: string
+  mood?: string
 }
 
 export interface Notice {
