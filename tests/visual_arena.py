@@ -156,6 +156,44 @@ async def foe_turns(page: Page, c: Path, arena_id: str) -> None:
     check("the feed shows what the goblins did", len(await page.eval("[...document.querySelectorAll('[aria-label=\"What just happened\"] li')].map(l => l.innerText)")) >= 1)
 
 
+async def aim_checks(page: Page, c: Path, arena_id: str) -> None:
+    """An area spell on a phone: the first tap shows what the area covers, a tap on the same cell casts."""
+    for who in ("aragorn", "legolas"):
+        sheet = character.load(c, who)
+        sheet["hp"] = {"current": 200, "max": 200}
+        if who == "aragorn":
+            sheet["level"] = 5
+            sheet["spellcasting"] = {"ability": "intelligence", "spell_save_dc": 13, "spell_attack_bonus": 5, "spells_known": ["fireball"],
+                                     "spell_slots": {"3": {"max": 1, "remaining": 1}}}
+        character.save(c, who, sheet)
+    state = combat.load_state(c)
+    for rec in state["active_encounter"]["monsters"].values():
+        rec["hp"] = {"current": 200, "max": 200}
+    state["active_encounter"]["resources"]["aragorn"] = {}
+    combat.save_state(c, state)
+    beat.append(c, [{"type": "arena_updated", "arena": arena_id}, {"type": "dm_status", "status": "idle"}])
+    await page.call("Page.reload")  # the roll windows of the creatures' turns are queued: a reload starts clean
+    await asyncio.sleep(3)
+    canvas = "document.querySelector('canvas[aria-label^=\"The board\"]')"
+    await page.eval("[...document.querySelectorAll('[aria-label=\"Your hand\"] button')].find(b => b.textContent.includes('Fireball'))?.click()")
+    await asyncio.sleep(0.6)
+    check("an area spell asks for a cell on the board", "to aim Fireball" in await page.eval("document.body.innerText"))
+    a = arena.load(c, arena_id)
+    cell = board.pos(a, "goblin#1")
+    await click_cell(page, canvas, a, cell)
+    await asyncio.sleep(1.2)
+    await page.shot("arena-aim")
+    check("a long hand does not widen the page: nothing scrolls sideways and the party panel stays on screen",
+          await page.eval("document.documentElement.scrollWidth <= window.innerWidth + 1 && document.querySelector('[aria-label=\"Your hand\"]').getBoundingClientRect().right <= window.innerWidth + 1"))
+    sheet = character.load(c, "aragorn")
+    check("the first tap shows the area and does not cast", "same cell again" in await page.eval("document.body.innerText")
+          and sheet["spellcasting"]["spell_slots"]["3"]["remaining"] == 1 and not combat.turn_used(combat.load_state(c), "aragorn")["action"])
+    await click_cell(page, canvas, a, cell)
+    await asyncio.sleep(1.5)
+    check("a tap on the same cell casts: the slot and the action are spent", character.load(c, "aragorn")["spellcasting"]["spell_slots"]["3"]["remaining"] == 0
+          and combat.turn_used(combat.load_state(c), "aragorn")["action"])
+
+
 async def dark_room(page: Page, c: Path, arena_id: str) -> None:
     a = arena.load(c, arena_id)
     a["spec"]["light"] = "dark"
@@ -219,6 +257,7 @@ def main() -> int:
                 os.environ["DUNGEON_STAGE_LOG"] = str(beat.log_path(c))
                 await board_checks(page, c, arena_id)
                 await foe_turns(page, c, arena_id)
+                await aim_checks(page, c, arena_id)
                 await dark_room(page, c, arena_id)
         asyncio.run(run())
     finally:

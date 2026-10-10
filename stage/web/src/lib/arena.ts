@@ -75,4 +75,6 @@ export interface Preview {
   why: string | null
   cells: Cell[]
   units: string[]
+  /** The cell this preview was asked for (set by the browser). */
+  at?: Cell
 }

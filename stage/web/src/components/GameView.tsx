@@ -572,7 +572,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
             <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} finishLabel={finishLabel} />
           </section>
         ) : (
-        <section className="flex min-h-0 flex-col gap-3">
+        <section className="flex min-h-0 min-w-0 flex-col gap-3">
           {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
           <div className="relative min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
             <SceneTitle state={state} />

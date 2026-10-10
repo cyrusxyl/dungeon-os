@@ -198,7 +198,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
     fetch('/api/arena/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', ...deviceHeaders() }, body: JSON.stringify({ who: actingAs, ability: aimedId, aim: hover }) })
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null)
-      .then((p: Preview | null) => live && setAim(p))
+      .then((p: Preview | null) => live && setAim(p && { ...p, at: hover }))
     return () => {
       live = false
     }
@@ -250,7 +250,12 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   const click = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canWalk || !actingAs) return
     const [x, y] = cellAt(e)
-    if (aimed) return act(aimed, undefined, [x, y])
+    if (aimed) {
+      // Look before the cast: the first tap on a cell (a phone has no hover) shows what it covers; a tap on the same cell casts.
+      if (aim?.at?.[0] === x && aim.at[1] === y && aim.ok) return act(aimed, undefined, [x, y])
+      setHover([x, y])
+      return setNote(aim?.at?.[0] === x && aim.at[1] === y ? (aim.why ?? 'You cannot aim there.') : 'Tap the same cell again to cast.')
+    }
     const foe = view.units.find((u) => !u.pc && !u.down && u.x === x && u.y === y)
     if (foe && selected?.needs === 'target') act(selected, foe.id)
     else if (foe) call('/api/arena/attack', { who: actingAs, target: foe.id })
@@ -261,7 +266,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   const name = (id: string) => view.units.find((u) => u.id === id)?.name ?? id
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full min-w-0 flex-col">
       <div ref={box} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
         <canvas
           ref={canvas}
