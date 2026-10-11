@@ -24,7 +24,7 @@ import httpx  # noqa: E402
 
 import view.settings as saved_settings  # noqa: E402
 from stage import voice  # noqa: E402
-from stage.beat import MOODS  # noqa: E402
+from stage.beat import EMOTIONS, MOODS  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from tests.test_stage import call, fixture_campaign  # noqa: E402
 
@@ -68,7 +68,7 @@ async def main() -> None:
         app = create_app(None)
         stage = await app.state.table.start(fixture_campaign(tmp), ["cat"])
         stage.fold([{"type": "narrate", "text": "The door creaks open."}, {"type": "say", "actor": "x", "text": "Hello."},
-                    {"type": "say", "actor": "astarion", "emotion": "eyeroll", "text": "*Oh*, **lovely**."}])
+                    {"type": "say", "actor": "astarion", "emotion": "disgusted", "text": "*Oh*, **lovely**."}])
         nar = next(e["seq"] for e in stage.state["log"] if e["type"] == "narrate")
         say = next(e["seq"] for e in stage.state["log"] if e.get("actor") == "x")
         mapped = next(e["seq"] for e in stage.state["log"] if e.get("actor") == "astarion")
@@ -104,7 +104,7 @@ async def main() -> None:
         status, _, body = await call(app, "GET", f"/api/tts/line/{mapped}")
         check("a mapped say line streams", status == 200 and body == PCM)
         check("say body has voice, style, plain text",
-              ("POST", "/speak", {"text": "Oh, lovely.", "voice": "astarion", "style": "wry", "id": str(mapped)}) in seen)
+              ("POST", "/speak", {"text": "Oh, lovely.", "voice": "astarion", "style": "disgusted", "id": str(mapped)}) in seen)
         seen.clear()
         status, _, body = await call(app, "GET", "/api/tts/line/9999")
         check("204 for an unknown seq", status == 204)
@@ -114,8 +114,18 @@ async def main() -> None:
         it = voice.item({"type": "narrate", "text": "Dark.", "mood": "ominous"}, None)
         check("a narrate mood is the style", it == {"text": "Dark.", "voice": "narrator", "style": "ominous"})
         check("no mood is neutral", voice.item({"type": "narrate", "text": "Dark."}, None)["style"] == "neutral")
-        check("say emotion table", [voice.STYLES[e] for e in ("neutral", "happy", "angry", "sad", "shock", "blush", "shame", "eyeroll", "closed")]
-              == ["neutral", "bright", "intense", "somber", "urgent", "warm", "somber", "wry", "neutral"])
+        style = lambda e: voice.item({"type": "say", "actor": "astarion", "text": "Hi.", "emotion": e}, stage.campaign_dir)["style"]
+        check("say style is the emotion", style("angry") == "angry" and style("fearful") == "fearful")
+        check("every emotion is its own voice style", all(style(e) == e for e in EMOTIONS))
+        from stage.lpc import EMOTION_FACES
+        check("every emotion but neutral has a face", set(EMOTION_FACES) == set(EMOTIONS) - {"neutral"})
+        from stage import beat
+        check("parser accepts every emotion", all(beat.parse(f"@say a {e} Hi there")[0]["emotion"] == e for e in EMOTIONS))
+        check("an old name is plain text", beat.parse("@say a shock Hi there")[0]["emotion"] == "neutral")
+        check("usage lists every emotion", all(e in beat.USAGE for e in EMOTIONS))
+        skill = (Path(__file__).resolve().parent.parent / "game/.claude/skills/stage/SKILL.md").read_text()
+        row = next(l for l in skill.splitlines() if l.startswith("| `@say"))
+        check("SKILL.md emotions equal EMOTIONS", tuple(re.findall(r"`(\w+)`", row.split("Emotions:")[1].split(".")[0])) == tuple(EMOTIONS))
         status, _, body = await call(app, "GET", "/api/tts/health")
         check("health is true", json.loads(body) == {"ok": True})
         await call(app, "GET", "/api/tts/health")
@@ -133,7 +143,6 @@ async def main() -> None:
     doc = (REPO / "game/.claude/skills/stage/SKILL.md").read_text()
     listed = tuple(re.findall(r"^- `(\w+)`: ", doc.split("The moods are:")[1], re.M))
     check("SKILL.md lists exactly the moods in stage.beat.MOODS", listed == MOODS, f"SKILL.md has {listed}, MOODS is {MOODS}")
-    check("every STYLES value is a mood", set(voice.STYLES.values()) <= set(MOODS), f"not moods: {set(voice.STYLES.values()) - set(MOODS)}")
     voice.transport = None
     await voice.close()
 

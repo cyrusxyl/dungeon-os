@@ -40,15 +40,13 @@ DEFAULT_HEAD = {
     "teen": "heads_human_female_small",
     "child": "heads_human_child",
 }
-EMOTION_FACES = {
+EMOTION_FACES = {  # neutral has no entry: the default expression. The art has no faces for fear or disgust yet.
     "happy": "face_happy",
     "angry": "face_angry",
     "sad": "face_sad",
-    "shock": "face_shock",
-    "blush": "face_blush",
-    "shame": "face_shame",
-    "eyeroll": "face_eyeroll",
-    "closed": "face_closed",
+    "surprised": "face_shock",
+    "fearful": "face_shock",
+    "disgusted": "face_eyeroll",
 }
 # Removed from definition names to make short item ids, longest first.
 PREFIXES = (

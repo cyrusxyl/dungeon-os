@@ -43,7 +43,7 @@ from pathlib import Path
 
 from stage.files import read_json
 
-EMOTIONS = ("neutral", "happy", "angry", "sad", "shock", "blush", "shame", "eyeroll", "closed")
+EMOTIONS = ("neutral", "happy", "angry", "sad", "surprised", "fearful", "disgusted")  # the voice labels; the DM-facing list
 MOODS = ("neutral", "ominous", "warm", "wry", "tense", "intense", "urgent", "action", "bright", "somber")  # narrator styles
 POSITIONS = ("left", "center", "right", "far-left", "far-right")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # a file id: sites, maps, places
@@ -57,7 +57,7 @@ def title(slug: str) -> str:
 
 USAGE = (
     "Beat lines: @scene <location-id> (the party comes with it) | @enter <actor-id> [position] | "
-    "@exit <actor-id> | @narrate[mood] <text> (mood is optional: " + ", ".join(MOODS) + ") | @say <actor-id> [emotion] <text> | "
+    "@exit <actor-id> | @narrate[mood] <text> (mood is optional: " + ", ".join(MOODS) + ") | @say <actor-id> [emotion] <text> (emotion is optional: " + ", ".join(EMOTIONS) + ") | "
     "@choices <a> | <b> | ... | @choices-for <pc-id> <a> | <b> | @whisper <pc-id> <text> | @await all|<pc-id> | "
     "@roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
     "@explore <site-id> [<poi-id>|entrance]"

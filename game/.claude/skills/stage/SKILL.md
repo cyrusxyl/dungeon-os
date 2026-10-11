@@ -34,7 +34,7 @@ EOF
 | `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. Position is optional. |
 | `@exit <actor-id>` | A character leaves. Send it in the same beat that says they leave: the stage does not read the story, and the sprite stays until you send it. |
 | `@narrate <text>` | A narration line in the dialogue box, with no portrait. Add a mood tag with `@narrate[mood] <text>` (see Narration mood below). |
-| `@say <actor-id> [emotion] <text>` | A character speaks, with portrait. Emotions: `neutral` `happy` `angry` `sad` `shock` `blush` `shame` `eyeroll` `closed`. |
+| `@say <actor-id> [emotion] <text>` | A character speaks, with portrait. Emotions: `neutral` `happy` `angry` `sad` `surprised` `fearful` `disgusted`. The face follows the emotion: `surprised` and `fearful` show the shock face, `disgusted` shows the eye-roll face. |
 | `@choices <a> \| <b> \| <c>` | Choice buttons. Put it last. The player can still type a free action. |
 | `@choices-for <pc-id> <a> \| <b>` | Choice buttons for one player character. Only that player sees them. |
 | `@whisper <pc-id> <text>` | A private line for one player character's player. The table and the other players do not see it. Use it for what only that character senses or knows. |
@@ -56,6 +56,8 @@ EOF
 - `action`: fast, physical fight
 - `bright`: joy, relief, wonder
 - `somber`: grief, loss, shame
+
+Narration moods and `@say` emotions are separate lists. The `@say` emotion picks both the portrait face and the voice delivery.
 
 
 A line with no `@` continues the line before it.

@@ -40,13 +40,18 @@ export function setVoiceVolume(v: number): void {
   emit()
 }
 
+function makeGain(c: AudioContext): GainNode {
+  const g = c.createGain()
+  g.gain.value = savedVoiceOn() === false ? 0 : savedVolume()
+  g.connect(c.destination)
+  return g
+}
+
 function audio(): AudioContext {
   if (!ctx) {
     // Run the context at the stream rate: a browser resamples every small buffer on its own, and each edge clicks.
     ctx = new AudioContext({ sampleRate: 24000 })
-    gain = ctx.createGain()
-    gain.gain.value = savedVoiceOn() === false ? 0 : savedVolume()
-    gain.connect(ctx.destination)
+    gain = makeGain(ctx)
     ctx.onstatechange = emit
   }
   return ctx
@@ -68,9 +73,7 @@ export function stop(): void {
   // Drop what is already scheduled by replacing the gain node.
   if (ctx && gain) {
     gain.disconnect()
-    gain = ctx.createGain()
-    gain.gain.value = savedVolume()
-    gain.connect(ctx.destination)
+    gain = makeGain(ctx)
   }
 }
 

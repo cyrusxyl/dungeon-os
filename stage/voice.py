@@ -80,10 +80,6 @@ async def speak(text: str, voice: str = "narrator", style: str | None = None, id
     return Speech(response)
 
 
-STYLES = {"neutral": "neutral", "happy": "bright", "angry": "intense", "sad": "somber", "shock": "urgent",
-          "blush": "warm", "shame": "somber", "eyeroll": "wry", "closed": "neutral"}
-
-
 def plain(text: str) -> str:
     """Text without markup, as it is read aloud."""
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # [label](url) -> label
@@ -121,8 +117,9 @@ def item(event: dict, campaign_dir: Path | None) -> dict | None:
         return {"text": text, "voice": "narrator", "style": str(event.get("mood") or "neutral")}
     if kind == "say":
         slug = voices_map(campaign_dir).get(str(event.get("actor", "")))
+        emotion = str(event.get("emotion") or "neutral")
         if slug:
-            return {"text": text, "voice": slug, "style": STYLES.get(str(event.get("emotion", "neutral")), "neutral")}
+            return {"text": text, "voice": slug, "style": emotion}
     return None
 
 
