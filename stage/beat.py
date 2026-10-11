@@ -5,7 +5,7 @@ A beat is a few lines of markup, sent in one `dnd-cli show beat` call:
     @scene chapel-of-ilmater
     @enter sister-gareth right
     @narrate Candle smoke hangs under the low beams.
-    @say sister-gareth happy What brings a drow monk to this chapel?
+    @say[happy] sister-gareth What brings a drow monk to this chapel?
     @choices Ask about the Fist | Show Cassara's note | Leave
     @roll cassara persuasion dc 14
 
@@ -57,7 +57,7 @@ def title(slug: str) -> str:
 
 USAGE = (
     "Beat lines: @scene <location-id> (the party comes with it) | @enter <actor-id> [position] | "
-    "@exit <actor-id> | @narrate[mood] <text> (mood is optional: " + ", ".join(MOODS) + ") | @say <actor-id> [emotion] <text> (emotion is optional: " + ", ".join(EMOTIONS) + ") | "
+    "@exit <actor-id> | @narrate[mood] <text> (mood is optional: " + ", ".join(MOODS) + ") | @say[emotion] <actor-id> <text> (emotion is optional: " + ", ".join(EMOTIONS) + ") | "
     "@choices <a> | <b> | ... | @choices-for <pc-id> <a> | <b> | @whisper <pc-id> <text> | @await all|<pc-id> | "
     "@roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
     "@explore <site-id> [<poi-id>|entrance]"
@@ -93,11 +93,12 @@ def parse(text: str) -> list[dict]:
 
         command, _, rest = line[1:].partition(" ")
         command, rest = command.lower(), rest.strip()
-        mood = None
-        if m := re.fullmatch(r"(narrate)\[([^\]]*)\]", command):
-            command, mood = m.group(1), m.group(2).strip()
-            if mood not in MOODS:
-                raise BeatError(f"line {line_no}: mood {mood!r} is not one of {', '.join(MOODS)}.")
+        tag = None
+        if m := re.fullmatch(r"(narrate|say)\[([^\]]*)\]", command):
+            command, tag = m.group(1), m.group(2).strip()
+            allowed = MOODS if command == "narrate" else EMOTIONS
+            if tag not in allowed:
+                raise BeatError(f"line {line_no}: {'mood' if command == 'narrate' else 'emotion'} {tag!r} is not one of {', '.join(allowed)}.")
 
         if command == "scene":
             if not rest:
@@ -121,19 +122,15 @@ def parse(text: str) -> list[dict]:
         elif command == "narrate":
             if not rest:
                 raise BeatError(f"line {line_no}: @narrate needs text. {USAGE}")
-            events.append({"type": "narrate", "text": rest, **({"mood": mood} if mood else {})})
+            events.append({"type": "narrate", "text": rest, **({"mood": tag} if tag else {})})
         elif command == "say":
             actor, _, after = rest.partition(" ")
             if not actor or not after.strip():
                 raise BeatError(f"line {line_no}: @say needs an actor id and text. {USAGE}")
-            first, _, remainder = after.strip().partition(" ")
-            emotion = "neutral"
-            if first.lower() in EMOTIONS and remainder.strip():
-                emotion, after = first.lower(), remainder
             events.append({
                 "type": "say",
                 "actor": _check_id(actor, line_no, "actor"),
-                "emotion": emotion,
+                "emotion": tag or "neutral",
                 "text": after.strip(),
             })
         elif command == "choices":

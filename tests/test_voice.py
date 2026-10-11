@@ -120,8 +120,7 @@ async def main() -> None:
         from stage.lpc import EMOTION_FACES
         check("every emotion but neutral has a face", set(EMOTION_FACES) == set(EMOTIONS) - {"neutral"})
         from stage import beat
-        check("parser accepts every emotion", all(beat.parse(f"@say a {e} Hi there")[0]["emotion"] == e for e in EMOTIONS))
-        check("an old name is plain text", beat.parse("@say a shock Hi there")[0]["emotion"] == "neutral")
+        check("parser accepts every emotion", all(beat.parse(f"@say[{e}] a Hi there")[0]["emotion"] == e for e in EMOTIONS))
         check("usage lists every emotion", all(e in beat.USAGE for e in EMOTIONS))
         skill = (Path(__file__).resolve().parent.parent / "game/.claude/skills/stage/SKILL.md").read_text()
         row = next(l for l in skill.splitlines() if l.startswith("| `@say"))

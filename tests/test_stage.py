@@ -61,7 +61,7 @@ def test_parse() -> None:
         "@narrate Candle smoke hangs\n"
         "under the low beams.\n"
         "\n"
-        "@say sister-gareth happy What brings you here?\n"
+        "@say[happy] sister-gareth What brings you here?\n"
         "@say goblin#2 Give us the coin!\n"
         "@choices Talk | Fight | Leave\n"
         "@exit sister-gareth\n"
@@ -77,8 +77,12 @@ def test_parse() -> None:
     check("a bare first line is narration", beat.parse("Rain falls.")[0] == {"type": "narrate", "text": "Rain falls."})
     check("narrate mood is read", beat.parse("@narrate[ominous] Dark.")[0] == {"type": "narrate", "text": "Dark.", "mood": "ominous"})
     check("no mood, no field", "mood" not in beat.parse("@narrate Dark.")[0])
-    check("an emotion word alone is text, not emotion",
-          beat.parse("@say toblen happy")[0]["text"] == "happy")
+    check("an emotion word is text, not emotion",
+          beat.parse("@say toblen Happy to help.")[0] ==
+          {"type": "say", "actor": "toblen", "emotion": "neutral", "text": "Happy to help."})
+    check("say emotion is read", beat.parse("@say[angry] toblen Get out.")[0]["emotion"] == "angry")
+    check("unknown emotion is an error", raises(lambda: beat.parse("@say[angery] toblen Get out.")))
+    check("unknown mood is an error", raises(lambda: beat.parse("@narrate[angery] Dark.")))
 
 
 def test_parse_errors() -> None:
@@ -108,7 +112,7 @@ def test_state() -> None:
     print("state.apply")
     s = state.empty()
     for e in beat.parse(
-        "@scene chapel\n@enter gareth right\n@say sireth angry Who are you?\n@choices A | B"
+        "@scene chapel\n@enter gareth right\n@say[angry] sireth Who are you?\n@choices A | B"
     ):
         s = state.apply(s, e)
     check("scene is set", s["scene"] == "chapel")

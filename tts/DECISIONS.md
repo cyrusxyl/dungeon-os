@@ -6,7 +6,7 @@ This is for personal, local use. Do not share the game audio or any voice made f
 
 ## How it works
 
-1. The DM writes a beat. `@narrate[ominous] text` and `@say <actor> <emotion> text` are voiced.
+1. The DM writes a beat. `@narrate[ominous] text` and `@say[emotion] <actor> text` are voiced.
 2. The stage server finds the line by its sequence number. It sends `text`, `voice` and `style` to the TTS service. The path is `GET /api/tts/line/{seq}`.
 3. The TTS service (`tts/service`, port 8770) splits the text into sentences. F5-TTS speaks each sentence with a reference clip. Audio streams back as raw PCM16, 24 kHz, mono.
 4. The browser plays the stream (`stage/web/src/lib/voice.ts`).

@@ -16,7 +16,7 @@ uv run dnd-cli show beat <<'EOF'
 @scene chapel-of-ilmater
 @enter sister-gareth right
 @narrate Candle smoke hangs under the low beams.
-@say sister-gareth happy What brings a drow monk to this particular chapel?
+@say[happy] sister-gareth What brings a drow monk to this particular chapel?
 @choices Ask about the Fist | Show Cassara's note | Leave
 EOF
 ```
@@ -34,7 +34,7 @@ EOF
 | `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. Position is optional. |
 | `@exit <actor-id>` | A character leaves. Send it in the same beat that says they leave: the stage does not read the story, and the sprite stays until you send it. |
 | `@narrate <text>` | A narration line in the dialogue box, with no portrait. Add a mood tag with `@narrate[mood] <text>` (see Narration mood below). |
-| `@say <actor-id> [emotion] <text>` | A character speaks, with portrait. Emotions: `neutral` `happy` `angry` `sad` `surprised` `fearful` `disgusted`. The face follows the emotion: `surprised` and `fearful` show the shock face, `disgusted` shows the eye-roll face. |
+| `@say[emotion] <actor-id> <text>` | A character speaks, with portrait. The `[emotion]` is optional. Emotions: `neutral` `happy` `angry` `sad` `surprised` `fearful` `disgusted`. The face follows the emotion: `surprised` and `fearful` show the shock face, `disgusted` shows the eye-roll face. |
 | `@choices <a> \| <b> \| <c>` | Choice buttons. Put it last. The player can still type a free action. |
 | `@choices-for <pc-id> <a> \| <b>` | Choice buttons for one player character. Only that player sees them. |
 | `@whisper <pc-id> <text>` | A private line for one player character's player. The table and the other players do not see it. Use it for what only that character senses or knows. |
