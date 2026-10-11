@@ -800,7 +800,7 @@ def _menu(table: Table) -> dict:
         "game": table.stage.campaign_dir.name if table.stage else None,
         "campaigns": campaigns,
         "resume": resume,
-        "settings": {"agent_framework": settings["agent_framework"], "model": settings["model"]},
+        "settings": {"agent_framework": settings["agent_framework"], "model": settings["model"], "voice": settings["voice"]},
         "frameworks": [
             {"key": k, "label": v["label"], "available": framework_available(k), "models": v["models"]}
             for k, v in FRAMEWORKS.items()
@@ -1092,7 +1092,7 @@ def create_app(
         body = await request.json()
         if body.get("agent_framework") not in FRAMEWORKS:
             return error("unknown agent framework", 400)
-        save_settings({"agent_framework": body["agent_framework"], "model": str(body.get("model", ""))})
+        save_settings({"agent_framework": body["agent_framework"], "model": str(body.get("model", "")), "voice": body.get("voice")})
         return JSONResponse(_menu(table))
 
     async def asset_actor(request: Request):

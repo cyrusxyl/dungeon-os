@@ -20,11 +20,12 @@ transport: httpx.AsyncBaseTransport | None = None  # tests set a MockTransport
 
 
 def tts_url() -> str | None:
-    url = os.environ.get("DUNGEON_TTS_URL")
-    if not url:
-        from view.settings import load_settings
+    from view.settings import load_settings
 
-        url = load_settings().get("tts_url")
+    settings = load_settings()
+    if not settings["voice"]:
+        return None
+    url = os.environ.get("DUNGEON_TTS_URL") or settings.get("tts_url")
     return str(url).rstrip("/") if url else None
 
 

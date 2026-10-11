@@ -103,6 +103,11 @@ def test_settings_roundtrip() -> None:
                     or settings.get_last_session_id("example-campaign") == "abc-123"
                 ),
             )
+            settings.save_settings({"agent_framework": "agy", "model": "x", "voice": False})
+            check("voice off persisted", settings.load_settings()["voice"] is False)
+            settings.SETTINGS_PATH.write_text(json.dumps({"tts_url": "http://pc:8770"}))
+            settings.save_settings({"agent_framework": "claude", "model": ""})
+            check("save keeps the voice url", settings.load_settings()["tts_url"] == "http://pc:8770")
         finally:
             settings.SETTINGS_PATH = original
 

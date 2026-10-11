@@ -30,6 +30,7 @@ COMBAT_DEFAULTS: dict = {"reaction_seconds": 10, "round_summary": True}  # see c
 DEFAULTS: dict = {
     "agent_framework": "claude",
     "model": "sonnet",
+    "voice": True,  # off: the server never calls the voice service, even when a URL is set
     "tts_url": "",  # narration voice service, e.g. http://pc:8770; env DUNGEON_TTS_URL wins
     "combat": COMBAT_DEFAULTS,
 }
@@ -80,12 +81,14 @@ def load_settings() -> dict:
 
 
 def save_settings(values: dict) -> None:
-    """Persist agent_framework and model, keeping the existing sessions block."""
+    """Persist agent_framework, model and voice, keeping the existing sessions block."""
     current = load_settings()
     current["agent_framework"] = values.get(
         "agent_framework", current["agent_framework"]
     )
     current["model"] = values.get("model", current["model"]).strip()
+    if isinstance(values.get("voice"), bool):
+        current["voice"] = values["voice"]
     _write(current)
 
 
@@ -142,12 +145,7 @@ def can_continue(campaign_slug: str, settings: dict | None = None) -> bool:
 
 
 def _write(data: dict) -> None:
-    payload = {
-        "agent_framework": data.get("agent_framework", DEFAULTS["agent_framework"]),
-        "model": data.get("model", DEFAULTS["model"]),
-        "sessions": data.get("sessions", {}),
-        "combat": data.get("combat", COMBAT_DEFAULTS),
-    }
+    payload = {**{k: data.get(k, v) for k, v in DEFAULTS.items()}, "sessions": data.get("sessions", {})}
     SETTINGS_PATH.write_text(json.dumps(payload, indent=2) + "\n")
 
 

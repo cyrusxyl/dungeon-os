@@ -34,7 +34,7 @@ export interface MenuData {
   game: string | null
   campaigns: Campaign[]
   resume: Campaign | null
-  settings: { agent_framework: string; model: string }
+  settings: { agent_framework: string; model: string; voice: boolean }
   frameworks: Framework[]
 }
 
@@ -66,6 +66,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   const [play, setPlay] = useState<'here' | 'phones'>('here')
   const [framework, setFramework] = useState(data.settings.agent_framework)
   const [model, setModel] = useState(data.settings.model)
+  const [voice, setVoice] = useState(data.settings.voice)
   const [picked, setPicked] = useState<Campaign | null>(null)
   const [saves, setSaves] = useState<Save[] | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -108,7 +109,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   }
 
   const saveSettings = async () => {
-    const res = await post('/api/settings', { agent_framework: framework, model: model.trim() })
+    const res = await post('/api/settings', { agent_framework: framework, model: model.trim(), voice })
     if (res.error) setError(String(res.error))
     else {
       onChanged(res as unknown as MenuData)
@@ -366,6 +367,11 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
                 className="text-lg"
               />
             )}
+            <label className="flex items-center gap-3 text-lg">
+              <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} className="accent-[var(--gold)]" />
+              Narration voice
+            </label>
+            <p className="text-sm text-[var(--dim)]">Off: the game never contacts the voice service. Use this on a machine that has none.</p>
             <Button onClick={saveSettings} className="text-[10px]">
               Save
             </Button>

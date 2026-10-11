@@ -136,6 +136,13 @@ async def main() -> None:
         os.environ.pop("DUNGEON_TTS_URL")
         check("the settings key is used without the env", voice.tts_url() == "http://from.settings")
         check("tts_url is a default setting", "tts_url" in saved_settings.DEFAULTS)
+        saved_settings.save_settings({"agent_framework": "claude", "model": "", "voice": False})
+        check("voice off hides the service", voice.tts_url() is None and not await voice.healthy())
+        os.environ["DUNGEON_TTS_URL"] = "http://127.0.0.1:1"
+        check("voice off beats the env URL", voice.tts_url() is None)
+        saved_settings.save_settings({"agent_framework": "claude", "model": "", "voice": True})
+        check("voice on again uses the env URL", voice.tts_url() == "http://127.0.0.1:1")
+        os.environ.pop("DUNGEON_TTS_URL")
         await app.state.table.stop()
 
     print("voice: moods")

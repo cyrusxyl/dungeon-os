@@ -103,7 +103,7 @@ To rebuild: run `tts/tools/01` to `03` for the narrator, `07` for the actors, `0
 ## Known gaps
 
 - The service has no authentication. It binds to `127.0.0.1`. A bind for the Raspberry Pi needs a firewall rule or a token.
-- The Pi cannot run TTS. Point `DUNGEON_TTS_URL` at the PC.
+- The Pi cannot run TTS. Point `DUNGEON_TTS_URL` (or `tts_url` in `game/settings.json`) at the PC. With no URL the game is silent. Menu > Settings > Narration voice switches the voice off for the whole server, even when a URL is set (`voice` in `game/settings.json`, default on).
 - No full test in a live game. The browser playback and the crackle fix are not confirmed by ear.
 - The first line after a long pause can take up to about 2 seconds.
 - The audio cache has no size limit (about 10 MB now).
