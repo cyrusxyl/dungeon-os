@@ -22,20 +22,23 @@ def sentences_for(text: str) -> list[str]:
 
 
 def synth(engine: Engine, cache: Cache, sentences, voice, style, cancel, emit):
-    """Synthesize sentences in order. emit(bytes) gets each piece. Stop after the current chunk on cancel."""
+    """Synthesize sentences in order. emit(bytes) gets each piece; emit None only fills the cache. Stop after the current chunk on cancel."""
     for s in sentences:
         if cancel.is_set():
             return
         key = make_key(engine.name, engine.model_ver, voice, style, s)
-        hit = cache.get(key)
-        if hit is not None:
+        if emit is None:
+            if cache.has(key):
+                continue
+        elif (hit := cache.get(key)) is not None:
             emit(hit)
             continue
         parts = []
         for arr in engine.stream(s, voice, style):
             b = np.asarray(arr, dtype="<i2").tobytes()
             parts.append(b)
-            emit(b)
+            if emit:
+                emit(b)
             if cancel.is_set():
                 return  # partial audio is never cached
         meta = dict(text=s, voice=voice, style=style, engine=engine.name,
@@ -109,7 +112,7 @@ def create_app(engine: Engine | None = None, cache_dir=None) -> Starlette:
             except UnknownVoice:
                 continue
             sched.submit(Job(WARM, lambda job, s=sents, v=voice, st=style: synth(
-                engine, cache, s, v, st, job.cancel, lambda b: None), name="warm"))
+                engine, cache, s, v, st, job.cancel, None), name="warm"))
         return Response(status_code=202)
 
     async def test_page(request):

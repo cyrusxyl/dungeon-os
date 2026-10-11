@@ -1,5 +1,6 @@
 """F5-TTS engine. Needs the `gpu` extra: uv sync --extra gpu"""
 import os
+import zlib
 from pathlib import Path
 from typing import Iterator
 
@@ -14,11 +15,11 @@ NFE_STEP, SWAY, CFG, SEED = 16, -1.0, 2.0, 1  # 16 steps: same WER as 32, 25% fa
 
 
 def scan_library(root: Path = VOICES_DIR) -> dict[str, list[str]]:
-    """slug -> labels that have both <label>.wav and <label>.txt."""
+    """slug -> labels that have both <label>.wav and <label>.txt. <label>.2.wav, <label>.3.wav ... are extra refs for the label."""
     lib: dict[str, list[str]] = {}
     if root.is_dir():
         for d in sorted(p for p in root.iterdir() if p.is_dir()):
-            labels = sorted(w.stem for w in d.glob("*.wav") if w.with_suffix(".txt").exists())
+            labels = sorted({w.stem.split(".")[0] for w in d.glob("*.wav") if w.with_suffix(".txt").exists()})
             if "neutral" in labels:
                 lib[d.name] = labels
     return lib
@@ -32,7 +33,8 @@ class F5Engine(Engine):
 
         self.model_ver = f"F5TTS_v1_Base:nfe{NFE_STEP}"
         self.tts = F5TTS(model="F5TTS_v1_Base", device="cuda")
-        self._refs: dict[str, dict] = {}  # slug -> label -> (ref, text)
+        self._refs: dict[Path, tuple] = {}  # ref wav -> (audio, text)
+        self._files: dict[tuple[str, str], list[Path]] = {}  # (slug, label) -> ref wavs
         self._lib: tuple[tuple, dict] | None = None  # (dir signature, library)
         if "narrator" not in self.library():
             raise RuntimeError(f"no narrator voice in {VOICES_DIR}: run tools/08_build_voice_library.py")
@@ -49,32 +51,32 @@ class F5Engine(Engine):
             self._lib = (sig, scan_library())
         return self._lib[1]
 
-    def _voice_refs(self, voice: str) -> dict:
-        """Preprocess all refs of a voice on first use."""
-        if voice in self._refs:
-            return self._refs[voice]
-        import torchaudio
-        from f5_tts.infer.utils_infer import preprocess_ref_audio_text
+    def _ref(self, voice: str, label: str, text: str):
+        """One reference clip of the label, chosen by the line text, preprocessed on first use.
+        Same text, same clip, so the cache stays valid."""
+        if (voice, label) not in self._files:
+            if label not in self.library().get(voice, ()):
+                raise UnknownVoice(voice)
+            d = VOICES_DIR / voice
+            self._files[voice, label] = [w for w in sorted(d.glob(f"{label}.wav")) + sorted(d.glob(f"{label}.[0-9]*.wav"))
+                                         if w.with_suffix(".txt").exists()]
+        files = self._files[voice, label]
+        wav = files[zlib.crc32(text.encode()) % len(files)]
+        if wav not in self._refs:
+            import torchaudio
+            from f5_tts.infer.utils_infer import preprocess_ref_audio_text
 
-        d = VOICES_DIR / voice
-        labels = self.library().get(voice)
-        if labels is None:
-            raise UnknownVoice(voice)
-        refs = {}
-        for label in labels:
-            text = (d / f"{label}.txt").read_text().strip()
-            path, text = preprocess_ref_audio_text(str(d / f"{label}.wav"), text, show_info=lambda *a: None)
+            path, ref_text = preprocess_ref_audio_text(str(wav), wav.with_suffix(".txt").read_text().strip(), show_info=lambda *a: None)
             audio, sr = torchaudio.load(path)
-            refs[label] = ((audio.mean(0, keepdim=True), sr), text)
-        self._refs[voice] = refs
-        return refs
+            self._refs[wav] = ((audio.mean(0, keepdim=True), sr), ref_text)
+        return self._refs[wav]
 
     def stream(self, text, voice, style) -> Iterator[np.ndarray]:
         from f5_tts.infer.utils_infer import chunk_text, infer_batch_process
         from f5_tts.model.utils import seed_everything
 
-        refs = self._voice_refs(voice)
-        ref, ref_text = refs.get(style or "neutral") or refs["neutral"]
+        label = style if style in self.library().get(voice, ()) else "neutral"
+        ref, ref_text = self._ref(voice, label, text)
         audio, sr = ref
         secs = audio.shape[-1] / sr
         max_chars = int(len(ref_text.encode()) / secs * (22 - secs))

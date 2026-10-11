@@ -56,26 +56,35 @@ The user chose F5-TTS. It had the best voice quality and emotion. It was also th
 4. The user listened to 5 clips per cluster and wrote a note for each (`tts/tools/09_ref_picker.py` made the page).
 5. We mapped notes to moods. For each mood, F5 made test lines from each of the 5 candidates. We measured the same 4 features on the output. The candidate closest to the cluster profile won. A clip with a fan-only name lost to a close alternative.
 
-| Mood | Cluster | User note | Clip |
+| Mood | Cluster | User note | Clips (the service picks one per line) |
 |---|---|---|---|
 | neutral | – | bench clip, picked by hand | `Here the chaos of the world is dimmed…` |
-| ominous | 1 | dark, menacing | p0296 |
-| warm | 3 | soft, inner thought, compassion | p0454 |
-| wry | 4 | curious, playful, sensual | p1632 |
-| tense | 8 | uncertain, nervous | p1524 |
-| intense | 7 | slow, low, intense | p0060 |
-| urgent | 5 | needs fast attention | p0028 |
-| action | 10 | fast, describing action | p0143 |
-| bright | 9 | joyful, discovery | p1157 |
-| somber | 6 | narrative, slightly down | p0556 |
+| ominous | 1 | dark, menacing | p0012, p0194, p0568, p0854, p0971, p1393, p1869, p1911 |
+| warm | 3 | soft, inner thought, compassion | p0454, p0855, p2015, p2186, p0286 |
+| wry | 4 | curious, playful, sensual | p0081, p0116, p1132, p1325, p0381, p1353 |
+| tense | 8 | uncertain, nervous | p1524, p0099, p2120, p0335, p1245 |
+| intense | 7 | slow, low, intense | p0060, p0795, p1243, p1045, p0670, p1091 |
+| urgent | 5 | needs fast attention | p0028, p0505, p1389, p0865, p1735, p2070 |
+| action | 10 | fast, describing action | p0143, p0317, p1757, p1111, p0177 |
+| bright | 9 | joyful, discovery | p1157, p0381, p2080, p0699, p1990 |
+| somber | 6 | narrative, slightly down | p0556, p1388, p0447, p0180, p2184 |
 
-Clip ids come from `~/bg3voice/picker/narrator/pool.json`. `~/bg3voice/voices` is not in git, so this table is the only record.
+
+The first pick was one clip per mood. The user then ticked several clips per mood on a page (`tts/tools/14_mood_variants.py`), because one clip made every line of a mood sound alike. Wry and ominous changed most: the first wry clip sounded grave, and the first ominous clip was too fast. Candidates were the clips nearest to the kept ones in the same cluster. Clip ids come from `~/bg3voice/picker/narrator/pool.json`. `~/bg3voice/voices` is not in git, so this table is the only record.
+
+## How the actor emotions were chosen
+
+1. We first clustered the actors' clips on prosody, as for the narrator, for four key actors and then across all voices. The clusters did not give distinct emotions: they were balanced across speakers and the user could not hear a clear emotion in them. Dialogue differs from narration, so the narration moods did not apply.
+2. We switched to pretrained emotion models (no manual labels): emotion2vec_plus_large (audio class, FunASR model licence, read once), audeering wav2vec2 (arousal, valence, dominance; CC-BY-NC-SA-4.0) and distilroberta (text class). The score is 0.6 audio plus 0.4 text, with gates on arousal, valence and dominance as a tie-breaker. Audio and text agree on the top class for only 28 percent of clips, and the text model says "neutral" for most lines. So the audio model leads.
+3. We use the model labels for the DM: neutral, happy, angry, sad, surprised, fearful, disgusted. The old nine names came from the portrait faces. They had no model class (shame, blush, closed) or were split by the model (shock into surprised and fearful, eye-roll into disgusted). The portrait face follows the emotion.
+4. For each actor and emotion the tool ranks 3 clips. The user checked them on a QA page and found that almost always one of the 3 fits. `13_emotion_apply.py` installs them.
 
 ## Mood tag and emotion table
 
 - `@narrate[mood] text` sets the narrator style. Valid moods: `stage/beat.py` (`MOODS`). The DM skill (`game/.claude/skills/stage/SKILL.md`) lists the same moods. A test checks that both agree.
-- NPC voices have only five styles (neutral, ominous, tense, warm, wry). A missing style falls back to neutral.
-- `@say` emotion maps to a style in `stage/voice.py` (`STYLES`): happy to bright, angry to intense, sad and shame to somber, shock to urgent, blush to warm, eyeroll to wry, neutral and closed to neutral.
+- `@say` emotion is the voice style. There are seven: neutral, happy, angry, sad, surprised, fearful, disgusted (the labels of the emotion models). The portrait face follows the emotion in `stage/lpc.py` (`EMOTION_FACES`): surprised and fearful use the shock face, disgusted the eye-roll face. The art has no separate faces for them. A voice without a clip for the style falls back to neutral.
+- Narration moods and dialogue emotions are two lists on purpose. A narrator delivers a mood. An actor delivers an emotion. One service field (`style`) carries both. A voice library holds the labels that fit its kind.
+- A mood or emotion can hold several reference clips (`<label>.2.wav`). The service picks one per line from a hash of the text.
 - Only voices listed in `<campaign>/stage/voices.json` speak `@say` lines. See `stage/voices.example.json`. An unmapped actor stays silent. Whispers are never voiced.
 
 ## What lives in `~/bg3voice` (not in git)
@@ -89,7 +98,7 @@ Clip ids come from `~/bg3voice/picker/narrator/pool.json`. `~/bg3voice/voices` i
 | `voices_old/` | backups of replaced clips |
 | `bench/` | model bake-off scripts and venvs |
 
-To rebuild: run `tts/tools/01` to `03` for the narrator, `07` for the actors, `08` for the library of actors, then choose clips with `09` and install them with `10`. The tools need the BG3 install on Windows. See `tts/README.md`.
+To rebuild: run `tts/tools/01` to `03` for the narrator, `07` for the actors, `08` for the library of actors, then make the narrator pool with `09`, tick moods with `14`, and make actor emotions with `13`. The tools need the BG3 install on Windows. See `tts/README.md`.
 
 ## Known gaps
 
@@ -98,4 +107,4 @@ To rebuild: run `tts/tools/01` to `03` for the narrator, `07` for the actors, `0
 - No full test in a live game. The browser playback and the crackle fix are not confirmed by ear.
 - The first line after a long pause can take up to about 2 seconds.
 - The audio cache has no size limit (about 10 MB now).
-- Only the narrator has the 10 moods. Actors have the five heuristic ones, and the user has not checked them.
+- Fearful and surprised clips are rare. Every actor has some emotion with fewer than 8 eligible clips. The user checked the picks on the QA page but has not heard them in a live game.

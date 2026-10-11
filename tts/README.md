@@ -54,7 +54,8 @@ These scripts need the BG3 install and Windows tools through WSL. Run them with 
 - `07_actor_dataset.py`: build the per-actor dataset (refs, train, heldout). Reads `tools/actors.json` (UUID to name).
 - `08_build_voice_library.py`: copy actor refs into the voice library. Skips clips that exist. `--force` overwrites.
 - `09_ref_picker.py`: listening page to pick the best ref clips.
-- `10_apply_picks.py`: install a picked clip as a voice mood.
+- `13_emotion_scores.py`, `13_emotion_qa.py`, `13_emotion_apply.py`: actor emotion references from pretrained models (see below).
+- `14_mood_variants.py`: several reference clips per narrator mood (see below).
 
 ## Voices for NPCs
 Narration uses the `narrator` voice. A `say` line is voiced only if its actor has a voice.
@@ -65,4 +66,24 @@ Write the map in `<campaign>/stage/voices.json`. See `stage/voices.example.json`
 Keys are actor ids. Values are voice slugs. A slug is a folder name in the voice library:
 narrator, astarion, shadowheart, laezel, gale, karlach, wyll, halsin, minthara, jaheira, minsc, emperor, tav1-m, tav2-f, and more.
 An actor with no entry stays silent. Whispers and choices are not voiced.
-The emotion of a `say` line sets the style: happy, sad, blush -> warm; angry, shock -> tense; eyeroll -> wry; the rest -> neutral.
+The emotion of a `say` line is the voice style. A voice with no clip for the style falls back to neutral.
+
+## Narrator moods with several clips
+A mood can hold more than one reference clip: `ominous.wav`, `ominous.2.wav`, and so on (each with a `.txt`). The service picks one clip per line from a hash of the text. The same line always gets the same clip, so the cache stays valid.
+
+    ~/bg3voice/venv_emo/bin/python tools/14_mood_variants.py gen      # test line for each candidate (service must run)
+    ~/bg3voice/venv_emo/bin/python tools/14_mood_variants.py serve    # http://127.0.0.1:8797/variants.html
+    ~/bg3voice/venv_emo/bin/python tools/14_mood_variants.py apply    # install the ticked clips
+
+Tick every clip that fits a mood. A mood with fewer than 5 ticked clips gets 5 new candidates when you run `gen` again. Candidates come from the narrator pool that `09_ref_picker.py` makes (`~/bg3voice/picker/narrator/pool.json`).
+
+## Emotion picks from pretrained models (no manual labels)
+
+Use the venv `~/bg3voice/venv_emo`. Run `export HF_HOME=~/bg3voice/emotion/hf` first.
+
+1. `python 13_emotion_scores.py` scores all pool clips (`~/bg3voice/emotion/pool.json`: id, actor, path, text, dur) with emotion2vec_plus_large (audio class), the audeering wav2vec2 dim model (arousal, dominance, valence; CC-BY-NC-SA-4.0) and distilroberta (text class). It caches `~/bg3voice/emotion/scores.parquet`, then writes `picks.json` (3 candidates per actor and emotion) and `report.txt`. The formula is in the file docstring.
+2. `python 13_emotion_qa.py` serves `http://127.0.0.1:8796/`. Mark each pick good or bad, cycle alternatives, add notes. Saved to `qa.json`.
+3. `python 13_emotion_apply.py --dry-run`, then without the flag. It installs `<emotion>.{wav,txt}` for all seven emotions. It backs up to `~/bg3voice/voices_old/`.
+
+Emotions use the model labels: neutral, happy, angry, sad, surprised, fearful, disgusted.
+Each score is 0.6 audio plus 0.4 text. Surprised, fearful and disgusted use gates on arousal, valence and dominance (percent rank inside the actor). The gates are in the file docstring.
