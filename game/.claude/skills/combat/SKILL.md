@@ -54,6 +54,7 @@ uv run dnd-cli encounter next                                # next living comba
 ```
 
 - `attack <attacker> <weapon or action> <target>`. The weapon name can be part of the name (`long` for Longsword). A natural 20 is a critical hit (dice doubled), a natural 1 misses. `--bonus 2` for Bless or `--bonus -2` for half cover.
+- Paladin: on a stage fight the card offers Divine Smite after a melee hit. In your own `attack`, add `--smite <slot level>` when the player says so (melee only; it spends the slot). Lay on Hands: `character use <name> "Lay on Hands" --amount N` for the pool, then `encounter heal`.
 - A PC's spells: cast first with `uv run dnd-cli character cast <name> <level>` (it refuses when no slot is left), then `attack ... spell ...` or `save ...`.
 - Multiattack is narration: make each attack with its own `attack` command.
 - A weapon or spell hit always goes through `attack` (or `save`), so the players see the roll. Never use `encounter damage` for a hit, and never use `--secret` on an attack or a save against a player character: the player must see what hit them. Use it only for what has no roll: a trap, a fall, a hazard. It shows a line in the log.
@@ -68,6 +69,7 @@ The stage gives a player character a turn like Baldur's Gate 3: the turn bar sho
 
 - On a player character's turn, **wait**. The player acts from the card, or types a line. Do not play their turn in prose and do not call `encounter next` for them.
 - A card action reaches you as a line like `[Aragorn acts from the character card] aragorn Longsword → goblin#1: ... hit, 7 damage. Narrate it. It is still their turn.` Narrate it in a beat and stop. The attack is already rolled and applied.
+- Players may start a fight from the Attack card on a creature on the stage. You get `[X attacked Y and combat started]`. The stage has built the board and rolled initiative. Narrate the blow, then run the fight as usual. If the creature had no stat block, the line names the SRD monster used.
 - Hide and Shove are rolled in the roll window. The result reaches you as `[Aragorn rolled in the roll window] ...` with a note. Decide with the rules: Hide against the enemies' passive Perception (`uv run dnd-cli check <enemy> perception --passive`); if it works, `uv run dnd-cli encounter condition <pc> add hidden`. Shove against the target's Athletics or Acrobatics (`uv run dnd-cli check <enemy> athletics --dc <the player's total>`, or the better of the two). A hidden attacker rolls with advantage on its next attack; `attack` does that and removes `hidden`.
 - Dash, Disengage, Dodge and Help are conditions that last one round (`dashing`, `disengaged`, `dodging`, `helping`). `attack` gives disadvantage against a `dodging` creature by itself. A creature that moves away without `disengaged` gives an opportunity attack: use `attack ... --cost reaction`.
 - When the player ends the turn you get `[Aragorn ends their turn] Round 1: goblin#1's turn ... ` and the tracker is already on the next creature. Run each creature's turn with `attack` or `save`, narrate it, then `uv run dnd-cli encounter next`. Stop when a player character is up and ask nothing: the stage shows "Your turn".

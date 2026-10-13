@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from dnd_cli import world
+from dnd_cli import audit, world
 from dnd_cli.commands.show_cmd import run_stage
 from stage.files import read_json, write_json
 
@@ -31,7 +31,14 @@ def _character(path: Path) -> str:
     return line
 
 
-def brief(campaign_dir: Path) -> str:
+def _problems(path: Path, fetch) -> list[str]:
+    """Sheet problems from the audit; none without an API (`fetch`) or when it cannot check."""
+    if fetch is None:
+        return []
+    return [p for p in audit.audit(read_json(path) or {}, fetch) if not p.startswith("cannot check")]
+
+
+def brief(campaign_dir: Path, fetch=None) -> str:
     """Campaign state, party, players, canon, story bible and the recent session log."""
     state = read_json(campaign_dir / "state.json") or {}
     shown = {k: v for k, v in state.items() if k != "active_encounter"}
@@ -44,7 +51,14 @@ def brief(campaign_dir: Path) -> str:
         out += ["", "## Combat in progress (uv run dnd-cli encounter status)"] + combat.status(campaign_dir, state)
 
     out += ["", "## Party (characters/*.json; full sheet: uv run dnd-cli character show <id>)"]
-    out += [_character(p) for p in sorted((campaign_dir / "characters").glob("*.json"))] or ["(no characters yet)"]
+    sheets = sorted((campaign_dir / "characters").glob("*.json"))
+    if not sheets:
+        out.append("(no characters yet)")
+    for p in sheets:
+        out.append(_character(p))
+        problems = _problems(p, fetch)
+        if problems:
+            out.append("  " + audit.summary(problems))
 
     out += ["", "## Players (players/*.json)"]
     for p in sorted((campaign_dir / "players").glob("*.json")):
@@ -70,9 +84,23 @@ def brief(campaign_dir: Path) -> str:
     return "\n".join(out)
 
 
+def cached_api(endpoint: str) -> dict:
+    """5e API data from the local cache only. The brief must never wait for the network."""
+    from dnd_cli import sources
+    from dnd_cli.cache import load_cache
+    from dnd_cli.combat import RulesError
+
+    hit = sources.replacement(endpoint.lstrip("/"))
+    if hit is None:
+        hit = (load_cache(endpoint.lstrip("/")) or {}).get("data")
+    if not hit:
+        raise RulesError(f"{endpoint} is not cached")
+    return hit
+
+
 def execute_brief(campaign: str | None) -> int:
     def go(campaign_dir):
-        print(brief(campaign_dir))
+        print(brief(campaign_dir, cached_api))
         return 0
     return run_stage(campaign, go)
 

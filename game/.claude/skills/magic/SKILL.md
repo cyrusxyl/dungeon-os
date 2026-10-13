@@ -268,6 +268,8 @@ Some class features interact with schools (e.g., Abjuration Wizard, Evocation Wi
 
 ### Area of Effect and Healing Spells
 
+Divine Smite spends a spell slot on a melee hit: use `attack ... --smite <level>` (see `combat`), not `character cast`.
+
 Fireball and other areas: the player picks the point; every creature in the area makes the save in one `save` command (damage is rolled once; half on a success with `--half`). Cure Wounds and other healing: `encounter heal <target> 1d8+<mod>` (never above max HP).
 
 ### Buff Spells

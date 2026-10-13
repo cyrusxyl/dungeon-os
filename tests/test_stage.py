@@ -128,6 +128,11 @@ def test_state() -> None:
     check("DM text goes to the DM log, not the story log",
           s["dm_log"] == ["Beat shown."] and all(l.get("text") != "Beat shown." for l in s["log"]))
     check("seq counts every event", s["seq"] == 7)
+    s = state.apply(state.empty(), {"type": "choices", "options": ["A", "B"]})
+    s = state.apply(s, {"type": "await", "who": "all"})
+    s = state.apply(s, {"type": "pc_say", "actor": "sireth", "text": "Hello."})
+    check("pc_say is in the story log", s["log"][-1]["type"] == "pc_say" and s["log"][-1]["actor"] == "sireth")
+    check("pc_say keeps choices and await", s["choices"] is not None and s["await"] == {"who": "all", "seq": 2})
 
 
 def test_initial_prompt() -> None:
@@ -999,6 +1004,18 @@ def test_seats() -> None:
             sent.clear()
             await post("/api/input", {"text": "I open the door"})
             check("a player's line is tagged with player and character", sent == ["[Alex as Aragorn] I open the door"])
+
+            def said() -> list[str]:
+                path = beat.log_path(c)
+                return [e["text"] for e in map(json.loads, path.read_text().splitlines()) if e.get("type") == "pc_say"] if path.exists() else []
+            before = said()
+            check("a plain action is not a spoken line", before == [])
+            await post("/api/input", {"text": '"Hold the line!" I raise my shield'})
+            check("only the quoted words are a spoken line", said() == ["Hold the line!"])
+            await post("/api/input", {"text": "\u201cFor Gondor\u201d and \"now\""})
+            check("curly and straight quotes both count", said()[1:] == ["For Gondor now"])
+            await post("/api/input", {"text": 'Say "no" to the guard', "choice": True})
+            check("a choice-button click is never a spoken line", len(said()) == 2)
             sent.clear()
             await post("/api/seat/claim", {"who": "legolas", "name": "Alex"})
             set_turn("legolas")
@@ -1015,6 +1032,23 @@ def test_seats() -> None:
             check("a guest cannot start another game", status == 403)
             status, r = await post("/api/settings", {"agent_framework": "claude"}, B)
             check("a guest cannot change settings", status == 403)
+            import view.settings as vs
+            real_path = vs.SETTINGS_PATH
+            with tempfile.TemporaryDirectory() as tmp_settings:
+                vs.SETTINGS_PATH = Path(tmp_settings) / "settings.json"
+                try:
+                    status, r = await post("/api/settings", {"voice": False, "voice_parts": {"npc": False}})
+                    check("the host saves voice during a game", status == 200 and r["settings"]["voice"] is False
+                          and r["settings"]["voice_parts"]["npc"] is False)
+                    check("a voice-only save keeps framework and model",
+                          r["settings"]["agent_framework"] == vs.DEFAULTS["agent_framework"] and r["settings"]["model"] == vs.DEFAULTS["model"])
+                    status, r = await post("/api/settings", {"agent_framework": "claude", "model": "opus"})
+                    check("the DM cannot change during a game", status == 409 and "End the session" in r["error"])
+                    status, r = await post("/api/settings", {"model": "opus"})
+                    check("the model cannot change during a game", status == 409)
+                    check("a refused save changes nothing", vs.load_settings()["model"] == vs.DEFAULTS["model"])
+                finally:
+                    vs.SETTINGS_PATH = real_path
             status, r = await post("/api/campaign/delete", {"campaign": "x"}, B)
             check("a guest cannot delete a campaign", status == 403)
             status, r = await post("/api/game/load", {"campaign": "x", "save": "y"}, B)
@@ -1432,7 +1466,7 @@ def test_player_actions() -> None:
               and legolas["turn"] == {"action": False, "bonus": False, "reaction": False})
         check("the card lists the common actions, with the reason one is off",
               {a["id"] for a in legolas["actions"]} >= {"attack", "dash", "disengage", "dodge", "help", "hide", "shove"}
-              and next(a for a in legolas["actions"] if a["id"] == "attack")["why"] == "Only in a combat"
+              and next(a for a in legolas["actions"] if a["id"] == "attack")["why"] == "No one here to attack"
               and next(a for a in legolas["actions"] if a["id"] == "hide")["why"] is None)
         check("every character can punch, and the weapons come with their damage",
               [a["name"] for a in legolas["attacks"]][-1] == "Unarmed Strike")
@@ -1504,6 +1538,9 @@ def test_player_actions() -> None:
                   and sent and "aragorn takes the Dash action" in sent[-1])
             status, r = await post("/api/action", {"who": "aragorn", "action": "dodge"})
             check("a spent action is refused", status == 400 and "used" in r["error"])
+            for bad in ("abc", 1.5):
+                status, r = await post("/api/action", {"who": "aragorn", "action": "dash", "amount": bad})
+                check(f"a bad amount {bad!r} is a 400, not a crash", status == 400 and "whole number" in r["error"])
             status, r = await post("/api/action", {"who": "legolas", "action": "dash"})
             check("out of turn is refused", status == 400 and "not your turn" in r["error"])
             status, r = await post("/api/action", {"who": "aragorn", "action": "fly"})
@@ -1578,6 +1615,54 @@ def test_player_actions() -> None:
         asyncio.run(routes())
 
 
+def test_attack_opens_a_fight() -> None:
+    print("the Attack card out of a fight starts one")
+    import asyncio
+
+    from dnd_cli import combat
+    from stage import arena as stage_arena, board, party
+    from stage.server import create_app
+    from test_rules import GOBLIN
+
+    combat.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
+    with tempfile.TemporaryDirectory() as tmp:
+        c = fixture_campaign(tmp)
+        (c / "world" / "npcs" / "orlo-tin.json").write_text(json.dumps({"name": "Orlo Tin", "personality": "A calm priest"}))
+
+        async def routes():
+            app = create_app(None)
+            stage = await app.state.table.start(c, ["cat"])
+            stage.seats.claim(HOST_DEVICE, "aragorn", "Alex")
+            stage.state["dm"] = {"status": "idle"}
+            sent = []
+
+            async def fake(text):
+                sent.append(text)
+            stage.submit = fake
+            post = lambda path, b: api(app, "POST", path, b)
+            stage.fold([{"type": "scene", "location": "gatehall", "party": ["aragorn", "legolas"]}, {"type": "enter", "actor": "orlo-tin"}])
+            view = party.view(c, present=[{"id": "orlo-tin", "name": "Orlo Tin"}])
+            attack = next(a for a in next(x for x in view["characters"] if x["id"] == "aragorn")["actions"] if a["id"] == "attack")
+            check("the card lists Attack with the creatures here as targets", attack["why"] is None and attack["target"] == "enemy"
+                  and view["present"] == [{"id": "orlo-tin", "name": "Orlo Tin"}])
+            status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "nobody", "weapon": "Longsword"})
+            check("a target that is not here starts no fight", status == 400 and not combat.load_state(c).get("active_encounter") and not sent)
+            status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "legolas", "weapon": "Longsword"})
+            check("a party member is no target", status == 400 and not combat.load_state(c).get("active_encounter"))
+            status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "orlo-tin", "weapon": "Longsword"})
+            enc = combat.load_state(c)["active_encounter"]
+            a = stage_arena.load(c, enc["arena"])
+            check("the server starts the fight with the party in the order and the target as the foe",
+                  status == 200 and {"aragorn", "legolas"} <= set(enc["participants"]) and list(enc["monsters"]) == ["orlo-tin"]
+                  and all(o["initiative"] for o in enc["initiative_order"]))
+            check("a melee weapon starts the target next to the attacker",
+                  stage_arena.cheb(board.pos(a, "aragorn"), board.pos(a, "orlo-tin")) == 1)
+            check("the DM is told, with the stat block assumption", sent and "[Aragorn attacked Orlo Tin and combat started]" in sent[-1]
+                  and "SRD acolyte" in sent[-1])
+            await app.state.table.stop()
+        asyncio.run(routes())
+
+
 if __name__ == "__main__":
     test_parse()
     test_parse_errors()
@@ -1590,6 +1675,7 @@ if __name__ == "__main__":
     test_activity()
     test_party()
     test_player_actions()
+    test_attack_opens_a_fight()
     test_seats()
     test_notices()
     test_table_talk()

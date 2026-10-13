@@ -195,6 +195,8 @@
         }
       }
     },
+    "subclass": {"type": "string", "description": "Chosen subclass: Sacred Oath, Primal Path, Divine Domain..."},
+    "fighting_style": {"type": "string", "description": "Chosen Fighting Style"},
     "resources_used": {
       "type": "object",
       "description": "Uses spent of class resources (Rage, Ki...), by name; a rest clears them",

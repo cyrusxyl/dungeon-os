@@ -29,11 +29,26 @@ def execute_show(campaign: str, name: str) -> int:
     return _run(campaign, go)
 
 
-def execute_validate(campaign: str, name: str) -> int:
+def execute_validate(campaign: str, name: str, fix: bool = False) -> int:
+    from dnd_cli import audit
+    from dnd_cli.commands.rules_cmd import _api
+
     def go(campaign_dir):
-        character.load(campaign_dir, name)
+        data = character.load(campaign_dir, name)
         print(f"{character.character_path(campaign_dir, name)}: schema OK")
-        return 0
+        if fix:
+            fixed = audit.repair(data, _api)
+            if any(line.startswith("cannot check") for line in fixed):
+                print(f"warning: {fixed[0]}", file=sys.stderr)
+                print("nothing fixed")
+                return 1
+            if fixed:
+                character.save(campaign_dir, name, data)
+            print("\n".join(f"fixed: {line}" for line in fixed) or "nothing to fix")
+        problems = audit.audit(data, _api)
+        if problems:
+            print(audit.summary(problems))
+        return 1 if any(not p.startswith("cannot check") for p in problems) else 0
     return _run(campaign, go)
 
 
@@ -78,6 +93,8 @@ def execute_use(campaign: str, name: str, resource: str, delta: int) -> int:
     from dnd_cli import resources
 
     def go(campaign_dir):
+        if delta == 0:
+            raise character.CharacterError("--amount must be 1 or more.")
         data = character.load(campaign_dir, name)
         try:
             res = resources.spend(data, resource, delta)

@@ -230,8 +230,34 @@ def test_items() -> None:
               and hand.act(c, state, a, "aragorn", "pickup:item#2") == ["aragorn picks up Stone."])
 
 
+def test_paladin() -> None:
+    print("hand: Lay on Hands and Divine Smite")
+    with tempfile.TemporaryDirectory() as tmp:
+        c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
+        pal = character.load(c, "aragorn")
+        pal["class"], pal["level"] = "Paladin", 3
+        pal["features_and_traits"] = [{"name": "Lay on Hands", "description": "x"}, {"name": "Divine Smite", "description": "x"}]
+        pal["spellcasting"] = {"ability": "charisma", "spell_save_dc": 11, "spell_attack_bonus": 3,
+                               "spell_slots": {"1": {"max": 3, "remaining": 3}, "2": {"max": 1, "remaining": 1}}}
+        pal["resources_used"] = {}
+        character.save(c, "aragorn", pal)
+        hurt = character.load(c, "legolas")
+        hurt["hp"] = {"current": 1, "max": hurt["hp"]["max"], "temp": 0}
+        character.save(c, "legolas", hurt)
+        lay = by_id(hand.listing(c, state, a, "aragorn"))["feature:Lay on Hands"]
+        check("Lay on Hands picks an ally and an amount up to the pool", lay["needs"] == "target" and lay["amount"] == 15
+              and {"aragorn", "legolas"} <= {t["id"] for t in lay["targets"]})
+        done = hand.act(c, state, a, "aragorn", "feature:Lay on Hands", target="legolas", amount=4)
+        check("the amount heals the ally, not the whole pool", character.load(c, "legolas")["hp"]["current"] == 5
+              and any("4" in ln for ln in done), str(done))
+        state["active_encounter"]["pending_smite"] = {"by": "aragorn", "target": "goblin#1"}
+        smites = {k: v for k, v in by_id(hand.listing(c, state, a, "aragorn")).items() if k.startswith("smite:")}
+        check("smite cards have their own kind and show the slots left", smites["smite:1"]["kind"] == "smite" and smites["smite:1"]["stat"] == "3 left"
+              and smites["smite:2"]["stat"] == "1 left" and smites["smite:none"]["kind"] == "smite")
+
+
 if __name__ == "__main__":
-    for t in (test_listing, test_spells, test_actions, test_improvise, test_items):
+    for t in (test_listing, test_spells, test_actions, test_improvise, test_items, test_paladin):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

@@ -61,8 +61,12 @@ export interface CardAction {
   label: string
   cost: 'action' | 'bonus' | null
   info: string
-  target: 'enemy' | null
+  target: 'enemy' | 'ally' | null
   why: string | null
+  /** A short note for the card, such as the slots or points left. */
+  stat?: string
+  /** Lay on Hands: the points left in the pool. */
+  left?: number | null
 }
 
 export interface Offer {
@@ -92,6 +96,8 @@ export interface Party {
   quests: { title: string; status: string }[]
   effects: EffectPreset[]
   combat: { round: number; current: string | null; order: Entrant[] } | null
+  /** Creatures on the stage that are not in the party: the targets of an Attack out of a fight, which starts one. */
+  present?: { id: string; name: string }[]
 }
 
 /** The party, read again each time the DM status changes (the DM writes the files during a turn) or after `refresh`. */

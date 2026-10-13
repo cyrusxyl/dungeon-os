@@ -1,6 +1,6 @@
 // Narration voice. The stage server streams raw PCM16 mono from /api/tts/line/{seq}.
 // Chunks play back to back on one AudioContext. If the server has no voice, nothing plays.
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
 import { read, readJson, write } from '@/lib/local'
 import type { Mode } from '@/lib/view'
@@ -129,20 +129,38 @@ export function useSoundBlocked(): boolean {
   return useSyncExternalStore(subscribe, () => ctx === null || ctx.state !== 'running')
 }
 
-/** True when the server has a voice. */
-export function useVoiceHealth(): boolean {
-  const [ok, setOk] = useState(false)
+// Voice service health: one shared value. It is checked when a component first asks, and again on request.
+let health: boolean | null = null // null: not checked yet
+let checking = false
+
+/** Ask the server if the voice service answers. Safe to call at any time. */
+export async function recheckVoice(): Promise<void> {
+  checking = true
+  emit()
+  try {
+    const r = await fetch('/api/tts/health')
+    health = r.ok ? Boolean((await r.json())?.ok) : false
+  } catch {
+    health = false
+  }
+  checking = false
+  emit()
+}
+
+/** Feed a health result that came with another reply (the voice server status). */
+export function setVoiceHealth(ok: boolean): void {
+  health = ok
+  emit()
+}
+
+/** True when the server has a voice. `check` runs the test again. `checking` is true while it runs. */
+export function useVoiceHealth(): { ok: boolean; checking: boolean; check: () => void } {
+  const ok = useSyncExternalStore(subscribe, () => health === true)
+  const busy = useSyncExternalStore(subscribe, () => checking)
   useEffect(() => {
-    let live = true
-    fetch('/api/tts/health')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => live && setOk(Boolean(j?.ok)))
-      .catch(() => live && setOk(false))
-    return () => {
-      live = false
-    }
+    if (health === null && !checking) void recheckVoice()
   }, [])
-  return ok
+  return { ok, checking: busy, check: () => void recheckVoice() }
 }
 
 /** Say the current beat (narration or speech). The server stays silent for a speaker with no voice. */

@@ -8,6 +8,7 @@ See combat-board.md.
 
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -23,7 +24,14 @@ def controlled_by(rec: dict) -> str:
 
 
 def start(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> list[str]:
-    """Build the arena for the running combat and put every combatant on its start tile."""
+    """Build the arena for the running combat, put every combatant on its start tile, and save it."""
+    arena_id, a, lines = build(campaign_dir, state, tokens, stage)
+    arena.save(campaign_dir, arena_id, a)
+    return lines
+
+
+def build(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> tuple[str, dict, list[str]]:
+    """Like `start`, but the arena is not written: the caller saves it. The state names it (`enc["arena"]`)."""
     enc = combat.encounter(state)
     spec = arena.parse(tokens)
     pcs = [c for c in enc["participants"] if c not in enc["monsters"]]
@@ -36,14 +44,96 @@ def start(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> li
     refresh_sight(campaign_dir, state, a)
     refresh_intents(campaign_dir, state, a)
     arena_id = arena.new_id(campaign_dir)
-    arena.save(campaign_dir, arena_id, a)
     enc["arena"] = arena_id
     spec = a["spec"]
     dm = [cid for cid, who in a["control"].items() if who == "dm"]
     where = {"site": f"the site {spec['source_id']}", "scene": f"the scene {spec['source_id']}", "none": "an empty field"}[spec["source"]]
-    return [f"Arena {arena_id}: {a['w']} x {a['h']}, layout {spec['layout']}, light {spec['light']}, built from {where} (seed {spec['seed']}).",
-            "The party starts on the left, the foes on the right" + (" (an ambush: foes also on the flanks)." if spec["ambush"] else "."),
-            "You play: " + (", ".join(dm) if dm else "no one") + ". The stage plays the other creatures."]
+    return arena_id, a, [f"Arena {arena_id}: {a['w']} x {a['h']}, layout {spec['layout']}, light {spec['light']}, built from {where} (seed {spec['seed']}).",
+                         "The party starts on the left, the foes on the right" + (" (an ambush: foes also on the flanks)." if spec["ambush"] else "."),
+                         "You play: " + (", ".join(dm) if dm else "no one") + ". The stage plays the other creatures."]
+
+
+# -- a fight a player starts with the Attack card --------------------------------
+
+# What an NPC with no stat block fights as: a whole word in its role or type picks an SRD monster, longest phrase first;
+# only if those name none, the same words are looked for in the rest of its file. The default is a commoner.
+ROLE_MONSTERS = (("high priest", "priest"), ("priest", "acolyte"), ("cleric", "acolyte"), ("acolyte", "acolyte"),
+                 ("guard", "guard"), ("soldier", "guard"), ("captain", "veteran"), ("noble", "noble"),
+                 ("bandit", "bandit"), ("thief", "bandit"), ("smuggler", "bandit"), ("assassin", "assassin"),
+                 ("mage", "mage"), ("wizard", "mage"), ("cultist", "cultist"), ("scout", "scout"), ("spy", "spy"))
+
+
+def _monster_in(text: str) -> str | None:
+    """The SRD monster for the whole word or phrase of the table found in `text`; the longest phrase wins, then table order."""
+    text = text.lower()
+    found = [(word, m) for word, m in ROLE_MONSTERS if re.search(rf"\b{re.escape(word)}\b", text)]
+    return max(found, key=lambda wm: len(wm[0]))[1] if found else None
+
+
+def foe_spec(campaign_dir: Path, actor_id: str) -> tuple[str, str | None]:
+    """The `encounter start` spec for a creature on the stage, and a note when the stat block is a guess.
+
+    An NPC file with hp and armor_class is used as it is. Else the id is a monster name (`goblin#2` is a goblin),
+    or an NPC whose role picks an SRD monster (`orlo-tin=acolyte`).
+    """
+    base = actor_id.split("#")[0]
+    npc = combat.read_json(combat.npc_path(campaign_dir, base))
+    if not npc or ("hp" in npc and "armor_class" in npc):
+        return base, None
+    said = lambda keys: " ".join(str(npc.get(k, "")) for k in keys)  # noqa: E731
+    index = _monster_in(said(("role", "type"))) or _monster_in(said(("name", "personality", "motivation"))) or "commoner"
+    return f"{base}={index}", f"{npc.get('name', base)} has no stat block here, so the stage used the SRD {index.replace('-', ' ')}."
+
+
+def _place_foe(campaign_dir: Path, state: dict, a: dict, who: str, foe: str, entry: dict) -> None:
+    """Put `foe` where this attack can reach it from the start: next to `who` for a melee attack, 2 to 6 tiles away
+    in a clear line for a ranged one (30 ft, or the range if it is less). It stays near its own start if it can."""
+    here, start = pos(a, who), pos(a, foe)
+    taken = set(occupied(campaign_dir, state, a, skip=foe))
+    walk, _ = arena.reach(here, a["w"] * a["h"], arena.blocked_cells(a), (a["w"], a["h"]), taken)
+    if "reach_ft" in entry:
+        ok = lambda c: arena.cheb(here, c) == 1  # noqa: E731
+    else:
+        far, opaque = max(2, min(entry.get("range_ft", 30), 30) // TILE_FT), arena.opaque_cells(a)
+        ok = lambda c: 2 <= arena.cheb(here, c) <= far and arena.clear_line(here, c, opaque)  # noqa: E731
+    cells = [c for c in walk if c != here and c not in taken and ok(c)]
+    if not cells:
+        raise BoardError("there is no room to start the fight there.")
+    x, y = min(cells, key=lambda c: (arena.cheb(c, start), c))
+    a["units"][foe] = {"x": x, "y": y}
+
+
+def open_fight(campaign_dir: Path, state: dict, stage: dict, who: str, target: str, weapon: str | None, here: list[str],
+               pcs: list[str], rng=None) -> dict:
+    """A player attacks a creature on the stage and no fight is running: start one with the party (`pcs`) and the target,
+    on a board with the target in reach of the attack. If `who` is first in the order, the attack is made now.
+
+    `here`: the creatures on the stage that are not in the party. Returns {"arena", "foe", "lines", "note"}; `lines` are for the DM.
+    A refusal raises before the arena is written (the caller saves the state only if this returns).
+    """
+    if (state.get("active_encounter") or {}).get("type") == "combat":
+        raise BoardError("a fight is already running.")
+    if target not in here:
+        raise BoardError(f"{target} is not here to attack. Here: {', '.join(here) or 'no one'}.")
+    pcs = list(dict.fromkeys([who, *[p for p in pcs if p != who]]))
+    spec, note = foe_spec(campaign_dir, target)
+    lines = combat.start(campaign_dir, state, [spec], pcs, rng)
+    arena_id, a, arena_lines = build(campaign_dir, state, [], stage)
+    enc = state["active_encounter"]
+    foe = next(iter(enc["monsters"]))
+    rec = combat.combatant(campaign_dir, state, who)
+    pool = attack_rolls(rec)
+    entry = combat._find_attack(rec, weapon) if weapon else next((x for x in pool if x.get("equipped")), pool[0])
+    _place_foe(campaign_dir, state, a, who, foe, entry)
+    refresh_sight(campaign_dir, state, a)
+    refresh_intents(campaign_dir, state, a)
+    first = enc["current_turn"]
+    if first == who:
+        lines += attack(campaign_dir, state, a, who, entry["name"], foe, rng=rng, own_turn_only=True)
+    else:
+        lines.append(f"{first} acts first. {who} attacks with {entry['name']} on their turn.")
+    arena.save(campaign_dir, arena_id, a)
+    return {"arena": arena_id, "foe": foe, "lines": arena_lines[:1] + lines, "note": note}
 
 
 # -- who is where ------------------------------------------------------------
@@ -331,7 +421,7 @@ def brief(campaign_dir: Path, state: dict, a: dict, lines: list[str], attacker: 
 
 def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str, target: str, rng=None, cost: str | None = "action",
            adv: bool = False, dis: bool = False, bonus: int = 0, secret: bool = False, own_turn_only: bool = False,
-           catch_up: bool = True) -> list[str]:
+           catch_up: bool = True, smite: int | None = None) -> list[str]:
     """An attack with the board's rules: reach or range, line of sight, cover (-2 or -5 to hit), and an enemy next to an archer.
 
     `own_turn_only`: the stage refuses an attack out of turn. The DM's `attack` command keeps its way of moving the tracker.
@@ -350,7 +440,7 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
         damage_expr, damage_type = f"{entry['damage'][0][0]}+{abilities.traits()['Martial Advantage']['dice']}", entry["damage"][0][1]
     lines = combat.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
                           bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up,
-                          damage_expr=damage_expr, damage_type=damage_type)
+                          damage_expr=damage_expr, damage_type=damage_type, melee=check["mode"] == "melee", smite=smite)
     note(a, brief(campaign_dir, state, a, lines, attacker, entry["name"], target))
     notes = [f"{target} has {check['cover']} cover: -{arena.COVER_BONUS[check['cover']]} to hit."] if check["cover"] != "none" else []
     return notes + (["An enemy is next to the archer: disadvantage."] if check["dis"] else []) + lines

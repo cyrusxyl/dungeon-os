@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Popover } from 'radix-ui'
 
 import { CharacterCreator } from '@/components/CharacterCreator'
 import { ConsoleDrawer } from '@/components/Console'
@@ -7,7 +8,8 @@ import { ArenaView } from '@/components/ArenaView'
 import { CrawlView } from '@/components/CrawlView'
 import { DialogueBox } from '@/components/DialogueBox'
 import { JoinQr } from '@/components/JoinQr'
-import { HostControls } from '@/components/HostControls'
+import { HostCode } from '@/components/HostControls'
+import { SettingsPanel } from '@/components/SettingsPanel'
 import { SoundGate } from '@/components/VoiceToggle'
 import { Narrator } from '@/components/Narrator'
 import { Lobby } from '@/components/Lobby'
@@ -62,6 +64,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const [viewOpen, setViewOpen] = useState(false)
   const [seatOpen, setSeatOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
   const [inputError, setInputError] = useState('')
 
@@ -121,7 +125,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const current = mode === 'table' ? (followed ?? log.at(-1)) : (unread[0] ?? log.at(-1))
   const pending = mode === 'table' ? 0 : Math.max(0, unread.length - 1)
   const caughtUp = unread.length <= 1
-  const speaker = current?.type === 'say' ? current.actor : undefined
+  const speaker = current?.type === 'say' || current?.type === 'pc_say' ? current.actor : undefined
   const mine = me?.mine ?? NO_SEATS
   const isHost = me?.host ?? false
   // The table screen only shows the game: it takes no input.
@@ -167,10 +171,10 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
 
   const advance = () => setReadSeq(unread[0]?.seq ?? readSeq)
   // Act and Whisper: the text stays in the box unless the server takes it (a turn, or an awaited player, was first).
-  const send = async (text: string, whisper: boolean) => {
+  const send = async (text: string, whisper: boolean, choice = false) => {
     const t = text.trim()
     if (!t || !(whisper ? canWhisper : canSpeak)) return
-    const res = await sendInput(t, { who: mine.length ? who : undefined, whisper })
+    const res = await sendInput(t, { who: mine.length ? who : undefined, whisper, choice })
     if (res.ok) {
       setDraft('')
       setInputError('')
@@ -241,7 +245,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
               {choices && (
                 <div className="flex flex-wrap gap-3">
                   {choices.map((c) => (
-                    <Button key={c} disabled={!canSpeak} onClick={() => submit(c)} className="text-[10px]">
+                    <Button key={c} disabled={!canSpeak} onClick={() => send(c, false, true)} className="h-auto min-h-8 max-w-full py-1.5 text-left leading-snug whitespace-normal text-[10px]">
                       {c}
                     </Button>
                   ))}
@@ -317,10 +321,12 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   )
   const overlays = (
     <>
-      {state.roll_request && !showCreator && (
+      {/* Show the window only after the narration before it is read: Roll needs caughtUp, so an earlier window is stuck on "Wait for the DM". */}
+      {state.roll_request && !showCreator && (mode === 'table' || caughtUp) && (
         <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} canRoll={canType && caughtUp && mine.includes(state.roll_request.who)} />
       )}
       {needsRole && <RoleScreen onTable={() => setMode('table')} onPlay={() => setMode(defaultMode())} />}
+      {settingsOpen && <SettingsPanel isHost={isHost} mode={mode} onClose={() => setSettingsOpen(false)} />}
       {inviteOpen && (
         <div role="dialog" aria-label="Invite" className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4">
           <div className="flex w-full max-w-xs flex-col gap-3 border-4 border-[var(--gold)] bg-[var(--panel)] p-4">
@@ -352,17 +358,6 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       <ConsoleDrawer open={consoleOpen} onClose={() => setConsoleOpen(false)} dmLog={state.dm_log} />
     </>
   )
-  const viewMenu = (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={() => setViewOpen((v) => !v)}
-      title="Change how this device shows the game: full screen, shared table screen, or phone hand."
-      className="text-[10px]"
-    >
-      View
-    </Button>
-  )
   const viewPanel = viewOpen && (
     <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--border)] bg-[var(--panel)] p-2 text-base">
       <label className="flex items-center gap-2" title="Full: everything on one screen. Table: the shared screen, no input. Hand: this player's card on a phone.">
@@ -391,24 +386,131 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       )}
     </div>
   )
-  // Buttons both headers carry: take a seat, the map, the log, a code for friends, and the screen choice.
+  // The menu panel: every action that is not in the short top bar. Items wrap on a narrow screen.
+  const item = (fn: () => void) => () => {
+    setMenuOpen(false)
+    fn()
+  }
+  const menuButton = (label: string, fn: () => void, title?: string, disabled = false) => (
+    <Button size="sm" variant="outline" disabled={disabled} onClick={item(fn)} title={title} className="text-[10px]">
+      {label}
+    </Button>
+  )
+  const full = mode !== 'hand'
+  const topMenu = (
+    <Popover.Root
+      open={menuOpen}
+      onOpenChange={(o) => {
+        setMenuOpen(o)
+        if (!o) {
+          setConfirmQuit(false)
+          setSaveName(null)
+        }
+      }}
+    >
+      <Popover.Trigger asChild>
+        <Button size="sm" variant="outline" aria-label="Menu" className="text-[10px]">
+          Menu ▾
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={10}
+          collisionPadding={8}
+          className="z-40 flex w-[min(24rem,calc(100vw-1rem))] max-h-[80vh] flex-wrap items-center gap-3 overflow-y-auto border-4 border-[var(--gold)] bg-[var(--panel)] p-3 text-base outline-none"
+        >
+          {me && mode !== 'table' && menuButton('Seat', () => setSeatOpen(true), 'Pick, leave or add a character that you play.')}
+          {full && !showCreator && !lobby && menuButton('New character', () => postJson('/api/creation/open'))}
+          {menuButton('Invite', () => setInviteOpen(true), 'Show the code that phones scan to join this game.')}
+          {menuButton('View', () => setViewOpen((v) => !v), 'Change how this device shows the game: full screen, shared table screen, or phone hand.')}
+          {full && me && <HostCode me={me} />}
+          {full && isHost && state.creating && !state.new_party && !showCreator &&
+            menuButton('Close creator', () => postJson('/api/creation/done', { force: true }), 'Close the character creator that another device left open.')}
+          {full && isHost && menuButton('Console', () => setConsoleOpen((v) => !v))}
+          {menuButton('Settings', () => setSettingsOpen(true), 'Voice and sound. To change the DM, end the session first.')}
+          {full && isHost && saveName !== null ? (
+            <form
+              className="flex w-full flex-wrap items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                saveGame()
+              }}
+            >
+              <Input
+                autoFocus
+                aria-label="Save name"
+                value={saveName}
+                onChange={(e) => setSaveName(e.target.value)}
+                placeholder="Name this save (optional)"
+                font="normal"
+                className="h-8 min-w-0 flex-1 basis-40 text-base"
+              />
+              <Button size="sm" type="submit" disabled={state.dm.status !== 'idle'} className="text-[10px]">
+                Save
+              </Button>
+              <Button size="sm" type="button" variant="outline" onClick={() => setSaveName(null)} className="text-[10px]">
+                Cancel
+              </Button>
+            </form>
+          ) : (
+            full && isHost && (
+              <Button size="sm" variant="outline" disabled={state.dm.status !== 'idle'} onClick={() => setSaveName('')} className="text-[10px]">
+                {saved ? 'Saved ✓' : 'Save'}
+              </Button>
+            )
+          )}
+          {full && isHost && (ending !== 'no' ? (
+            <span className="flex w-full flex-wrap items-center gap-2">
+              <span className="pixel-font animate-pulse text-[10px] text-[var(--ember)]">The DM is writing the session record…</span>
+              {/* A way out if the DM never finishes (it exited, or never started the turn). */}
+              <Button size="sm" variant="outline" onClick={() => postJson('/api/game/quit').then(onMenu)} className="text-[10px]">
+                Leave without saving
+              </Button>
+            </span>
+          ) : confirmQuit ? (
+            <span className="flex w-full flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                disabled={state.dm.status !== 'idle'}
+                onClick={() => {
+                  setEnding('sent')
+                  sendInput(
+                    'End the session now: follow the session-end procedure in the dm-canon-procedures skill ' +
+                      '(one `uv run dnd-cli session end` with the recap), then say goodbye in one short beat.',
+                    { asHost: true },
+                  )
+                }}
+                className="text-[10px]"
+              >
+                End session
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => postJson('/api/game/quit').then(onMenu)} className="text-[10px]">
+                Leave without saving
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setConfirmQuit(false)} className="text-[10px]">
+                Stay
+              </Button>
+            </span>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setConfirmQuit(true)} className="text-[10px]">
+              End session…
+            </Button>
+          ))}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+  // The short bar both headers carry: the map, the log, and the menu.
   const sharedButtons = (
     <>
-      {me && mode !== 'table' && (
-        <Button size="sm" variant="outline" onClick={() => setSeatOpen(true)} title="Pick, leave or add a character that you play." className="text-[10px]">
-          Seat
-        </Button>
-      )}
       <Button size="sm" variant="outline" onClick={() => setMapOpen(true)} className="text-[10px]">
         Map
       </Button>
       <Button size="sm" variant="outline" onClick={() => setLogOpen((v) => !v)} className="text-[10px]">
         Log
       </Button>
-      <Button size="sm" variant="outline" onClick={() => setInviteOpen(true)} title="Show the code that phones scan to join this game." className="text-[10px]">
-        Invite
-      </Button>
-      {viewMenu}
+      {topMenu}
     </>
   )
   if (mode === 'hand') {
@@ -478,15 +580,15 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
     <div className="flex h-full flex-col gap-3 p-3 sm:p-4">
       <Narrator current={current} mode={mode} />
       <SoundGate mode={mode} />
-      <header className="flex flex-wrap items-center gap-3">
+      <header className="flex flex-wrap items-center gap-2">
         <h1 className="pixel-font text-xs text-[var(--gold)]">DungeonOS</h1>
-        <span className="text-lg text-[var(--dim)]">{titleCase(campaign)}</span>
-        <span className="ml-auto flex items-center gap-2 text-sm text-[var(--dim)]">
+        <span className="hidden text-lg text-[var(--dim)] sm:inline">{titleCase(campaign)}</span>
+        <span className="flex min-w-0 flex-1 basis-32 items-center gap-2 text-sm text-[var(--dim)]">
           <span
-            className={`size-2 ${!connected ? 'bg-red-500' : state.dm.status === 'idle' ? 'bg-emerald-400' : 'animate-pulse bg-[var(--ember)]'}`}
+            className={`size-2 shrink-0 ${!connected ? 'bg-red-500' : state.dm.status === 'idle' ? 'bg-emerald-400' : 'animate-pulse bg-[var(--ember)]'}`}
             aria-hidden="true"
           />
-          {connected ? statusText : 'Reconnecting…'}
+          <span className="truncate">{!connected ? 'Reconnecting…' : ending !== 'no' ? 'The DM is writing the session record…' : statusText}</span>
         </span>
         <Button size="sm" variant="outline" onClick={() => setShowParty((v) => !v)} className="hidden text-[10px] lg:inline-flex">
           Party
@@ -494,89 +596,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         <Button size="sm" variant="outline" onClick={() => setPartyOpen(true)} className="text-[10px] lg:hidden">
           Party
         </Button>
-        {!showCreator && !lobby && (
-          <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/open')} className="text-[10px]">
-            New character
-          </Button>
-        )}
         {sharedButtons}
-        {me && <HostControls me={me} mode={mode} />}
-        {isHost && state.creating && !state.new_party && !showCreator && (
-          <Button size="sm" variant="outline" onClick={() => postJson('/api/creation/done', { force: true })} title="Close the character creator that another device left open." className="text-[10px]">
-            Close creator
-          </Button>
-        )}
-        {isHost && (
-          <Button size="sm" variant="outline" onClick={() => setConsoleOpen((v) => !v)} className="text-[10px]">
-            Console
-          </Button>
-        )}
-        {!isHost ? null : saveName !== null ? (
-          <form
-            className="flex items-center gap-2"
-            onSubmit={(e) => {
-              e.preventDefault()
-              saveGame()
-            }}
-          >
-            <Input
-              autoFocus
-              aria-label="Save name"
-              value={saveName}
-              onChange={(e) => setSaveName(e.target.value)}
-              placeholder="Name this save (optional)"
-              font="normal"
-              className="h-8 w-52 text-base"
-            />
-            <Button size="sm" type="submit" disabled={state.dm.status !== 'idle'} className="text-[10px]">
-              Save
-            </Button>
-            <Button size="sm" type="button" variant="outline" onClick={() => setSaveName(null)} className="text-[10px]">
-              Cancel
-            </Button>
-          </form>
-        ) : (
-          <Button size="sm" variant="outline" disabled={state.dm.status !== 'idle'} onClick={() => setSaveName('')} className="text-[10px]">
-            {saved ? 'Saved ✓' : 'Save'}
-          </Button>
-        )}
-        {!isHost ? null : ending !== 'no' ? (
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="pixel-font animate-pulse text-[10px] text-[var(--ember)]">The DM is writing the session record…</span>
-            {/* A way out if the DM never finishes (it exited, or never started the turn). */}
-            <Button size="sm" variant="outline" onClick={() => postJson('/api/game/quit').then(onMenu)} className="text-[10px]">
-              Leave without saving
-            </Button>
-          </span>
-        ) : confirmQuit ? (
-          <span className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              disabled={state.dm.status !== 'idle'}
-              onClick={() => {
-                setEnding('sent')
-                sendInput(
-                  'End the session now: follow the session-end procedure in the dm-canon-procedures skill ' +
-                    '(one `uv run dnd-cli session end` with the recap), then say goodbye in one short beat.',
-                  { asHost: true },
-                )
-              }}
-              className="text-[10px]"
-            >
-              End session
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => postJson('/api/game/quit').then(onMenu)} className="text-[10px]">
-              Leave without saving
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setConfirmQuit(false)} className="text-[10px]">
-              Stay
-            </Button>
-          </span>
-        ) : (
-          <Button size="sm" variant="outline" onClick={() => setConfirmQuit(true)} className="text-[10px]">
-            Menu
-          </Button>
-        )}
       </header>
       {viewPanel}
 

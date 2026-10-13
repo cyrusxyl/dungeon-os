@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from dnd_cli import character, combat, effects, loot, sheet
+from dnd_cli import audit, character, combat, effects, loot, sheet
 from dnd_cli.api import api_get
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from dnd_cli.dice import DiceError
@@ -129,11 +129,12 @@ def execute_attack(campaign, args) -> int:
             # On a board, reach, sight and cover decide (an improvised attack with --damage is the DM's own ruling).
             _, a = board.running(campaign_dir, state)
             return board.attack(campaign_dir, state, a, args.attacker, args.weapon, args.target, cost=cost,
-                                adv=args.adv, dis=args.dis, bonus=args.bonus, secret=args.secret, catch_up=args.cost != "reaction")
+                                adv=args.adv, dis=args.dis, bonus=args.bonus, secret=args.secret, catch_up=args.cost != "reaction",
+                                smite=args.smite)
         return combat.attack(
             campaign_dir, state, args.attacker, args.weapon, args.target, adv=args.adv, dis=args.dis,
             damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret, cost=cost,
-            catch_up=args.cost != "reaction")
+            catch_up=args.cost != "reaction", smite=args.smite)
     return _with_state(campaign, fn)
 
 
@@ -294,7 +295,8 @@ def execute_level_up(campaign, name: str, hp_mode: str, asi: str | None) -> int:
     def fn(campaign_dir, data):
         cls = data["class"].split()[0].lower()
         level = _api(f"classes/{cls}/levels/{data['level'] + 1}")
-        hit_die = _api(f"classes/{cls}").get("hit_die", 8)
+        class_data = _api(f"classes/{cls}")
+        hit_die = class_data.get("hit_die", 8)
         feats = []
         for f in level.get("features", []):
             desc = (_api(f"features/{f['index']}").get("desc") or [""])[0]
@@ -302,7 +304,10 @@ def execute_level_up(campaign, name: str, hp_mode: str, asi: str | None) -> int:
         if any(f["name"].startswith("Ability Score Improvement") for f in feats) and asi is None:
             raise combat.RulesError("this level gives an Ability Score Improvement. Ask the player, then run it with "
                                     "--asi str+2 (or --asi str+1,dex+1), or --asi none if they take a feat instead.")
-        return sheet.level_up(data, level, hit_die, hp_mode, _asi(None if asi == "none" else asi), feats)
+        lines = sheet.level_up(data, level, hit_die, hp_mode, _asi(None if asi == "none" else asi), feats,
+                               class_data=class_data)
+        problems = audit.audit(data, _api)
+        return lines + ([audit.summary(problems)] if problems else [])
     return _edit_sheet(campaign, name, fn)
 
 

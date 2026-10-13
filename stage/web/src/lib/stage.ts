@@ -62,7 +62,7 @@ export type Position = 'left' | 'center' | 'right' | 'far-left' | 'far-right'
 
 export interface StoryLine {
   seq: number
-  type: 'narrate' | 'say'
+  type: 'narrate' | 'say' | 'pc_say'
   text: string
   actor?: string
   emotion?: string
@@ -254,9 +254,19 @@ export function postJson(url: string, body: unknown = {}): Promise<Response> {
   })
 }
 
-/** A line for the DM. `asHost` is a host control (End session): the DM gets it untagged. */
-export async function sendInput(text: string, opts: { who?: string; asHost?: boolean; whisper?: boolean } = {}): Promise<Response> {
-  return postJson('/api/input', { text, who: opts.who, as_host: opts.asHost, whisper: opts.whisper })
+/** GET and parse the JSON reply. Null when the request fails or the reply is not ok. */
+export async function getJson<T>(url: string): Promise<T | null> {
+  try {
+    const r = await fetch(url)
+    return r.ok ? ((await r.json()) as T) : null
+  } catch {
+    return null
+  }
+}
+
+/** A line for the DM. `choice`: a click on one of the DM's offered choices (never a spoken line). `asHost` is a host control (End session): the DM gets it untagged. */
+export async function sendInput(text: string, opts: { who?: string; asHost?: boolean; whisper?: boolean; choice?: boolean } = {}): Promise<Response> {
+  return postJson('/api/input', { text, who: opts.who, as_host: opts.asHost, whisper: opts.whisper, choice: opts.choice })
 }
 
 export function titleCase(id: string): string {

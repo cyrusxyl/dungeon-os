@@ -240,6 +240,7 @@ def pc_record(sheet: dict, cid: str) -> dict:
         if "ammunition" not in props:
             reach["reach_ft"] = 10 if "reach" in props.split() else 5  # a thrown weapon is also a melee weapon
         attacks.append({"name": w["name"], "bonus": w.get("attack_bonus", 0), "equipped": bool(w.get("equipped")), **reach,
+                        **({"thrown": True} if "thrown" in props.split() else {}),
                         "damage": [[w["damage"], w.get("damage_type", "")]] if w.get("damage") else []})
     # Bare fists, as in Baldur's Gate 3: 1 + Strength modifier, bludgeoning.
     attacks.append({"name": "Unarmed Strike", "bonus": mods["strength"] + sheet.get("proficiency_bonus", 2), "reach_ft": 5,
@@ -291,7 +292,7 @@ def monster_record(data: dict, cid: str) -> dict:
     if bonus := next((x["attack"]["bonus"] for x in extra["abilities"] if x["kind"] == "spell_attack"), None):
         attacks.append({"name": "spell", "bonus": bonus, "damage": []})  # a spell attack rolls like a PC's: `attack <id> spell <target> --damage`
     return {
-        "id": cid, "kind": "monster", "index": data.get("index"), "name": data.get("name", cid),
+        "id": cid, "kind": "monster", "index": data.get("index"), "name": data.get("name", cid), "ctype": data.get("type", ""),
         "ac": ac[0].get("value", 10) if isinstance(ac, list) else ac,
         "hp": {"current": data.get("hit_points", 1), "max": data.get("hit_points", 1)},
         "mods": mods,
@@ -525,6 +526,7 @@ def next_turn(campaign_dir: Path, state: dict) -> list[str]:
         if order[i] in alive:
             break
     cid = enc["current_turn"] = order[i]
+    enc.pop("pending_smite", None)  # a smite not declared by the end of the turn is gone
     enc.setdefault("resources", {})[cid] = {}  # a new turn: action, bonus action and reaction are back
     kept = []
     for c in enc.get("conditions", {}).get(cid, []):
@@ -698,8 +700,13 @@ def _find_attack(rec: dict, name: str) -> dict:
 
 def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: str, adv: bool = False,
            dis: bool = False, damage_expr: str | None = None, damage_type: str = "", bonus: int = 0,
-           secret: bool = False, rng=None, skip=(), cost: str | None = "action", catch_up: bool = True) -> list[str]:
+           secret: bool = False, rng=None, skip=(), cost: str | None = "action", catch_up: bool = True,
+           smite: int | None = None, melee: bool | None = None) -> list[str]:
     """One attack roll against AC; on a hit, roll and apply the damage. Crits double the dice.
+
+    `smite` is a spell slot level a paladin spends on a hit for Divine Smite (a melee weapon attack only). Without it,
+    a melee hit that the paladin could smite leaves `pending_smite` in the encounter for the stage to offer.
+    `melee` says whether this is a melee attack; by default a weapon with a reach is.
 
     The attack uses the attacker's `cost` (action, bonus or reaction; None for a free attack). A multiattack
     is several attacks for one action. A dodging target gives disadvantage; a hidden attacker gets
@@ -719,6 +726,14 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     parts = [[damage_expr, damage_type]] if damage_expr else act["damage"]
     if not parts:
         raise RulesError(f"{act['name']} has no damage on record; give it with --damage 1d10 --type fire.")
+    if melee is None:
+        melee = "reach_ft" in act and not act.get("thrown")  # a thrown weapon is ranged unless the board says it is a melee attack
+    if smite is not None:
+        if not melee:
+            raise RulesError("Divine Smite needs a melee weapon attack.")
+        smite_check(campaign_dir, attacker, smite)
+    if in_combat(state, attacker):
+        encounter(state).pop("pending_smite", None)
     # `catch_up` False: a reaction happens on someone else's turn, so the tracker must not move to the attacker.
     turn_lines = _catch_up(campaign_dir, state, attacker) if catch_up else []
     if cost:
@@ -759,7 +774,69 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     stage_roll(f"{a_rec['name']}: {act['name']} — {' + '.join(total_text)} damage", to_hit, groups, secret,
                detail(shown_dmg))
     _secret_feed(secret, [t_rec], f"{a_rec['name']}'s {act['name']} hits {t_rec['name']}: " + "; ".join(lines))
-    return turn_lines + [head + (" — CRITICAL HIT" if crit else " — hit") + f", {' + '.join(total_text)} damage"] + lines
+    out = turn_lines + [head + (" — CRITICAL HIT" if crit else " — hit") + f", {' + '.join(total_text)} damage"] + lines
+    if smite is not None:
+        if combatant(campaign_dir, state, target)["hp"]["current"] <= 0:
+            return out + [f"{attacker} does not smite: {target} is already down, no slot spent."]
+        return out + smite_hit(campaign_dir, state, attacker, target, smite, crit, rng, secret)
+    if melee and in_combat(state, attacker) and can_smite(campaign_dir, attacker) \
+            and combatant(campaign_dir, state, target)["hp"]["current"] > 0:
+        encounter(state)["pending_smite"] = {"by": attacker, "target": target, "crit": crit}
+    return out
+
+
+# -- Divine Smite --------------------------------------------------------------
+
+
+def smite_dice(level: int, ctype: str = "") -> str:
+    """2d8 for a level 1 slot, +1d8 per level above 1, at most 5d8; +1d8 against an undead or a fiend."""
+    n = min(5, level + 1) + (1 if any(t in ctype.lower() for t in ("undead", "fiend")) else 0)
+    return f"{n}d8"
+
+
+def has_feature(sheet: dict, name: str) -> bool:
+    return any(f.get("name", "").lower().split(":")[0] == name.lower() for f in sheet.get("features_and_traits", []))
+
+
+def smite_levels(sheet: dict) -> dict[int, int]:
+    """{slot level: slots left} for a character who has Divine Smite; empty without the feature or without slots."""
+    if not has_feature(sheet, "Divine Smite"):
+        return {}
+    slots = (sheet.get("spellcasting") or {}).get("spell_slots") or {}
+    return {int(k): v["remaining"] for k, v in slots.items() if v.get("remaining", 0) > 0}
+
+
+def can_smite(campaign_dir: Path, cid: str) -> bool:
+    return character.character_path(campaign_dir, cid).exists() and bool(smite_levels(character.load(campaign_dir, cid)))
+
+
+def smite_check(campaign_dir: Path, cid: str, level: int) -> dict:
+    """The sheet of `cid` if it can smite with a slot of `level`, else a RulesError (nothing is changed)."""
+    if not character.character_path(campaign_dir, cid).exists():
+        raise RulesError(f"{cid} is not a player character: no Divine Smite.")
+    sheet = character.load(campaign_dir, cid)
+    if not has_feature(sheet, "Divine Smite"):
+        raise RulesError(f"{cid} does not have Divine Smite.")
+    if smite_levels(sheet).get(level, 0) <= 0:
+        raise RulesError(f"{cid} has no level {level} spell slot left for Divine Smite.")
+    return sheet
+
+
+def smite_hit(campaign_dir: Path, state: dict, attacker: str, target: str, level: int, crit: bool = False,
+              rng=None, secret: bool = False) -> list[str]:
+    """Spend a slot of `level` and deal the smite damage (radiant, doubled on a crit) to `target`."""
+    rng = rng or random
+    sheet = smite_check(campaign_dir, attacker, level)
+    ctype = str(combatant(campaign_dir, state, target).get("ctype", ""))
+    expr = smite_dice(level, ctype)
+    left = character.cast_spell(sheet, level)["remaining"]
+    character.save(campaign_dir, attacker, sheet)
+    amount, groups = dice.roll(expr, rng, crit=crit)
+    stage_roll(f"{sheet.get('name', attacker)}: Divine Smite {expr}{' x2' if crit else ''} — {amount} radiant damage", amount, groups, secret)
+    line = damage(campaign_dir, state, target, amount, "radiant", crit=crit)
+    if in_combat(state, attacker):
+        encounter(state).pop("pending_smite", None)
+    return [f"{attacker} Divine Smite → {target}: level {level} slot ({left} left), {expr}{' doubled' if crit else ''} = {amount} radiant", line]
 
 
 def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, dc: int | None,

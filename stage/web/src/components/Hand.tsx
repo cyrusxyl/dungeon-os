@@ -58,8 +58,9 @@ function ImproviseBox({ objects, onSend, onCancel }: { objects: { id: string; na
   )
 }
 
-export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, onImprovise, onCancel }: { hand: HandView; skin: Skin; onSkin: () => void; selected: Ability | null; objects: { id: string; name: string }[]; onPick: (ab: Ability) => void; onTarget: (ab: Ability, target: string) => void; onImprovise: (text: string, object?: string) => void; onCancel: () => void }) {
+export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, onImprovise, onCancel }: { hand: HandView; skin: Skin; onSkin: () => void; selected: Ability | null; objects: { id: string; name: string }[]; onPick: (ab: Ability) => void; onTarget: (ab: Ability, target: string, amount?: number) => void; onImprovise: (text: string, object?: string) => void; onCancel: () => void }) {
   const [drawer, setDrawer] = useState(false)
+  const [amount, setAmount] = useState(1)
   // The hand: class abilities and weapons, up to three pinned items, Items, then Improvise.
   const rows = hand.abilities.filter((ab) => ab.source === 'item')
   const [pinned, togglePin] = usePins(hand.who, rows.map((ab) => ab.id))
@@ -79,9 +80,22 @@ export function Hand({ hand, skin, onSkin, selected, objects, onPick, onTarget, 
       {selected?.needs === 'target' && (
         <div className="flex flex-wrap items-center gap-1" aria-label={`Targets for ${selected.name}`}>
           <span>{selected.name}:</span>
+          {selected.amount !== undefined && (
+            <label className="flex items-center gap-1">
+              Points (1 to {selected.amount})
+              <input
+                type="number"
+                min={1}
+                max={selected.amount}
+                value={Math.min(amount, selected.amount)}
+                onChange={(e) => setAmount(Math.max(1, Math.min(selected.amount ?? 1, Number(e.target.value) || 1)))}
+                className="w-16 border-2 border-[var(--border)] bg-[var(--ink)] px-1"
+              />
+            </label>
+          )}
           {selected.targets?.length ? (
             selected.targets.map((t) => (
-              <Button key={t.id} size="sm" variant="outline" disabled={!t.ok} title={t.why ?? undefined} onClick={() => onTarget(selected, t.id)} className="text-[10px]">
+              <Button key={t.id} size="sm" variant="outline" disabled={!t.ok} title={t.why ?? undefined} onClick={() => onTarget(selected, t.id, selected.amount === undefined ? undefined : Math.min(amount, selected.amount))} className="text-[10px]">
                 {t.name}{t.dist_ft === undefined ? '' : ` · ${t.dist_ft} ft`}{t.odds ? ` · ${t.odds}` : ''}
               </Button>
             ))

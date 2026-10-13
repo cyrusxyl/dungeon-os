@@ -362,8 +362,113 @@ def test_sync_and_start() -> None:
         check("no arena, no board", raises(lambda: board.running(c, state)))
 
 
+def test_open_fight() -> None:
+    print("board: a fight started by the Attack card")
+    from dnd_cli import actions, character
+    from stage import state as stage_state
+    from tests.test_rules import GOBLIN, campaign
+
+    combat.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
+    with tempfile.TemporaryDirectory() as tmp:
+        c = campaign(Path(tmp))
+        npcs = c / "world" / "npcs"
+        (npcs / "orlo-tin.json").write_text(json.dumps({"name": "Orlo Tin", "type": "humanoid", "personality": "Calm svirfneblin priest"}))
+        here = ["orlo-tin", "goblin#2"]
+        pcs = ["aragorn", "legolas"]
+        stage = stage_state.empty()
+
+        def go(who="aragorn", target="orlo-tin", weapon=None, rng=None, pcs=pcs, here=here):
+            st = combat.load_state(c)
+            return st, board.open_fight(c, st, stage, who, target, weapon, here, pcs, rng or Fixed(20, 5, 1, 15, 6))
+
+        st, done = go(weapon="Longsword")
+        a = arena.load(c, done["arena"])
+        enc = st["active_encounter"]
+        check("a fight starts with both party members and the target as the only foe",
+              enc["participants"] == ["aragorn", "legolas", "orlo-tin"] and list(enc["monsters"]) == ["orlo-tin"] and enc["arena"] == done["arena"])
+        check("the NPC with no stat block fights as an SRD monster, and the note says so",
+              "SRD acolyte" in done["note"] and enc["monsters"]["orlo-tin"]["index"] == "acolyte")
+        check("a melee attack starts with the target next to the attacker",
+              arena.cheb(board.pos(a, "aragorn"), board.pos(a, "orlo-tin")) == 1)
+        check("the attacker is first, so the attack is made now and spends the action",
+              enc["current_turn"] == "aragorn" and any("Longsword" in ln for ln in done["lines"]) and combat.turn_used(st, "aragorn")["action"])
+        check("a party member is not a foe", "aragorn" not in enc["monsters"] and "legolas" not in enc["monsters"])
+
+        # A ranged weapon: the target is in range, not next to the attacker, and within 30 ft.
+        st, done = go(who="legolas", weapon="Longbow", rng=Fixed(20, 5, 1, 15, 6))
+        a = arena.load(c, done["arena"])
+        dist = arena.cheb(board.pos(a, "legolas"), board.pos(a, "orlo-tin"))
+        check("a ranged attack starts at range: 2 to 6 tiles, in sight", 2 <= dist <= 6
+              and arena.clear_line(board.pos(a, "legolas"), board.pos(a, "orlo-tin"), arena.opaque_cells(a)))
+        check("the first in the order attacks now", st["active_encounter"]["current_turn"] == "legolas"
+              and any("Longbow" in ln for ln in done["lines"]))
+
+        # Not first: the creature acts first and the attack waits for the turn.
+        st, done = go(rng=Fixed(1, 5, 20))
+        check("if the attacker is not first, nothing is rolled yet", st["active_encounter"]["current_turn"] == "orlo-tin"
+              and not combat.turn_used(st, "aragorn")["action"] and "acts first" in done["lines"][-1])
+
+        # A stat-less creature on the stage is a monster by its name.
+        st, done = go(target="goblin#2")
+        check("goblin#2 is a goblin", list(st["active_encounter"]["monsters"]) == ["goblin"])
+
+        # Invalid targets start nothing.
+        for target in ("aragorn", "nobody"):
+            st = combat.load_state(c)
+            check(f"{target} is not a target: no fight", raises(lambda t=target: board.open_fight(c, st, stage, "aragorn", t, None, here, pcs)) and not st.get("active_encounter"))
+        # A refusal after the arena is built (no room for the foe) leaves no new arena file.
+        folder = arena.arenas_dir(c)
+        before = sorted(p.name for p in folder.glob("*")) if folder.is_dir() else []
+        real_place = board._place_foe
+
+        def no_room(*_a, **_k):
+            raise board.BoardError("there is no room to start the fight there.")
+        board._place_foe = no_room
+        try:
+            st = combat.load_state(c)
+            refused = raises(lambda: board.open_fight(c, st, stage, "aragorn", "orlo-tin", None, here, pcs))
+        finally:
+            board._place_foe = real_place
+        after = sorted(p.name for p in folder.glob("*")) if folder.is_dir() else []
+        check("a refused attack leaves no arena file", refused and before == after)
+
+        # The stand-in is chosen by whole words, and the role beats free text.
+        def spec_of(**npc):
+            (npcs / "t-npc.json").write_text(json.dumps({"name": "T", **npc}))
+            return board.foe_spec(c, "t-npc")[0]
+        check("'damage' and 'image' are not a mage", spec_of(personality="Fears damage to her image") == "t-npc=commoner")
+        check("'bodyguard' is not a guard", spec_of(role="bodyguard") == "t-npc=commoner")
+        check("'spying' is not a spy", spec_of(motivation="spying on the docks") == "t-npc=commoner")
+        check("the role wins over the table order", spec_of(role="mage", personality="a guard of old") == "t-npc=mage")
+        check("free text is used when the role names none", spec_of(role="local", personality="a former guard") == "t-npc=guard")
+        check("a phrase counts as a whole", spec_of(role="High Priest of Lathander") == "t-npc=priest")
+
+        st, _ = go()
+        check("a fight that runs already refuses a second", raises(lambda: board.open_fight(c, st, stage, "aragorn", "orlo-tin", None, here, pcs)))
+
+        # The card: Attack is on out of a fight when someone is here, and a smite follows a hit on the opening attack.
+        sheet = character.load(c, "aragorn")
+        sheet.update(name="Pally", **{"class": "Paladin"})
+        sheet["features_and_traits"] = [{"name": "Divine Smite", "description": "x"}]
+        sheet["spellcasting"] = {"ability": "charisma", "spell_save_dc": 11, "spell_attack_bonus": 3,
+                                 "spell_slots": {"1": {"max": 3, "remaining": 3}}}
+        sheet["resources_used"] = {}
+        character.save(c, "aragorn", sheet)
+        quiet = combat.load_state(c)
+        quiet["active_encounter"] = None
+        why = lambda present: next(x for x in actions.listing(c, quiet, "aragorn", character.load(c, "aragorn"), present) if x["id"] == "attack")["why"]  # noqa: E731
+        check("the card has Attack when a creature is here, and not when no one is", why([{"id": "orlo-tin", "name": "Orlo Tin"}]) is None
+              and why([]) == "No one here to attack")
+        st, done = go(weapon="Longsword", rng=Fixed(20, 5, 1, 15, 2))
+        listed = [x["id"] for x in actions.listing(c, st, "aragorn", character.load(c, "aragorn"), [])]
+        check("a hit on the opening attack offers Divine Smite", st["active_encounter"].get("pending_smite", {}).get("by") == "aragorn"
+              and "smite:1" in listed and "smite:none" in listed)
+        lines = actions.perform(c, st, "aragorn", "smite:1", rng=Fixed(3, 4))["lines"]
+        check("the smite answers on the running fight", any("Divine Smite" in ln for ln in lines))
+
+
 if __name__ == "__main__":
-    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_foes, test_summary_and_time, test_light, test_sync_and_start):
+    for t in (test_walking, test_blocking, test_reactions, test_attacks, test_foes, test_summary_and_time, test_light, test_sync_and_start, test_open_fight):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

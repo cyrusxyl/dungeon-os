@@ -33,12 +33,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 import threading
 import time
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 import ptyprocess
 from starlette.applications import Starlette
@@ -53,7 +55,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli.sheet import GOLD
-from stage import actors, arena, beat, board, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, voice
+from stage import actors, arena, beat, board, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, ttsctl, voice
 from stage.assets import AssetError
 from stage.files import read_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
@@ -576,6 +578,15 @@ def error(text: str, status: int = 409) -> JSONResponse:
     return JSONResponse({"error": text}, status_code=status)
 
 
+def as_amount(value) -> int | None:
+    """A whole number from client input, or None. Anything else is a rules refusal (a 400), not a crash."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | str) or not str(value).strip().lstrip("-").isdigit():
+        raise combat.RulesError("the amount must be a whole number.")
+    return int(value)
+
+
 def character_ids(campaign_dir: Path) -> list[str]:
     return sorted(p.stem for p in (campaign_dir / "characters").glob("*.json"))
 
@@ -800,7 +811,8 @@ def _menu(table: Table) -> dict:
         "game": table.stage.campaign_dir.name if table.stage else None,
         "campaigns": campaigns,
         "resume": resume,
-        "settings": {"agent_framework": settings["agent_framework"], "model": settings["model"], "voice": settings["voice"]},
+        "settings": {"agent_framework": settings["agent_framework"], "model": settings["model"], "voice": settings["voice"], "voice_parts": settings["voice_parts"],
+                     "tts_url": settings["tts_url"], "tts_stop_on_exit": settings["tts_stop_on_exit"], "tts_url_from_env": bool(os.environ.get("DUNGEON_TTS_URL"))},
         "frameworks": [
             {"key": k, "label": v["label"], "available": framework_available(k), "models": v["models"]}
             for k, v in FRAMEWORKS.items()
@@ -925,6 +937,18 @@ def create_app(
             raise HTTPException(403, "Take a seat first.")
         if not stage.dm_ready():
             raise HTTPException(409, "The DM is busy.")
+
+        def log_say() -> None:
+            """The words of a player character go to the story log (the stage speaks them if player voices are on)."""
+            if not who or whisper:
+                return
+            if body.get("choice"):
+                return
+            said = re.findall(r'"([^"]+)"|\u201c([^\u201d]+)\u201d', str(body.get("text", "")))
+            words = " ".join(a or b for a, b in said).strip()  # only quoted speech is a spoken line
+            if words:
+                beat.append(stage.campaign_dir, [{"type": "pc_say", "actor": who, "text": words}])
+
         if who and not whisper:
             # In a combat, only the player whose turn it is may speak or act; a whisper to the DM is always allowed.
             enc = combat.load_state(stage.campaign_dir).get("active_encounter") or {}
@@ -937,10 +961,12 @@ def create_app(
             elif aw and aw["who"] == who:
                 await stage._local_event({"type": "await_done"})  # the awaited player answers: the answer goes out below
             elif aw and aw["who"] == "all":
+                log_say()
                 stage.intents[who] = str(body.get("text", ""))
                 await stage.broadcast()
                 await stage.flush_intents()
                 return JSONResponse({"ok": True, "queued": True})
+        log_say()
         await stage.submit(text)
         return JSONResponse({"ok": True})
 
@@ -1090,9 +1116,21 @@ def create_app(
 
         menu_gate(request)
         body = await request.json()
-        if body.get("agent_framework") not in FRAMEWORKS:
-            return error("unknown agent framework", 400)
-        save_settings({"agent_framework": body["agent_framework"], "model": str(body.get("model", "")), "voice": body.get("voice")})
+        values = {"voice": body.get("voice"), "voice_parts": body.get("voice_parts"), "tts_stop_on_exit": body.get("tts_stop_on_exit")}
+        if "tts_url" in body:
+            url = str(body["tts_url"] or "").strip()
+            parsed = urlparse(url)
+            if url and not (parsed.scheme in ("http", "https") and parsed.hostname):
+                return error("The voice service URL must start with http:// or https://.", 400)
+            values["tts_url"] = url
+        # Voice-only save: no framework or model. Allowed during a game. The DM is fixed while a session runs.
+        if body.get("agent_framework") is not None or "model" in body:
+            if table.stage:
+                return error("End the session to change the DM.", 409)
+            if body.get("agent_framework") not in FRAMEWORKS:
+                return error("unknown agent framework", 400)
+            values.update({"agent_framework": body["agent_framework"], "model": str(body.get("model", ""))})
+        save_settings(values)
         return JSONResponse(_menu(table))
 
     async def asset_actor(request: Request):
@@ -1228,6 +1266,36 @@ def create_app(
             name = f"{name} {actor_id.split('#')[1]}"
         return JSONResponse({"id": actor_id, "name": name, "has_look": bool(spec)})
 
+    def present_ids(stage: Stage) -> list[str]:
+        """The creatures on the stage that are not in the party: who a player can attack out of a fight."""
+        if stage.state.get("arena") or stage.state.get("explore"):
+            return []
+        return [a for a in stage.state["actors"] if not character.character_path(stage.campaign_dir, a).exists()]
+
+    def present_creatures(stage: Stage) -> list[dict]:
+        return [{"id": a, "name": ((actors.load(stage.campaign_dir, a) or {}).get("name") or beat.title(a.split("#")[0]))
+                 + (f" {a.split('#')[1]}" if "#" in a and a.split("#")[1] else "")} for a in present_ids(stage)]
+
+    async def open_fight_action(stage: Stage, who: str, target: str | None, weapon: str | None) -> JSONResponse:
+        """Attack out of a fight: the stage starts one on a board, with the target in reach, and the DM narrates it."""
+        here = present_ids(stage)
+        pcs = [a for a in stage.state["actors"] if character.character_path(stage.campaign_dir, a).exists()]
+
+        def go(st):
+            return board.open_fight(stage.campaign_dir, st, stage.state, who, str(target), str(weapon) if weapon else None, here, pcs)
+        try:
+            done = await run_in_threadpool(with_rules, stage, go)
+        except (combat.RulesError, character.CharacterError, arena.ArenaError) as e:
+            return error(str(e), 400)
+        beat.append(stage.campaign_dir, [{"type": "arena", "arena": done["arena"]}])
+        name = stage.char_name(who)
+        tname = next((c["name"] for c in present_creatures(stage) if c["id"] == target), str(target))
+        band = combat.health_band(combat.combatant(stage.campaign_dir, combat.load_state(stage.campaign_dir), done["foe"]))
+        await stage.submit(f"[{name} attacked {tname} and combat started] " + " ".join(done["lines"]) + (f" {done['note']}" if done["note"] else "")
+                           + f" {tname} now looks {band}. The fight is on a board: narrate the blow and the start of the fight in one beat, "
+                           "with no numbers. The stage runs the turns from here.")
+        return JSONResponse({"lines": done["lines"]})
+
     async def api_party(request: Request):
         stage = need()
 
@@ -1236,7 +1304,7 @@ def create_app(
             arena_id = board.arena_id_of(state)
             a = arena.load(stage.campaign_dir, arena_id) if arena_id else None
             hidden = board.hidden_foes(stage.campaign_dir, state, a) if a else set()
-            return party.view(stage.campaign_dir, frozenset(hidden))
+            return party.view(stage.campaign_dir, frozenset(hidden), present_creatures(stage))
         return JSONResponse(await run_in_threadpool(build))
 
     # -- the player's own bonuses, actions and rolls (only while the DM is idle) ----
@@ -1274,12 +1342,18 @@ def create_app(
         own(request, stage, who)
         target = body.get("target")
         weapon = body.get("weapon")
+        try:
+            amount = as_amount(body.get("amount"))
+        except combat.RulesError as e:
+            return error(str(e), 400)
         if board.arena_id_of(combat.load_state(stage.campaign_dir)):
             return await board_action(stage, who, body)
+        if str(body.get("action")) == "attack" and (combat.load_state(stage.campaign_dir).get("active_encounter") or {}).get("type") != "combat":
+            return await open_fight_action(stage, who, target, weapon)
         try:
             done = await run_in_threadpool(with_rules, stage, lambda st: actions.perform(
                 stage.campaign_dir, st, who, str(body.get("action")), str(target) if target else None,
-                str(weapon) if weapon else None))
+                str(weapon) if weapon else None, amount=amount))
         except (combat.RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         name = character.load(stage.campaign_dir, who).get("name", who)
@@ -1347,7 +1421,8 @@ def create_app(
             board.require_turn(st, who)
             if action == "attack":
                 return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"))}
-            done = actions.perform(stage.campaign_dir, st, who, action, body.get("target"), body.get("weapon"))
+            done = actions.perform(stage.campaign_dir, st, who, action, body.get("target"), body.get("weapon"),
+                                   amount=as_amount(body.get("amount")))
             if done.get("roll"):
                 raise board.BoardError(f"{action} is not on the board yet.")
             for line in done["lines"]:
@@ -1578,7 +1653,8 @@ def create_app(
 
     async def api_arena_act(request: Request):
         def go(stage, st, a, who, body):
-            return {"lines": hand.act(stage.campaign_dir, st, a, who, str(body.get("ability")), body.get("target"), body.get("aim"))}
+            return {"lines": hand.act(stage.campaign_dir, st, a, who, str(body.get("ability")), body.get("target"), body.get("aim"),
+                                      amount=as_amount(body.get("amount")))}
         return await board_call(request, go)
 
     async def api_arena_improvise(request: Request):
@@ -1732,6 +1808,19 @@ def create_app(
     async def api_tts_health(request: Request):
         return JSONResponse({"ok": await voice.healthy()})
 
+    async def api_tts_status(request: Request):
+        return JSONResponse(await ttsctl.status())
+
+    async def api_tts_start(request: Request):
+        menu_gate(request)  # no game: anyone; during a game: the host
+        code, body = await ttsctl.start()
+        return JSONResponse(body, status_code=code)
+
+    async def api_tts_stop(request: Request):
+        menu_gate(request)
+        code, body = await ttsctl.stop()
+        return JSONResponse(body, status_code=code)
+
     @asynccontextmanager
     async def lifespan(app):
         table.loop = asyncio.get_running_loop()
@@ -1740,6 +1829,11 @@ def create_app(
         yield
         await table.stop()
         await voice.close()
+        if ttsctl.alive():
+            from view.settings import load_settings
+
+            if load_settings().get("tts_stop_on_exit"):
+                ttsctl.shutdown()  # otherwise a service we started keeps running
 
     routes = [
         Route("/", index),
@@ -1775,6 +1869,9 @@ def create_app(
         Route("/api/read", api_read, methods=["POST"]),
         Route("/api/tts/line/{seq}", api_tts_line),
         Route("/api/tts/health", api_tts_health),
+        Route("/api/tts/status", api_tts_status),
+        Route("/api/tts/start", api_tts_start, methods=["POST"]),
+        Route("/api/tts/stop", api_tts_stop, methods=["POST"]),
         Route("/asset/look.png", asset_look),
         Route("/asset/scene/{location}.png", asset_scene),
         Route("/api/scene/{location}", api_scene),

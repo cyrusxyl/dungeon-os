@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
-from dnd_cli import character, dice, sheet
+from dnd_cli import audit, character, dice, sheet
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, load_state, save_state
 from stage.files import read_json, write_json
 
@@ -247,7 +247,8 @@ def create(campaign_dir: Path, fetch, char_id: str, player_name: str | None = No
     (campaign_dir / "characters").mkdir(exist_ok=True)
     character.save(campaign_dir, char_id, data)
     register(campaign_dir, char_id, choices["player"], player_name)
-    return describe(data)
+    problems = audit.audit(data, fetch)
+    return describe(data) + ([audit.summary(problems)] if problems else [])
 
 
 # -- options for the web creator ----------------------------------------------

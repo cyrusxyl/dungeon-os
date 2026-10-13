@@ -59,6 +59,8 @@ export interface Ability {
   /** `item` for a row of the inventory (the Items drawer), `board` for an object on a tile. */
   source?: string
   qty?: number
+  /** Points the player picks (Lay on Hands): the most they may give. The target list is then shown with a number field. */
+  amount?: number
 }
 
 export interface HandView {

@@ -14,7 +14,7 @@ import random
 import re
 
 from dnd_cli import dice, resources
-from dnd_cli.combat import ABILITIES, SKILLS, RulesError, level_for_xp
+from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, level_for_xp
 
 GOLD = "Gold Pieces"
 
@@ -25,6 +25,37 @@ def mods(sheet: dict) -> dict:
 
 def prof_for_level(level: int) -> int:
     return 2 + (level - 1) // 4
+
+
+def prof_from(level_data: dict, level: int) -> int:
+    """The proficiency bonus at `level`: the API's, else the table."""
+    return level_data.get("prof_bonus", prof_for_level(level))
+
+
+def spell_numbers(sheet: dict, spell: dict, prof: int) -> tuple[int, int]:
+    """(spell save DC, spell attack bonus) of this spellcasting block."""
+    m = mods(sheet).get(spell.get("ability"), 0)
+    return 8 + prof + m, prof + m
+
+
+def sync_slots(spell: dict, want: dict[str, int], prune: bool = True) -> list[tuple[str, int, int]]:
+    """Set each slot maximum to `want`, keeping the used slots as they were. `prune` also drops a level that `want` lacks.
+
+    Returns (level, old max, new max) for each change.
+    """
+    slots = spell.setdefault("spell_slots", {})
+    changes = []
+    for k in sorted(set(want) | (set(slots) if prune else set())):
+        old = slots.get(k, {"max": 0, "remaining": 0})
+        new = want.get(k, 0)
+        if old.get("max", 0) == new:
+            continue
+        changes.append((k, old.get("max", 0), new))
+        if new:
+            slots[k] = {"max": new, "remaining": max(0, min(new, old.get("remaining", 0) + new - old.get("max", 0)))}
+        else:
+            del slots[k]
+    return changes
 
 
 def base_ac(class_name: str, m: dict) -> int:
@@ -246,8 +277,34 @@ def _multiple(total: int, mod: int, prof: int) -> int:
     return max(0, min(2, round((total - mod) / prof))) if prof else 0
 
 
+def api_slots(level_data: dict) -> dict[str, int]:
+    """{"1": 3, ...}: the spell slots the API gives at this class level."""
+    sc = level_data.get("spellcasting") or {}
+    return {str(i): sc[f"spell_slots_level_{i}"] for i in range(1, 10) if sc.get(f"spell_slots_level_{i}")}
+
+
+def ensure_spellcasting(sheet: dict, level_data: dict, class_data: dict | None) -> bool:
+    """Make the spellcasting block when the class level gives slots or cantrips and the sheet has none.
+
+    A half caster has none at level 1, so level-up must start it. Returns True if it made the block.
+    """
+    sc = level_data.get("spellcasting") or {}
+    abil = ((class_data or {}).get("spellcasting") or {}).get("spellcasting_ability", {}).get("index")
+    if sheet.get("spellcasting") is not None or not abil or not (api_slots(level_data) or sc.get("cantrips_known")):
+        return False
+    abil = ability(abil)
+    spell = {"ability": abil}
+    dc, attack = spell_numbers(sheet, spell, prof_from(level_data, sheet["level"]))
+    sheet["spellcasting"] = {
+        "ability": abil, "spell_save_dc": dc, "spell_attack_bonus": attack, "spells_known": [],
+        "spell_slots": {k: {"max": n, "remaining": n} for k, n in api_slots(level_data).items()},
+    }
+    return True
+
+
 def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
-             asi: dict | None = None, features: list[dict] | None = None, rng=None) -> list[str]:
+             asi: dict | None = None, features: list[dict] | None = None, rng=None,
+             class_data: dict | None = None) -> list[str]:
     """Apply one class level from the API's `classes/<c>/levels/<n>` data.
 
     Recomputes every stored total from the new ability modifiers and the new
@@ -270,7 +327,7 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
         scores = sheet["ability_scores"]
         scores[abil] = min(20, scores[abil] + n)
         lines.append(f"{abil[:3].upper()} {scores[abil]}")
-    new_mods, prof = mods(sheet), level_data.get("prof_bonus", prof_for_level(new_level))
+    new_mods, prof = mods(sheet), prof_from(level_data, new_level)
 
     con = new_mods["constitution"]
     rolled = rng.randint(1, hit_die) if hp_mode == "roll" else hit_die // 2 + 1
@@ -295,19 +352,16 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
         w["attack_bonus"] = new_mods[abil] + weapon_mult[w["name"]] * prof
         if w.get("damage"):
             w["damage"] = _with_bonus(w["damage"], new_mods[abil])
+    if ensure_spellcasting(sheet, level_data, class_data):
+        lines.append(f"{sheet['class']} now casts spells ({sheet['spellcasting']['ability'][:3].upper()}): "
+                     "ask the player which spells to prepare or learn")
     spell = sheet.get("spellcasting")
     if spell and spell.get("ability") in ABILITIES:
-        m = new_mods[spell["ability"]]
-        spell["spell_save_dc"], spell["spell_attack_bonus"] = 8 + prof + m, prof + m
-    api_slots = (level_data.get("spellcasting") or {})
-    if spell is not None and api_slots:
-        slots = spell.setdefault("spell_slots", {})
-        for lvl in range(1, 10):
-            n = api_slots.get(f"spell_slots_level_{lvl}", 0)
-            if n:
-                old = slots.get(str(lvl), {"max": 0, "remaining": 0})
-                slots[str(lvl)] = {"max": n, "remaining": old.get("remaining", 0) + n - old.get("max", 0)}
-        known = {k: v for k, v in api_slots.items() if k in ("cantrips_known", "spells_known") and v}
+        spell["spell_save_dc"], spell["spell_attack_bonus"] = spell_numbers(sheet, spell, prof)
+    sc = level_data.get("spellcasting") or {}
+    if spell is not None and sc:
+        sync_slots(spell, api_slots(level_data), prune=False)
+        known = {k: v for k, v in sc.items() if k in ("cantrips_known", "spells_known") and v}
         if known:
             lines.append("may know: " + ", ".join(f"{v} {k.replace('_known', '')}" for k, v in known.items()))
     for f in features or []:

@@ -232,9 +232,9 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
       busy.current = false
     }
   }
-  const act = async (ab: Ability, target?: string, at?: Cell) => {
+  const act = async (ab: Ability, target?: string, amount?: number, at?: Cell) => {
     if (!actingAs) return
-    await call('/api/arena/act', { who: actingAs, ability: ab.id, target, aim: at })
+    await call('/api/arena/act', { who: actingAs, ability: ab.id, target, amount, aim: at })
     setPicked(null)
   }
   const improvise = async (text: string, object?: string) => {
@@ -252,7 +252,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
     const [x, y] = cellAt(e)
     if (aimed) {
       // Look before the cast: the first tap on a cell (a phone has no hover) shows what it covers; a tap on the same cell casts.
-      if (aim?.at?.[0] === x && aim.at[1] === y && aim.ok) return act(aimed, undefined, [x, y])
+      if (aim?.at?.[0] === x && aim.at[1] === y && aim.ok) return act(aimed, undefined, undefined, [x, y])
       setHover([x, y])
       return setNote(aim?.at?.[0] === x && aim.at[1] === y ? (aim.why ?? 'You cannot aim there.') : 'Tap the same cell again to cast.')
     }

@@ -121,13 +121,22 @@ function TurnPips({ c }: { c: PartyChar }) {
 function Actions({ c, party, canAct, refresh }: { c: PartyChar; party: Party; canAct: boolean; refresh: () => void }) {
   const [skin, flipSkin] = useSkin()
   const [picked, setPicked] = useState<string | null>(null)
-  const enemies = (party.combat?.order ?? []).filter((o) => !o.pc && o.health !== 'down')
-  // Outside a fight a blocked action is only noise. In a fight the grey card says why (the turn, the action used).
+  // In a fight the enemies are the turn order's. Outside one, the creatures on the stage: an Attack starts the fight.
+  const enemies = party.combat
+    ? party.combat.order.filter((o) => !o.pc && o.health !== 'down')
+    : (party.present ?? []).map((o) => ({ ...o, health: 'unhurt' as const }))
+  // Outside a fight a blocked action is only noise (Attack is on when someone is here). In a fight the grey card says why.
   const listed = c.in_combat ? c.actions : c.actions.filter((a) => !a.why)
   if (listed.length === 0) return null
   const abilities: Ability[] = listed.flatMap((a): Ability[] => {
     const why = a.why ?? (canAct ? null : 'Not now.')
-    const base = { cost: a.cost ?? 'free', kind: a.id, icon: ICON_OF[a.id] ?? 'spark', text: a.info, stat: '', why } as const
+    const icon = ICON_OF[a.id] ?? (a.id.startsWith('smite:') ? 'sword' : 'spark')
+    const base = { cost: a.cost ?? 'free', kind: a.id, icon, text: a.info, stat: a.stat ?? '', why } as const
+    if (a.target === 'ally') {
+      // Lay on Hands: any party member, the healer too. The amount is typed above the list.
+      const allies = party.characters.map((o) => ({ id: o.id, name: o.name, ok: true, why: null, odds: `${o.hp.current ?? 0}/${o.hp.max}` }))
+      return [{ ...base, id: a.id, name: a.label, needs: 'target' as const, targets: allies, ...(a.left != null ? { amount: a.left } : {}) }]
+    }
     if (a.target !== 'enemy') return [{ ...base, id: a.id, name: a.label, needs: 'none' as const }]
     const targets = enemies.map((o) => ({ id: o.id, name: o.name, ok: true, why: null, odds: o.health }))
     // One card per weapon: the weapon is part of the choice.
@@ -142,13 +151,17 @@ function Actions({ c, party, canAct, refresh }: { c: PartyChar; party: Party; ca
     }))
   })
   const selected = abilities.find((ab) => ab.id === picked && !ab.why) ?? null
-  const run = (ab: Ability, target?: string) => {
+  const run = (ab: Ability, target?: string, amount?: number) => {
     setPicked(null)
     const weapon = ab.kind === 'attack' && ab.id.startsWith('attack:') ? ab.id.slice('attack:'.length) : undefined
-    act('/api/action', { who: c.id, action: ab.kind, target, weapon }, refresh)
+    act('/api/action', { who: c.id, action: ab.kind, target, weapon, ...(amount !== undefined ? { amount } : {}) }, refresh)
   }
   const hand: HandView = { who: c.id, abilities, turn: c.turn, feet_left: null, current: null }
-  return <Hand hand={hand} skin={skin} onSkin={flipSkin} selected={selected} objects={[]} onPick={(ab) => (ab.why ? undefined : ab.needs === 'none' ? run(ab) : setPicked(ab.id))} onTarget={run} onImprovise={() => {}} onCancel={() => setPicked(null)} />
+  return (
+    <>
+      <Hand hand={hand} skin={skin} onSkin={flipSkin} selected={selected} objects={[]} onPick={(ab) => (ab.why ? undefined : ab.needs === 'none' ? run(ab) : setPicked(ab.id))} onTarget={run} onImprovise={() => {}} onCancel={() => setPicked(null)} />
+    </>
+  )
 }
 
 const ICON_OF: Record<string, string> = { attack: 'sword', shove: 'fist', hide: 'eye', dash: 'boot', disengage: 'boot', dodge: 'shield', help: 'spark' }

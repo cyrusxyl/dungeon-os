@@ -2,22 +2,11 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
-import { VoiceToggle } from '@/components/VoiceToggle'
 import type { Me } from '@/lib/seats'
 import { postJson } from '@/lib/stage'
-import type { Mode } from '@/lib/view'
 
 /** The host sees a code. Another device (the table screen) types it in to take over as the host. */
-export function HostControls({ me, mode }: { me: Me; mode: Mode }) {
-  return (
-    <>
-      <VoiceToggle mode={mode} />
-      <HostCode me={me} />
-    </>
-  )
-}
-
-function HostCode({ me }: { me: Me }) {
+export function HostCode({ me }: { me: Me }) {
   const [open, setOpen] = useState(false)
   const [code, setCode] = useState('')
   const [bad, setBad] = useState(false)
@@ -44,7 +33,7 @@ function HostCode({ me }: { me: Me }) {
   }
   return (
     <form
-      className="flex items-center gap-2"
+      className="flex flex-wrap items-center gap-2"
       onSubmit={async (e) => {
         e.preventDefault()
         const ok = (await postJson('/api/host/claim', { code })).ok

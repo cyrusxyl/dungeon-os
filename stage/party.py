@@ -24,7 +24,7 @@ def _skills(sheet: dict, mods: dict, prof: int) -> list[dict]:
     return out
 
 
-def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict) -> dict:
+def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict, present: list[dict]) -> dict:
     scores = sheet.get("ability_scores", {})
     mods = {a: dice.mod(scores.get(a, 10)) for a in combat.ABILITIES}
     prof = sheet.get("proficiency_bonus", 2)
@@ -62,7 +62,7 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict) -> dict:
         # What the character has used this turn (all false, and not counted, outside a combat).
         "in_combat": combat.in_combat(st, cid),
         "turn": combat.turn_used(st, cid),
-        "actions": actions.listing(campaign_dir, st, cid, sheet),
+        "actions": actions.listing(campaign_dir, st, cid, sheet, present),
         "attacks": actions.attacks(sheet),
         # Bonuses the party can really give this character: a spell someone knows, Bardic Inspiration.
         "offers": actions.offers(campaign_dir, st, cid),
@@ -75,8 +75,9 @@ def _conditions(st: dict, cid: str) -> list[dict]:
     return [{"name": n, "stance": n in combat.STANCES} for n in names]
 
 
-def view(campaign_dir: Path, hidden: frozenset[str] = frozenset()) -> dict:
-    """`hidden`: creatures the party cannot see (a fight in the dark). They are in the turn bar as "Unseen", with no name or picture."""
+def view(campaign_dir: Path, hidden: frozenset[str] = frozenset(), present: list[dict] | None = None) -> dict:
+    """`present`: the creatures on the stage that are not in the party, as {id, name}: the targets of an Attack out of a fight.
+    `hidden`: creatures the party cannot see (a fight in the dark). They are in the turn bar as "Unseen", with no name or picture."""
     st = read_json(campaign_dir / "state.json") or {}
     enc = st.get("active_encounter") or {}
     fight = enc if enc.get("type") == "combat" else {}
@@ -87,13 +88,14 @@ def view(campaign_dir: Path, hidden: frozenset[str] = frozenset()) -> dict:
         "quests": [{"title": q.get("title"), "status": q.get("status")} for q in st.get("quest_log", [])],
         "effects": effects.catalogue(),
         "combat": None,
+        "present": present or [],
     }
     pcs: dict[str, str] = {}
     for path in sorted((campaign_dir / "characters").glob("*.json")):
         if (sheet := read_json(path)) is None:
             continue
         pcs[path.stem] = sheet.get("name") or beat.title(path.stem)
-        out["characters"].append(_character(campaign_dir, path.stem, sheet, st))
+        out["characters"].append(_character(campaign_dir, path.stem, sheet, st, present or []))
     if fight:
         out["combat"] = {
             "round": fight.get("round", 1),

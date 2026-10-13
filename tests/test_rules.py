@@ -264,6 +264,8 @@ def test_resources(c: Path) -> None:
     check("rage grows with level", resources.for_sheet({"class": "Barbarian", "level": 9, "ability_scores": {}})[0]["max"] == 4)
     check("a rogue has none", resources.for_sheet({"class": "Rogue", "level": 5, "ability_scores": {}}) == [])
     check("bardic inspiration follows CHA (at least 1)", resources.for_sheet({"class": "Bard", "level": 1, "ability_scores": {"charisma": 16}})[0]["max"] == 3)
+    pal = {"class": "Paladin", "level": 3, "ability_scores": {"charisma": 16}}
+    check("Lay on Hands holds 5 HP per level", next(r for r in resources.for_sheet(pal) if r["name"] == "Lay on Hands")["max"] == 15)
     resources.spend(fighter, "second wind")
     check("a spend is counted, and cannot pass the max", resources.spend(fighter, "Second Wind")["used"] == 1)
     check("a use can be given back", resources.spend(fighter, "Second Wind", -1)["used"] == 0)
@@ -333,8 +335,11 @@ def test_actions(c: Path) -> None:
     why = {a["id"]: a["why"] for a in actions.listing(c, fight(c), "legolas", character.load(c, "legolas"))}
     check("the card says why an action is greyed out", why["dash"] == "Not your turn" and why["attack"] == "Not your turn")
     why = {a["id"]: a["why"] for a in actions.listing(c, combat.load_state(c), "aragorn", character.load(c, "aragorn"))}
+    check("outside a combat Attack is on when someone is here",
+          next(a for a in actions.listing(c, combat.load_state(c), "aragorn", character.load(c, "aragorn"), [{"id": "x", "name": "X"}])
+               if a["id"] == "attack")["why"] is None)
     check("outside a combat only the combat-free ones are on",
-          why["attack"] == "Only in a combat" and why["hide"] is None and why["feature:Second Wind"] is None)
+          why["attack"] == "No one here to attack" and why["hide"] is None and why["feature:Second Wind"] is None)
 
     # Second Wind and Action Surge.
     state = fight(c)
@@ -387,6 +392,198 @@ def test_actions(c: Path) -> None:
     ranger["spellcasting"]["spells_known"].remove("Guidance")
     ranger["class"] = "Ranger"
     character.save(c, "legolas", ranger)
+
+
+def test_paladin(c: Path) -> None:
+    print("Divine Smite and Lay on Hands")
+    pal = character.load(c, "aragorn")
+    pal["name"] = "Pally"
+    pal["class"], pal["level"] = "Paladin", 3
+    pal["features_and_traits"] = [{"name": "Lay on Hands", "description": "x"}, {"name": "Divine Smite", "description": "x"}]
+    pal["spellcasting"] = {"ability": "charisma", "spell_save_dc": 11, "spell_attack_bonus": 3,
+                           "spell_slots": {"1": {"max": 3, "remaining": 3}, "2": {"max": 1, "remaining": 1}}}
+    pal["resources_used"] = {}
+    pal["hp"] = {"current": 10, "max": 28, "temp": 0}
+    character.save(c, "pally", pal)
+
+    def duel(hp: int = 100, ctype: str = "") -> dict:
+        st = fight(c)
+        enc = st["active_encounter"]
+        enc["participants"].append("pally")
+        enc["initiative_order"].append({"name": "pally", "initiative": 30, "bonus": 0})
+        enc["current_turn"] = "pally"
+        for g in enc["monsters"].values():
+            g["hp"] = {"current": hp, "max": hp}
+            g["ctype"] = ctype
+        return st
+
+    def slots() -> dict:
+        return {k: v["remaining"] for k, v in character.load(c, "pally")["spellcasting"]["spell_slots"].items()}
+
+    def dealt(st: dict) -> int:
+        return 100 - st["active_encounter"]["monsters"]["goblin#1"]["hp"]["current"]
+
+    def refill() -> None:
+        sh = character.load(c, "pally")
+        for v in sh["spellcasting"]["spell_slots"].values():
+            v["remaining"] = v["max"]
+        character.save(c, "pally", sh)
+
+    check("smite dice: 2d8 at level 1, +1d8 per level, 5d8 at most, +1d8 against undead or a fiend",
+          [combat.smite_dice(n) for n in (1, 2, 4, 5, 9)] == ["2d8", "3d8", "5d8", "5d8", "5d8"]
+          and combat.smite_dice(1, "Undead") == "3d8" and combat.smite_dice(4, "fiend (devil)") == "6d8")
+    state = duel()
+    lines = combat.attack(c, state, "pally", "longsword", "goblin#1", rng=Fixed(15, 6, 3, 4), smite=1)
+    check("--smite adds 2d8 radiant after the weapon (9 + 7) and spends a level 1 slot",
+          dealt(state) == 16 and slots() == {"1": 2, "2": 1} and any("Divine Smite" in ln and "2d8" in ln for ln in lines))
+    refill()
+    state = duel()
+    combat.attack(c, state, "pally", "longsword", "goblin#1", rng=Fixed(20, 6, 6, 1, 2, 3, 4, 5, 6), smite=2)
+    check("a critical hit doubles the smite dice: 3d8 becomes 6d8 (15 + 1+2+3+4+5+6)", dealt(state) == 15 + 21 and slots() == {"1": 3, "2": 0})
+    refill()
+    state = duel(ctype="undead")
+    combat.attack(c, state, "pally", "longsword", "goblin#1", rng=Fixed(15, 6, 1, 1, 1), smite=1)
+    check("an undead takes one more die (3d8)", dealt(state) == 9 + 3)
+    refill()
+    state = duel()
+    check("a level 5 slot or more still gives 5d8 at most", combat.smite_dice(9) == "5d8")
+    check("no smite on a miss, and no slot spent",
+          len(combat.attack(c, duel(), "pally", "longsword", "goblin#1", rng=Fixed(2), smite=1)) == 1 and slots() == {"1": 3, "2": 1})
+    check("no smite without a slot of that level", raises(lambda: combat.attack(c, duel(), "pally", "longsword", "goblin#1", rng=Fixed(15), smite=3)))
+    check("no smite on a ranged attack", raises(lambda: combat.attack(c, duel(), "pally", "longbow", "goblin#1", rng=Fixed(15), smite=1)))
+    check("no smite on a melee weapon used at range", raises(lambda: combat.attack(c, duel(), "pally", "longsword", "goblin#1", rng=Fixed(15), smite=1, melee=False)))
+    check("no smite for a character without the feature", raises(lambda: combat.attack(c, duel(), "aragorn", "longsword", "goblin#1", rng=Fixed(15), smite=1)))
+    sh = character.load(c, "pally")
+    sh["weapons"].append({"name": "Javelin", "attack_bonus": 5, "damage": "1d6+3", "damage_type": "piercing",
+                          "properties": ["thrown"], "equipped": False})
+    character.save(c, "pally", sh)
+    check("no smite for a thrown javelin without the board's say", raises(lambda: combat.attack(c, duel(), "pally", "javelin", "goblin#1", rng=Fixed(15, 4), smite=1)))
+    st_j = duel()
+    combat.attack(c, st_j, "pally", "javelin", "goblin#1", rng=Fixed(15, 4))
+    check("a thrown javelin leaves no smite offer", "pending_smite" not in st_j["active_encounter"])
+    combat.attack(c, duel(), "pally", "javelin", "goblin#1", rng=Fixed(15, 4, 3, 3), smite=1, melee=True)
+    check("the board can still say a thrown weapon is a melee attack", slots()["1"] == 2)
+    refill()
+    st_d = duel()
+    st_d["active_encounter"]["monsters"]["goblin#1"]["hp"] = {"current": 5, "max": 5}
+    out_d = combat.attack(c, st_d, "pally", "longsword", "goblin#1", rng=Fixed(15, 6), smite=1)
+    check("--smite on a target the hit killed spends no slot", slots() == {"1": 3, "2": 1} and "does not smite" in out_d[-1])
+    sh_s = character.load(c, "pally")
+    check("smite:12 and smite:0 are a clean RulesError, not IndexError",
+          raises(lambda: actions.spec_for(sh_s, "smite:12")) and raises(lambda: actions.spec_for(sh_s, "smite:0"))
+          and raises(lambda: actions.spec_for(sh_s, "smite:99")))
+    check("smite:3 with no level 3 slot is a RulesError", raises(lambda: actions.spec_for(sh_s, "smite:3")))
+    check("smite:1 is a spec", actions.spec_for(sh_s, "smite:1")["smite"] == 1)
+    check("the refused tries spent nothing", slots() == {"1": 3, "2": 1})
+
+    # The card: a melee hit leaves an offer, and the choice comes after the hit.
+    state = duel()
+    ids = [a["id"] for a in actions.listing(c, state, "pally", character.load(c, "pally"))]
+    check("a paladin has the Lay on Hands card and no smite card before a hit",
+          "feature:Lay on Hands" in ids and not any(i.startswith("smite:") for i in ids))
+    actions.perform(c, state, "pally", "attack", "goblin#1", "Longsword", Fixed(15, 6))
+    listed = {a["id"]: a for a in actions.listing(c, state, "pally", character.load(c, "pally"))}
+    check("after a melee hit the card offers a smite per slot level, with the slots left, and No smite",
+          [i for i in listed if i.startswith("smite:")] == ["smite:1", "smite:2", "smite:none"]
+          and listed["smite:1"]["stat"] == "3 left" and listed["smite:2"]["why"] is None)
+    done = actions.perform(c, state, "pally", "smite:1", rng=Fixed(4, 4))
+    check("choosing a smite deals 8 radiant to the target and spends the slot",
+          dealt(state) == 9 + 8 and slots()["1"] == 2 and "Divine Smite" in done["lines"][0])
+    check("the offer is gone after use", "pending_smite" not in state["active_encounter"] and raises(lambda: actions.perform(c, state, "pally", "smite:1")))
+    refill()
+    state = duel()
+    actions.perform(c, state, "pally", "attack", "goblin#1", "Longsword", Fixed(15, 6))
+    actions.perform(c, state, "pally", "smite:none")
+    check("No smite drops the offer and spends no slot", "pending_smite" not in state["active_encounter"] and slots()["1"] == 3)
+    state = duel()
+    actions.perform(c, state, "pally", "attack", "goblin#1", "Longsword", Fixed(15, 6))
+    combat.next_turn(c, state)
+    check("the offer ends with the turn", "pending_smite" not in state["active_encounter"])
+    state = duel()
+    actions.perform(c, state, "pally", "attack", "goblin#1", "Longsword", Fixed(2))
+    check("no offer after a miss", "pending_smite" not in state["active_encounter"])
+    state = duel()
+    state["active_encounter"]["monsters"]["goblin#1"]["hp"] = {"current": 5, "max": 5}
+    actions.perform(c, state, "pally", "attack", "goblin#1", "Longsword", Fixed(15, 6))
+    check("no offer when the target is down", "pending_smite" not in state["active_encounter"])
+    state = duel()
+    actions.perform(c, state, "pally", "attack", "goblin#1", "Longsword", Fixed(15, 1))
+    sheet_ = character.load(c, "pally")
+    sheet_["spellcasting"]["spell_slots"]["1"]["remaining"] = 0
+    why = {a["id"]: a["why"] for a in actions.listing(c, state, "pally", sheet_)}
+    check("a level with no slot left is not offered", "smite:1" not in why and why["smite:2"] is None)
+
+    # Lay on Hands (the pool is 5 x level 3 = 15).
+    state = duel()
+    pool = lambda: character.load(c, "pally")["resources_used"].get("Lay on Hands", 0)  # noqa: E731
+    actions.perform(c, state, "pally", "feature:Lay on Hands", "pally", amount=6)
+    check("Lay on Hands heals the amount, spends it from the pool and the action",
+          character.load(c, "pally")["hp"]["current"] == 16 and pool() == 6 and combat.turn_used(state, "pally")["action"])
+    state = duel()
+    legolas = character.load(c, "legolas")
+    legolas["hp"]["current"] = legolas["hp"]["max"] - 3
+    character.save(c, "legolas", legolas)
+    actions.perform(c, state, "pally", "feature:Lay on Hands", "legolas", amount=9)
+    check("it heals an ally, never above their max HP, and spends only the points that healed",
+          character.load(c, "legolas")["hp"]["current"] == legolas["hp"]["max"] and pool() == 9)
+    check("a full-HP target is refused", raises(lambda: actions.perform(c, duel(), "pally", "feature:Lay on Hands", "legolas", amount=1)))
+    check("zero points is refused", raises(lambda: actions.perform(c, duel(), "pally", "feature:Lay on Hands", "pally", amount=0)))
+    check("more than the pool is refused (15 - 9 = 6 left)", raises(lambda: actions.perform(c, duel(), "pally", "feature:Lay on Hands", "pally", amount=7)))
+    check("a creature that is not in the party is refused", raises(lambda: actions.perform(c, duel(), "pally", "feature:Lay on Hands", "goblin#1", amount=1)))
+    entry = next(a for a in actions.listing(c, duel(), "pally", character.load(c, "pally")) if a["id"] == "feature:Lay on Hands")
+    check("the card shows the points left and takes an ally", entry["left"] == 6 and entry["target"] == "ally")
+
+    # Minthara of the-underdark has both.
+    underdark = REPO / "game" / "campaigns" / "the-underdark"
+    if (underdark / "characters" / "minthara.json").exists():
+        sheet_ = character.load(underdark, "minthara")
+        names = [a["id"] for a in actions.listing(underdark, combat.load_state(underdark), "minthara", sheet_)]
+        check("Minthara has the Lay on Hands card", "feature:Lay on Hands" in names)
+        check("Minthara can smite (the offer appears after a melee hit)", combat.smite_levels(sheet_) != {})
+
+
+def test_cli_guards(c: Path) -> None:
+    print("validate --fix offline, use --amount, cache-only brief")
+    import contextlib
+    import io
+    import sys
+
+    from dnd_cli.__main__ import main
+    from dnd_cli.commands import character_cmd, rules_cmd
+
+    def offline(endpoint: str) -> dict:
+        raise combat.RulesError("offline")
+
+    orig_api, orig_argv = rules_cmd._api, sys.argv
+    path = character.character_path(c, "aragorn")
+    try:
+        rules_cmd._api = offline
+        before, mtime = path.read_bytes(), path.stat().st_mtime_ns
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = character_cmd.execute_validate(str(c), "aragorn", fix=True)
+        check("validate --fix offline: warning, no fixed claim, exit 1, sheet untouched",
+              rc == 1 and "warning: cannot check" in err.getvalue() and "fixed:" not in out.getvalue()
+              and path.read_bytes() == before and path.stat().st_mtime_ns == mtime)
+        sys.argv = ["dnd-cli", "character", "use", str(c), "aragorn", "Second Wind", "--amount", "-2"]
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            rc = main()
+        check("use --amount -2 is refused, no uses given back", rc == 1 and "--amount" in err.getvalue() and path.read_bytes() == before)
+    finally:
+        rules_cmd._api, sys.argv = orig_api, orig_argv
+
+    calls = []
+    import dnd_cli.api as api_mod
+    orig_call = api_mod.safe_api_call
+    api_mod.safe_api_call = lambda e: calls.append(e) or (None, "no network")
+    try:
+        text = session_cmd.brief(c, session_cmd.cached_api)
+    finally:
+        api_mod.safe_api_call = orig_call
+    check("the brief audit never calls the network", calls == [] and "Session brief" in text)
+    check("an uncached endpoint is a RulesError the audit reads as cannot check",
+          raises(lambda: session_cmd.cached_api("classes/zzz-not-cached")))
 
 
 def test_death(c: Path) -> None:
@@ -505,6 +702,8 @@ if __name__ == "__main__":
         test_effects(c)
         test_resources(c)
         test_actions(c)
+        test_paladin(c)
+        test_cli_guards(c)
         test_death(c)
         test_sheet(c)
         test_session_end(c)

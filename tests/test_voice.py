@@ -93,7 +93,7 @@ async def main() -> None:
         seen: list = []
         voice.transport = fake_service(seen)
         await voice.close()  # the shared client is made again with the fake transport
-        voice._health.clear()
+        voice.forget_health()
         os.environ["DUNGEON_TTS_URL"] = "http://tts.test"
         status, _, body = await call(app, "GET", f"/api/tts/line/{say}")
         check("204 for a say line with no voice mapped", status == 204 and not seen)
@@ -116,6 +116,31 @@ async def main() -> None:
         check("no mood is neutral", voice.item({"type": "narrate", "text": "Dark."}, None)["style"] == "neutral")
         style = lambda e: voice.item({"type": "say", "actor": "astarion", "text": "Hi.", "emotion": e}, stage.campaign_dir)["style"]
         check("say style is the emotion", style("angry") == "angry" and style("fearful") == "fearful")
+        (stage.campaign_dir / "stage" / "voices.json").write_text(json.dumps({"astarion": "astarion", "sireth": "drow"}))
+        pc = {"type": "pc_say", "actor": "sireth", "text": "Hi."}
+        nr, npc = {"type": "narrate", "text": "Dark."}, {"type": "say", "actor": "astarion", "text": "Hi."}
+        kinds = lambda: [bool(voice.item(e, stage.campaign_dir)) for e in (nr, npc, pc)]
+        check("old settings: narration and npc speak, player is silent", kinds() == [True, True, False])
+        saved_settings.save_settings({"voice_parts": {"narration": False}})
+        check("narration off silences only narration", kinds() == [False, True, False])
+        saved_settings.save_settings({"voice_parts": {"narration": True, "npc": False}})
+        check("npc off silences only npc", kinds() == [True, False, False])
+        saved_settings.save_settings({"voice_parts": {"npc": True, "player": True}})
+        check("player on speaks pc_say", kinds() == [True, True, True])
+        check("pc_say uses the mapped voice", voice.item(pc, stage.campaign_dir) == {"text": "Hi.", "voice": "drow", "style": "neutral"})
+        check("unmapped pc_say is silent", voice.item({**pc, "actor": "nobody"}, stage.campaign_dir) is None)
+        stage.fold([pc])
+        pcseq = stage.state["log"][-1]["seq"]
+        seen.clear()
+        status, _, body = await call(app, "GET", f"/api/tts/line/{pcseq}")
+        check("a pc_say line streams", status == 200 and body == PCM)
+        saved_settings.save_settings({"voice_parts": {"player": False}})
+        seen.clear()
+        status, _, body = await call(app, "GET", f"/api/tts/line/{pcseq}")
+        check("player off: pc_say line is 204", status == 204 and not seen)
+        saved_settings.save_settings({"voice": False, "voice_parts": {"narration": True, "npc": True, "player": True}})
+        check("master voice off silences all", kinds() == [False, False, False])
+        saved_settings.save_settings({"voice": True, "voice_parts": {"player": False}})
         check("every emotion is its own voice style", all(style(e) == e for e in EMOTIONS))
         from stage.lpc import EMOTION_FACES
         check("every emotion but neutral has a face", set(EMOTION_FACES) == set(EMOTIONS) - {"neutral"})

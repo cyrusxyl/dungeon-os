@@ -4,8 +4,8 @@ import { useActorName } from '@/lib/stage'
 type Feed = { seq: number; text: string }
 
 function Line({ line }: { line: StoryLine }) {
-  const name = useActorName(line.type === 'say' ? line.actor : undefined)
-  return line.type === 'say' ? (
+  const name = useActorName(line.type !== 'narrate' ? line.actor : undefined)
+  return line.type !== 'narrate' ? (
     <p>
       <span className="pixel-font mr-2 text-[10px] text-[var(--gold)]">{name}</span>
       {line.text}

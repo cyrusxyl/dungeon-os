@@ -15,6 +15,8 @@ Guide players through leveling up with API-validated features, spell progression
 
 ## Level-Up
 
+Make every sheet with `character new` and `level-up`. Never write or patch a sheet by hand. After any change, run `uv run dnd-cli character validate <id> --fix`. Level-up starts the spellcasting block for a half caster (paladin, ranger) at level 2. Read the "sheet problems" line it prints.
+
 ```bash
 uv run dnd-cli character level-up sireth                     # average HP (die / 2 + 1 + CON)
 uv run dnd-cli character level-up sireth --hp roll           # the player rolls for HP
@@ -27,7 +29,6 @@ One command does the whole level from the 5e API: level, HP and hit dice, profic
 You and the player still choose:
 1. **ASI or feat** (levels 4, 8, 12, 16, 19 for most classes; the command refuses until you give `--asi`). +2 to one score or +1 to two; no score above 20. A feat: `uv run dnd-cli get feats/<index> --fields name,desc,prerequisites`, check the prerequisites, then add it to `features_and_traits` with the Edit tool (text only; a +1 score from a half-feat goes in `--asi str+1`).
 2. **New spells** (known casters, wizards' two spells per level): `uv run dnd-cli search spells --class <class> --level <n>`, then add the choices to `spellcasting.spells_known` with the Edit tool.
-3. **Subclass features** are not in the API's base class data: add them by hand from the player's choice.
 
 Then narrate the level in one short beat: "Sireth reaches level 4 — HP 31, Ki 4."
 

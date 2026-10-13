@@ -27,11 +27,15 @@ SETTINGS_PATH = GAME_DIR / "settings.json"
 
 COMBAT_DEFAULTS: dict = {"reaction_seconds": 10, "round_summary": True}  # see combat-board.md, "Settings"
 
+VOICE_PARTS_DEFAULTS: dict = {"narration": True, "npc": True, "player": False}
+
 DEFAULTS: dict = {
     "agent_framework": "claude",
     "model": "sonnet",
     "voice": True,  # off: the server never calls the voice service, even when a URL is set
+    "voice_parts": VOICE_PARTS_DEFAULTS,  # which lines are spoken, when `voice` is on
     "tts_url": "",  # narration voice service, e.g. http://pc:8770; env DUNGEON_TTS_URL wins
+    "tts_stop_on_exit": False,  # stop a voice service that this server started when the server stops
     "combat": COMBAT_DEFAULTS,
 }
 
@@ -64,11 +68,15 @@ def framework_available(key: str) -> bool:
 
 def load_settings() -> dict:
     """Return the saved settings merged over the defaults."""
-    data = {**DEFAULTS, "combat": dict(COMBAT_DEFAULTS)}
+    data = {**DEFAULTS, "combat": dict(COMBAT_DEFAULTS), "voice_parts": dict(VOICE_PARTS_DEFAULTS)}
     try:
         saved = json.loads(SETTINGS_PATH.read_text())
         if isinstance(saved, dict):
-            data.update({k: v for k, v in saved.items() if k in DEFAULTS and k != "combat"})
+            data.update({k: v for k, v in saved.items() if k in DEFAULTS and k not in ("combat", "voice_parts")})
+            if isinstance(saved.get("voice_parts"), dict):
+                data["voice_parts"].update(
+                    {k: v for k, v in saved["voice_parts"].items() if k in VOICE_PARTS_DEFAULTS and isinstance(v, bool)}
+                )
             if isinstance(saved.get("combat"), dict):
                 data["combat"].update({k: v for k, v in saved["combat"].items() if k in COMBAT_DEFAULTS})
             if isinstance(saved.get("sessions"), dict):
@@ -89,6 +97,14 @@ def save_settings(values: dict) -> None:
     current["model"] = values.get("model", current["model"]).strip()
     if isinstance(values.get("voice"), bool):
         current["voice"] = values["voice"]
+    if isinstance(values.get("tts_url"), str):
+        current["tts_url"] = values["tts_url"].strip()
+    if isinstance(values.get("tts_stop_on_exit"), bool):
+        current["tts_stop_on_exit"] = values["tts_stop_on_exit"]
+    if isinstance(values.get("voice_parts"), dict):
+        current["voice_parts"].update(
+            {k: v for k, v in values["voice_parts"].items() if k in VOICE_PARTS_DEFAULTS and isinstance(v, bool)}
+        )
     _write(current)
 
 

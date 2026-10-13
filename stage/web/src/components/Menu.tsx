@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
+import { Settings, type Framework, type SettingsData } from '@/components/Settings'
 import { write } from '@/lib/local'
 import { postJson } from '@/lib/stage'
 import { defaultMode } from '@/lib/view'
-
-const CUSTOM = '__custom__' // the model dropdown's "type your own" entry
 
 interface Campaign {
   slug: string
@@ -23,18 +22,11 @@ interface Save {
   label: string
 }
 
-interface Framework {
-  key: string
-  label: string
-  available: boolean
-  models: string[]
-}
-
 export interface MenuData {
   game: string | null
   campaigns: Campaign[]
   resume: Campaign | null
-  settings: { agent_framework: string; model: string; voice: boolean }
+  settings: SettingsData
   frameworks: Framework[]
 }
 
@@ -64,17 +56,9 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   const [pitch, setPitch] = useState('')
   const [party, setParty] = useState<'create' | 'premade'>('create')
   const [play, setPlay] = useState<'here' | 'phones'>('here')
-  const [framework, setFramework] = useState(data.settings.agent_framework)
-  const [model, setModel] = useState(data.settings.model)
-  const [voice, setVoice] = useState(data.settings.voice)
   const [picked, setPicked] = useState<Campaign | null>(null)
   const [saves, setSaves] = useState<Save[] | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  // A saved model outside the presets is edited as Custom, so it is never lost.
-  const [custom, setCustom] = useState(
-    () => !data.frameworks.find((f) => f.key === data.settings.agent_framework)?.models.includes(data.settings.model),
-  )
-
   useEffect(() => setError(''), [panel])
 
   const start = async (
@@ -108,15 +92,6 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
     setPanel('load')
   }
 
-  const saveSettings = async () => {
-    const res = await post('/api/settings', { agent_framework: framework, model: model.trim(), voice })
-    if (res.error) setError(String(res.error))
-    else {
-      onChanged(res as unknown as MenuData)
-      setPanel('main')
-    }
-  }
-
   // The screen that starts a game says what it is: a place to play, or the shared table that phones join.
   const begin = () => {
     write('dungeon-view', play === 'phones' ? 'table' : defaultMode())
@@ -124,7 +99,6 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   }
 
   const needsPitch = party === 'premade' && !pitch.trim()
-  const fw = data.frameworks.find((f) => f.key === framework)
 
   return (
     <div className="relative grid h-full place-items-center overflow-hidden p-4">
@@ -310,71 +284,16 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
 
         {panel === 'settings' && (
           <Panel title="Settings" onBack={() => setPanel('main')}>
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-2 text-lg">Who runs the DM</legend>
-              {data.frameworks.map((f) => (
-                <label key={f.key} className={`flex items-center gap-3 text-lg ${f.available ? '' : 'opacity-50'}`}>
-                  <input
-                    type="radio"
-                    name="framework"
-                    value={f.key}
-                    checked={framework === f.key}
-                    disabled={!f.available}
-                    onChange={() => {
-                      setFramework(f.key)
-                      setModel(f.models[0] ?? '')
-                      setCustom(false)
-                    }}
-                    className="accent-[var(--gold)]"
-                  />
-                  {f.label}
-                  {!f.available && <span className="text-sm text-[var(--dim)]">(not installed)</span>}
-                </label>
-              ))}
-            </fieldset>
-            <label htmlFor="model" className="text-lg">
-              Model
-            </label>
-            <div className="relative border-y-6 border-foreground">
-              <select
-                id="model"
-                value={custom ? CUSTOM : model}
-                onChange={(e) => {
-                  if (e.target.value === CUSTOM) setCustom(true)
-                  else {
-                    setCustom(false)
-                    setModel(e.target.value)
-                  }
-                }}
-                className="w-full cursor-pointer bg-[var(--panel)] px-3 py-2 text-lg text-[var(--gold)] outline-none"
-              >
-                {fw?.models.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-                <option value={CUSTOM}>Custom…</option>
-              </select>
-              <div className="pointer-events-none absolute inset-0 -mx-1.5 border-x-6 border-foreground" aria-hidden="true" />
-            </div>
-            {custom && (
-              <Input
-                aria-label="Custom model"
-                placeholder="alias or full model id (empty = the CLI default)"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                font="normal"
-                className="text-lg"
-              />
-            )}
-            <label className="flex items-center gap-3 text-lg">
-              <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} className="accent-[var(--gold)]" />
-              Narration voice
-            </label>
-            <p className="text-sm text-[var(--dim)]">Off: the game never contacts the voice service. Use this on a machine that has none.</p>
-            <Button onClick={saveSettings} className="text-[10px]">
-              Save
-            </Button>
+            <Settings
+              settings={data.settings}
+              frameworks={data.frameworks}
+              inGame={false}
+              mode={defaultMode()}
+              onSaved={(m) => {
+                onChanged(m as MenuData)
+                setPanel('main')
+              }}
+            />
           </Panel>
         )}
 

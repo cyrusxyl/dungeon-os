@@ -15,7 +15,7 @@ Use with `bg3-setting` for lore. Same precedence: `canon.json` > `dm_story.md` >
 5. Dice results are final (anti-drift rules). A companion's personal quest changes only through play.
 
 ## Building a sheet
-Follow `character-creation` (flags at "pitch names existing characters"). Do not hand-write JSON. Then set the look with `stage`.
+Follow `character-creation` (flags at "pitch names existing characters"). Do not hand-write JSON. Make every sheet with `character new` and `level-up`. Never write or patch a sheet by hand. After any change, run `uv run dnd-cli character validate <id> --fix`. Then set the look with `stage`.
 
 Races and backgrounds now work for all ten companions:
 - Githyanki: `--race githyanki`. Drow: `--race elf --subrace drow`. Wood elf: `--race elf --subrace wood-elf`. High half-elf: `--race half-elf`, and name the high-elf blood in the backstory.

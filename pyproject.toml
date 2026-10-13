@@ -25,6 +25,7 @@ dnd-cli = "dnd_cli.__main__:main"
 dungeon-os = "view.launch:main"
 dungeon-view = "view.app:main"
 dungeon-view-web = "view.serve:main"
+dungeon-voice = "view.voicecmd:main"
 
 [tool.uv]
 package = true

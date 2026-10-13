@@ -208,9 +208,10 @@ def create_parser():
     p.add_argument("campaign")
     p.add_argument("name", help="Character file name, without .json")
 
-    p = character_sub.add_parser("validate", help="Validate a character file against the schema")
+    p = character_sub.add_parser("validate", help="Validate a character file against the schema and the 5e class data")
     p.add_argument("campaign")
     p.add_argument("name")
+    p.add_argument("--fix", action="store_true", help="Fix spellcasting block, slot maximums, spell DC and proficiency")
 
     p = character_sub.add_parser("apply-damage", help="Apply damage: temp HP absorbs first, then current HP, floored at 0")
     p.add_argument("campaign")
@@ -232,11 +233,12 @@ def create_parser():
     p.add_argument("name")
     p.add_argument("level", type=int, choices=range(1, 10))
 
-    p = character_sub.add_parser("use", help="Spend one use of a class resource (Rage, Ki, Second Wind...): use <campaign> <name> \"<resource>\" [--back]")
+    p = character_sub.add_parser("use", help="Spend one use of a class resource (Rage, Ki, Second Wind...): use <campaign> <name> \"<resource>\" [--amount N] [--back]")
     p.add_argument("campaign")
     p.add_argument("name")
     p.add_argument("resource")
     p.add_argument("--back", action="store_true", help="Give a use back instead")
+    p.add_argument("--amount", type=int, default=1, help="How many uses (Lay on Hands points)")
 
     p = character_sub.add_parser("item", help="add|remove an inventory item: item <campaign> <name> add|remove \"<item>\" [--qty N] [--canon]")
     p.add_argument("campaign")
@@ -470,6 +472,8 @@ def create_parser():
     p.add_argument("--bonus", type=int, default=0, help="Extra to-hit bonus (bless, cover as negative)")
     p.add_argument("--cost", default="action", choices=["action", "bonus", "reaction", "free"],
                    help="What the attack uses on the turn tracker (default action; free for an extra attack of one action)")
+    p.add_argument("--smite", type=int, default=None, choices=range(1, 10), metavar="SLOT",
+                   help="Paladin: on a melee hit, spend a spell slot of this level for Divine Smite")
     rolls(p)
 
     p = subparsers.add_parser("save", help="Saving throws: <targets...> <ability> --dc N [--damage 8d6 --half] or --from creature:action")
@@ -725,7 +729,7 @@ def main():
             if cc == "show":
                 return character_cmd.execute_show(args.campaign, args.name)
             elif cc == "validate":
-                return character_cmd.execute_validate(args.campaign, args.name)
+                return character_cmd.execute_validate(args.campaign, args.name, args.fix)
             elif cc == "apply-damage":
                 return character_cmd.execute_apply_damage(args.campaign, args.name, args.amount)
             elif cc == "heal":
@@ -735,7 +739,10 @@ def main():
             elif cc == "cast":
                 return character_cmd.execute_cast(args.campaign, args.name, args.level)
             elif cc == "use":
-                return character_cmd.execute_use(args.campaign, args.name, args.resource, -1 if args.back else 1)
+                if args.amount < 1:
+                    print("Error: --amount must be 1 or more (use --back to give uses back).", file=sys.stderr)
+                    return 1
+                return character_cmd.execute_use(args.campaign, args.name, args.resource, -args.amount if args.back else args.amount)
             elif cc == "restore-slots":
                 return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
             if cc == "item":

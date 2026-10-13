@@ -15,7 +15,7 @@ from dnd_cli.api import api_get
 from stage import arena, board, items
 
 ICONS = {"attack": "sword", "spell_attack": "flame", "zone": "flame", "shove": "fist", "hide": "eye", "dash": "boot", "disengage": "boot",
-         "dodge": "shield", "help": "spark", "heal": "heart", "pickup": "hand", "feature": "spark", "improvise": "spark"}
+         "dodge": "shield", "help": "spark", "heal": "heart", "pickup": "hand", "feature": "spark", "improvise": "spark", "smite": "sword"}
 
 
 def odds(chance: float) -> str:
@@ -86,7 +86,7 @@ def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
         if ab["kind"] in ("attack", "spell_attack", "shove"):
             ab["needs"] = "target"
             ab["targets"] = _target_info(campaign_dir, state, a, cid, ab, visible)
-        elif ab["kind"] == "heal":
+        elif ab["kind"] == "heal" or ab.get("ally"):
             ab["needs"] = "target"
             ab["targets"] = items.ally_targets(campaign_dir, state, a, cid)
         else:
@@ -105,9 +105,11 @@ def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
         stat = (f"+{ab['attack']['bonus']} · " if ab["kind"] == "spell_attack" else f"DC {ab['save']['dc']} · ") + ab["damage"][0][0]
         add({**ab, "id": f"spell:{ab['id']}", "text": f"Level {ab['spell_level']} spell · {reach} ft" if ab["spell_level"] else f"Cantrip · {reach} ft", "stat": stat}, why)
     for spec in actions.listing(campaign_dir, state, cid, sheet):
-        kind = "shove" if spec["id"] == "shove" else "hide" if spec["id"] == "hide" else "feature" if spec["id"].startswith("feature:") else "self"
+        kind = ("shove" if spec["id"] == "shove" else "hide" if spec["id"] == "hide" else "feature" if spec["id"].startswith("feature:")
+                else "smite" if spec["id"].startswith("smite:") else "self")
         why = None if spec["why"] in (None, "No enemy") else spec["why"]
-        add({"id": spec["id"], "name": spec["label"], "cost": spec["cost"] or "free", "kind": kind, "text": spec["info"], "stat": ""}, why)
+        extra = {"ally": True, **({"amount": spec["left"]} if spec.get("left") is not None else {})} if spec.get("target") == "ally" else {}
+        add({"id": spec["id"], "name": spec["label"], "cost": spec["cost"] or "free", "kind": kind, "text": spec["info"], "stat": spec.get("stat", ""), **extra}, why)
     for ab in items.listing(sheet, rec):
         add(ab, _spent(turn, ab["cost"]))
     for ab in items.pickups(state, a, cid):
@@ -140,7 +142,8 @@ def is_known(state: dict, a: dict, cid: str, vis: set | None) -> bool:
     return not board.is_foe(state, cid) or vis is None or board.pos(a, cid) in vis
 
 
-def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, target: str | None = None, aim=None, rng=None) -> list[str]:
+def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, target: str | None = None, aim=None, rng=None,
+        amount: int | None = None) -> list[str]:
     """Run an ability of a character's hand on the board. Raises BoardError with the reason when it cannot be done."""
     board.require_turn(state, cid)
     ab = next((x for x in listing(campaign_dir, state, a, cid) if x["id"] == ability_id), None)
@@ -169,7 +172,7 @@ def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, tar
         return board.shove(campaign_dir, state, a, cid, target, rng)
     if kind == "hide":
         return board.hide(campaign_dir, state, a, cid, rng)
-    done = actions.perform(campaign_dir, state, cid, ab["id"], target, None, rng=rng)
+    done = actions.perform(campaign_dir, state, cid, ab["id"], target, None, rng=rng, amount=amount)
     if done.get("roll"):
         raise board.BoardError(f"{ab['name']} is not on the board yet.")
     for line in done["lines"]:

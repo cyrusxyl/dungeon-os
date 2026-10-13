@@ -58,7 +58,7 @@ export function DialogueBox({
   versions: Record<string, number>
 }) {
   const [typed, done, finish] = useTypewriter(line?.text ?? '', line?.seq ?? 0)
-  const speaker = line?.type === 'say' ? line.actor : undefined
+  const speaker = line?.type === 'say' || line?.type === 'pc_say' ? line.actor : undefined
   const speakerName = useActorName(speaker, speaker ? versions[speaker] : 0)
 
   const click = () => {
@@ -84,7 +84,7 @@ export function DialogueBox({
     return <div className="min-h-32 border-4 border-[var(--gold)] bg-[var(--panel)] p-4 text-[var(--dim)]">…</div>
   }
 
-  const speaking = line.type === 'say' && line.actor
+  const speaking = (line.type === 'say' || line.type === 'pc_say') && line.actor
   return (
     <button
       type="button"

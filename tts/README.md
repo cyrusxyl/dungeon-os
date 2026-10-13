@@ -2,6 +2,27 @@
 
 Separate uv project. Do not add torch to the root project.
 
+## WSL quick start
+The `.venv` must hold the gpu extra (`uv sync --extra gpu`, done once).
+
+1. Start the service: `tts/run.sh` (real voice, F5 on CUDA). Use `tts/run.sh mock` for test tones.
+2. Wait for the model to load. Then check it: `curl http://127.0.0.1:8770/health`. It lists the voice slugs.
+3. Set `"tts_url": "http://127.0.0.1:8770"` in `game/settings.json`.
+4. Map actors to voices in `game/campaigns/<campaign>/stage/voices.json`. Keys are actor ids. Values are slugs from `/health`.
+5. The player character speaks only if its id is in `voices.json` and the player voice option is on. The option is in Settings.
+6. Stop the service: `pkill -f "uvicorn service.app:app"`.
+
+You can also start it from Settings, on the Voice tab. Set the service URL to this machine (for example `http://127.0.0.1:8770`), save, then press Start voice server. The stage server runs `tts/run.sh f5` and writes the log to `tts/cache/service.log`. It stops only a service it started. It keeps that service running when it exits, unless you tick "Stop it when the game server stops". Set `DUNGEON_TTS_ENGINE=mock` for the stage server to start the mock engine.
+
+## Share the voice with another machine (the Pi)
+Run `uv run dungeon-voice` on this machine. It starts the service and opens a reverse SSH tunnel to the host `pi` (an `ssh` host name). The Pi then reaches the voice at `http://127.0.0.1:8770`. This needs no firewall rule. It works while the command runs on this machine. The tunnel reconnects after a drop. Stop it with Ctrl+C.
+
+On the Pi, set `"tts_url": "http://127.0.0.1:8770"` in `game/settings.json`. The Pi has no `tts/.venv`, so its Settings page shows no Start button.
+
+Options: `--tunnel "host1 host2"` (or `DUNGEON_VOICE_TUNNEL`; empty means no tunnel), `--engine mock`, `--port`.
+
+`tts/run.sh` reads `TTS_PORT`, `TTS_HOST`, `TTS_VOICES_DIR` and `BG3_VOICE_HOME`.
+
 ## Run
     cd tts
     uv run uvicorn service.app:app --port 8770

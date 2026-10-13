@@ -19,14 +19,33 @@ _tasks: set[asyncio.Task] = set()
 transport: httpx.AsyncBaseTransport | None = None  # tests set a MockTransport
 
 
+def configured_url() -> str | None:
+    """The service URL from the env or the settings, whether voice is on or off."""
+    from view.settings import load_settings
+
+    url = os.environ.get("DUNGEON_TTS_URL") or load_settings().get("tts_url")
+    return str(url).rstrip("/") if url else None
+
+
 def tts_url() -> str | None:
     from view.settings import load_settings
 
-    settings = load_settings()
-    if not settings["voice"]:
-        return None
-    url = os.environ.get("DUNGEON_TTS_URL") or settings.get("tts_url")
-    return str(url).rstrip("/") if url else None
+    return configured_url() if load_settings()["voice"] else None
+
+
+def forget_health() -> None:
+    """Drop the cached answers of `healthy()`."""
+    _health.clear()
+
+
+async def probe(url: str, timeout: object = 2.0) -> bool:
+    """Ask the service at `url` if it is up. Not read from the cache; the answer goes into it."""
+    try:
+        ok = (await _client().get(f"{url}/health", timeout=timeout)).json().get("ok") is True
+    except (httpx.HTTPError, OSError, ValueError, AttributeError):
+        ok = False
+    _health[url] = (time.monotonic(), ok)
+    return ok
 
 
 _shared: httpx.AsyncClient | None = None
@@ -88,35 +107,42 @@ def plain(text: str) -> str:
     return " ".join(text.split())
 
 
-_voices: dict[Path, tuple[float, dict[str, str]]] = {}
+_voices: dict[Path, tuple[tuple[int, int], dict[str, str]]] = {}
 
 
 def voices_map(campaign_dir: Path | None) -> dict[str, str]:
-    """actor-id -> voice slug from `<campaign>/stage/voices.json`. Empty when the file is missing or bad. Cached by file mtime."""
+    """actor-id -> voice slug from `<campaign>/stage/voices.json`. Empty when the file is missing or bad. Cached by file mtime and size."""
     if not campaign_dir:
         return {}
     path = Path(campaign_dir) / "stage" / "voices.json"
     try:
-        mtime = path.stat().st_mtime_ns
+        st = path.stat()
     except OSError:
         return {}
+    stamp = (st.st_mtime_ns, st.st_size)  # the size too: two quick writes can share one coarse mtime
     hit = _voices.get(path)
-    if hit and hit[0] == mtime:
+    if hit and hit[0] == stamp:
         return hit[1]
     data = read_json(path) or {}
     found = {str(k): str(v) for k, v in data.items() if isinstance(v, str) and k != "_comment"}
-    _voices[path] = (mtime, found)
+    _voices[path] = (stamp, found)
     return found
 
 
 def item(event: dict, campaign_dir: Path | None) -> dict | None:
     """What to speak for a log event: {text, voice, style}, or None when it stays silent."""
     kind, text = event.get("type"), plain(str(event.get("text", "")))
-    if not text:
+    if not text or kind not in ("narrate", "say", "pc_say"):
         return None
-    if kind == "narrate":
+    from view.settings import load_settings
+
+    settings = load_settings()
+    parts = settings["voice_parts"]
+    if not settings["voice"]:
+        return None
+    if kind == "narrate" and parts["narration"]:
         return {"text": text, "voice": "narrator", "style": str(event.get("mood") or "neutral")}
-    if kind == "say":
+    if (kind == "say" and parts["npc"]) or (kind == "pc_say" and parts["player"]):
         slug = voices_map(campaign_dir).get(str(event.get("actor", "")))
         emotion = str(event.get("emotion") or "neutral")
         if slug:
@@ -151,9 +177,4 @@ async def healthy() -> bool:
     hit = _health.get(url)
     if hit and now - hit[0] < HEALTH_TTL:
         return hit[1]
-    try:
-        ok = (await _client().get(f"{url}/health")).json().get("ok") is True
-    except (httpx.HTTPError, OSError, ValueError, AttributeError):
-        ok = False
-    _health[url] = (time.monotonic(), ok)
-    return ok
+    return await probe(url, timeout=httpx.USE_CLIENT_DEFAULT)

@@ -130,6 +130,9 @@ def apply(state: dict, event: dict) -> dict:
         s["choices"] = None
         s["roll_request"] = None
         s["await"] = None  # the DM answered; a later `@await` in the same beat sets it again
+    elif kind == "pc_say":
+        # A player character's words: in the story log, but the DM has not answered, so choices and await stay.
+        s["log"] = (s["log"] + [{**event, "seq": s["seq"]}])[-LOG_LIMIT:]
     elif kind == "choices":
         s["choices"] = {"options": event["options"], "seq": s["seq"]} | ({"who": event["who"]} if event.get("who") else {})
     elif kind == "whisper":
