@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
 import { useParty } from '@/lib/party'
 import { recallSeats, rememberSeats, savedName, useMe } from '@/lib/seats'
-import { defaultMode, type Layout, type Mode, useView } from '@/lib/view'
+import { type Layout, type Mode, useView, useWide } from '@/lib/view'
 import { postJson, sendInput, titleCase, useStage } from '@/lib/stage'
 
 const STATUS_TEXT: Record<string, string> = {
@@ -61,6 +61,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const { party, refresh } = useParty(`${state?.dm.status ?? 'starting'}:${state?.seats.length ?? 0}`)
   const me = useMe(state)
   const { mode, setMode, chosen: roleChosen, hand, setHand } = useView()
+  const wide = useWide()
   const [viewOpen, setViewOpen] = useState(false)
   const [seatOpen, setSeatOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -162,7 +163,9 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
     <StageView state={state} speaker={speaker} />
   )
   // The fight's own hand (on the board) lists the actions; the table screen takes no input. Cards then skip their action buttons.
-  const handOnBoard = Boolean(state.arena) && (mode === 'full' || (mode === 'hand' && hand.scene))
+  // The scene always shows on the table and on a wide window; on a small window it is the player's choice.
+  const showScene = mode === 'table' || wide || hand.scene
+  const handOnBoard = Boolean(state.arena) && mode !== 'table' && (wide || hand.scene)
   const hideActions = mode === 'table' || handOnBoard
   const waitingWorld = state.party_mode === 'premade' && log.length === 0 && ['starting', 'busy'].includes(state.dm.status)
   const activity = state.activity?.at(-1)
@@ -325,7 +328,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       {state.roll_request && !showCreator && (mode === 'table' || caughtUp) && (
         <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} canRoll={canType && caughtUp && mine.includes(state.roll_request.who)} />
       )}
-      {needsRole && <RoleScreen onTable={() => setMode('table')} onPlay={() => setMode(defaultMode())} />}
+      {needsRole && <RoleScreen onTable={() => setMode('table')} onPlay={() => setMode('player')} />}
       {settingsOpen && <SettingsPanel isHost={isHost} mode={mode} onClose={() => setSettingsOpen(false)} />}
       {inviteOpen && (
         <div role="dialog" aria-label="Invite" className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4">
@@ -343,6 +346,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           party={party}
           seats={state.seats}
           me={me}
+          table={mode === 'table'}
           onClose={() => {
             setSeatOpen(false)
             if (!mine.length) setMode('table') // no seat: this device only watches
@@ -360,21 +364,20 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   )
   const viewPanel = viewOpen && (
     <div className="flex flex-wrap items-center gap-3 border-2 border-[var(--border)] bg-[var(--panel)] p-2 text-base">
-      <label className="flex items-center gap-2" title="Full: everything on one screen. Table: the shared screen, no input. Hand: this player's card on a phone.">
+      <label className="flex items-center gap-2" title="Player: a screen to play on. The layout follows the window. Table: the shared screen, no input.">
         Screen
         <select value={mode} onChange={(e) => setMode(e.target.value as Mode)} className="border-2 border-[var(--border)] bg-[var(--panel)] px-2">
-          <option value="full">Full</option>
+          <option value="player">Player</option>
           <option value="table">Table (shared)</option>
-          <option value="hand">Hand (phone)</option>
         </select>
       </label>
-      {mode === 'hand' && (
+      {mode === 'player' && !wide && (
         <>
           <label className="flex items-center gap-2" title="Show the scene and its picture above your card, as on the shared screen.">
             <input type="checkbox" checked={hand.scene} onChange={(e) => setHand({ ...hand, scene: e.target.checked })} />
             Show the scene
           </label>
-          <label className="flex items-center gap-2" title="Auto follows how you hold the phone. Portrait stacks the parts. Landscape puts the scene beside your card.">
+          <label className="flex items-center gap-2" title="Auto follows how you hold the device. Portrait stacks the parts. Landscape puts the scene beside your card.">
             Layout
             <select value={hand.layout} onChange={(e) => setHand({ ...hand, layout: e.target.value as Layout })} className="border-2 border-[var(--border)] bg-[var(--panel)] px-2">
               <option value="auto">Auto</option>
@@ -396,7 +399,6 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       {label}
     </Button>
   )
-  const full = mode !== 'hand'
   const topMenu = (
     <Popover.Root
       open={menuOpen}
@@ -420,16 +422,16 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           collisionPadding={8}
           className="z-40 flex w-[min(24rem,calc(100vw-1rem))] max-h-[80vh] flex-wrap items-center gap-3 overflow-y-auto border-4 border-[var(--gold)] bg-[var(--panel)] p-3 text-base outline-none"
         >
-          {me && mode !== 'table' && menuButton('Seat', () => setSeatOpen(true), 'Pick, leave or add a character that you play.')}
-          {full && !showCreator && !lobby && menuButton('New character', () => postJson('/api/creation/open'))}
+          {me && menuButton('Seat', () => setSeatOpen(true), mode === 'table' ? 'See who plays whom. The host can free a seat.' : 'Pick, leave or add a character that you play.')}
+          {mode !== 'table' && !showCreator && !lobby && menuButton('New character', () => postJson('/api/creation/open'))}
           {menuButton('Invite', () => setInviteOpen(true), 'Show the code that phones scan to join this game.')}
-          {menuButton('View', () => setViewOpen((v) => !v), 'Change how this device shows the game: full screen, shared table screen, or phone hand.')}
-          {full && me && <HostCode me={me} />}
-          {full && isHost && state.creating && !state.new_party && !showCreator &&
+          {menuButton('View', () => setViewOpen((v) => !v), 'Change how this device shows the game: a screen to play on, or the shared table screen.')}
+          {me && <HostCode me={me} />}
+          {isHost && state.creating && !state.new_party && !showCreator &&
             menuButton('Close creator', () => postJson('/api/creation/done', { force: true }), 'Close the character creator that another device left open.')}
-          {full && isHost && menuButton('Console', () => setConsoleOpen((v) => !v))}
+          {isHost && menuButton('Console', () => setConsoleOpen((v) => !v))}
           {menuButton('Settings', () => setSettingsOpen(true), 'Voice and sound. To change the DM, end the session first.')}
-          {full && isHost && saveName !== null ? (
+          {isHost && saveName !== null ? (
             <form
               className="flex w-full flex-wrap items-center gap-2"
               onSubmit={(e) => {
@@ -454,13 +456,13 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
               </Button>
             </form>
           ) : (
-            full && isHost && (
+            isHost && (
               <Button size="sm" variant="outline" disabled={state.dm.status !== 'idle'} onClick={() => setSaveName('')} className="text-[10px]">
                 {saved ? 'Saved ✓' : 'Save'}
               </Button>
             )
           )}
-          {full && isHost && (ending !== 'no' ? (
+          {isHost && (ending !== 'no' ? (
             <span className="flex w-full flex-wrap items-center gap-2">
               <span className="pixel-font animate-pulse text-[10px] text-[var(--ember)]">The DM is writing the session record…</span>
               {/* A way out if the DM never finishes (it exited, or never started the turn). */}
@@ -513,75 +515,58 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       {topMenu}
     </>
   )
-  if (mode === 'hand') {
-    const layout =
-      hand.layout === 'portrait'
-        ? 'flex flex-col'
-        : hand.layout === 'landscape'
-          ? 'grid grid-cols-[1.3fr_1fr]'
-          : 'flex flex-col landscape:grid landscape:grid-cols-[1.3fr_1fr]'
-    const cards = (party?.characters ?? []).filter((c) => mine.includes(c.id))
-    return (
-      <div className="flex h-full flex-col gap-2 p-2">
-        <header className="flex flex-wrap items-center gap-2">
-          <span
-            className={`size-2 shrink-0 ${!connected ? 'bg-red-500' : state.dm.status === 'idle' ? 'bg-emerald-400' : 'animate-pulse bg-[var(--ember)]'}`}
-            aria-hidden="true"
+  // A small window stacks the story and the input (two columns in landscape); a wide one adds the party panel.
+  const narrow =
+    hand.layout === 'portrait'
+      ? 'flex flex-col'
+      : hand.layout === 'landscape'
+        ? 'grid grid-cols-[1.3fr_1fr]'
+        : 'flex flex-col landscape:grid landscape:grid-cols-[1.3fr_1fr]'
+  const mainLayout = lobby || showCreator ? 'flex flex-col' : wide ? (showParty ? 'grid grid-cols-[1fr_22rem]' : 'grid') : `${narrow} overflow-y-auto`
+  const input = mode === 'table' ? tableChoices : inputBlock
+  const cards = (party?.characters ?? []).filter((c) => mine.includes(c.id))
+  const story = (
+    <section className="flex min-h-0 min-w-0 flex-col gap-2 sm:gap-3">
+      {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
+      {showScene && (
+        <div className={`relative border-4 border-[var(--border)] bg-black ${wide ? 'min-h-48 flex-1' : 'aspect-[320/192] w-full'}`}>
+          <SceneTitle state={state} />
+          {sceneView}
+        </div>
+      )}
+      <DialogueBox line={current} pending={pending} onAdvance={advance} versions={state.versions ?? {}} />
+      {wide && input}
+    </section>
+  )
+  // On a small window the input and this player's cards sit beside or under the story.
+  const side = (
+    <section className="flex min-w-0 flex-col gap-2">
+      {input}
+      {party &&
+        cards.map((c) => (
+          <Card
+            key={c.id}
+            c={c}
+            party={party}
+            active={party.combat?.current === c.id}
+            canAct={canAct && !state.roll_request}
+            refresh={refresh}
+            onSheet={() => setSheet(c.id)}
+            seat={state.seats.find((x) => x.who === c.id)}
+            mineIds={mine}
+            hideActions={hideActions}
           />
-          <span className="min-w-0 flex-1 truncate text-sm text-[var(--dim)]">{connected ? statusText : 'Reconnecting…'}</span>
-          {sharedButtons}
-        </header>
-        {viewPanel}
-        <main className={`min-h-0 flex-1 gap-3 overflow-y-auto ${showCreator || lobby ? '' : layout}`}>
-          {lobby && me ? (
-            <Lobby state={state} party={party} me={me} table={false} status={statusText} />
-          ) : showCreator ? (
-            <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} finishLabel={finishLabel} />
-          ) : (
-            <>
-              <section className="flex min-w-0 flex-col gap-2">
-                {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
-                {hand.scene && (
-                  <div className="relative aspect-[320/192] w-full border-4 border-[var(--border)] bg-black">
-                    <SceneTitle state={state} />
-                    {sceneView}
-                  </div>
-                )}
-                <DialogueBox line={current} pending={pending} onAdvance={advance} versions={state.versions ?? {}} />
-              </section>
-              <section className="flex min-w-0 flex-col gap-2">
-                {inputBlock}
-                {party &&
-                  cards.map((c) => (
-                    <Card
-                      key={c.id}
-                      c={c}
-                      party={party}
-                      active={party.combat?.current === c.id}
-                      canAct={canAct && !state.roll_request}
-                      refresh={refresh}
-                      onSheet={() => setSheet(c.id)}
-                      seat={state.seats.find((x) => x.who === c.id)}
-                      mineIds={mine}
-                      hideActions={hideActions}
-                    />
-                  ))}
-                {me && mine.length === 0 && <p className="text-[var(--dim)]">You have no character. Tap Seat to pick one.</p>}
-              </section>
-            </>
-          )}
-        </main>
-        {overlays}
-      </div>
-    )
-  }
+        ))}
+      {me && mode !== 'table' && mine.length === 0 && <p className="text-[var(--dim)]">You have no character. Open Menu, then Seat.</p>}
+    </section>
+  )
 
   return (
-    <div className="flex h-full flex-col gap-3 p-3 sm:p-4">
+    <div className="flex h-full flex-col gap-2 p-2 sm:gap-3 sm:p-3 lg:p-4">
       <Narrator current={current} mode={mode} />
       <SoundGate mode={mode} />
       <header className="flex flex-wrap items-center gap-2">
-        <h1 className="pixel-font text-xs text-[var(--gold)]">DungeonOS</h1>
+        <h1 className="pixel-font hidden text-xs text-[var(--gold)] sm:block">DungeonOS</h1>
         <span className="hidden text-lg text-[var(--dim)] sm:inline">{titleCase(campaign)}</span>
         <span className="flex min-w-0 flex-1 basis-32 items-center gap-2 text-sm text-[var(--dim)]">
           <span
@@ -590,17 +575,14 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           />
           <span className="truncate">{!connected ? 'Reconnecting…' : ending !== 'no' ? 'The DM is writing the session record…' : statusText}</span>
         </span>
-        <Button size="sm" variant="outline" onClick={() => setShowParty((v) => !v)} className="hidden text-[10px] lg:inline-flex">
-          Party
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setPartyOpen(true)} className="text-[10px] lg:hidden">
+        <Button size="sm" variant="outline" onClick={() => (wide ? setShowParty((v) => !v) : setPartyOpen(true))} className="text-[10px]">
           Party
         </Button>
         {sharedButtons}
       </header>
       {viewPanel}
 
-      <main className={`grid min-h-0 flex-1 gap-4 ${showParty ? 'lg:grid-cols-[1fr_22rem]' : ''}`}>
+      <main className={`min-h-0 flex-1 gap-3 sm:gap-4 ${mainLayout}`}>
         {lobby && me ? (
           <section className="flex min-h-0 flex-col">
             <Lobby state={state} party={party} me={me} table={mode === 'table'} status={statusText} />
@@ -610,29 +592,23 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
             <CharacterCreator dmStatus={state.dm.status} activity={state.activity?.at(-1)} finishLabel={finishLabel} />
           </section>
         ) : (
-        <section className="flex min-h-0 min-w-0 flex-col gap-3">
-          {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
-          <div className="relative min-h-48 flex-1 border-4 border-[var(--border)] bg-black">
-            <SceneTitle state={state} />
-            {sceneView}
-          </div>
-          <DialogueBox line={current} pending={pending} onAdvance={advance} versions={state.versions ?? {}} />
-
-          {mode === 'table' ? tableChoices : inputBlock}
-        </section>
-        )}
-        {showParty && (
-          <div className="hidden min-h-0 flex-col gap-3 lg:flex">
-            {mode === 'table' && !lobby && <JoinQr />}
-            <div className="flex min-h-0 flex-1">
-              <PartyPanel party={party} refresh={refresh} onSheet={setSheet} canAct={canAct && !state.roll_request} seats={state.seats} mine={mine} hideActions={hideActions} />
-            </div>
-          </div>
+          <>
+            {story}
+            {!wide && side}
+            {wide && showParty && (
+              <div className="flex min-h-0 flex-col gap-3">
+                {mode === 'table' && <JoinQr />}
+                <div className="flex min-h-0 flex-1">
+                  <PartyPanel party={party} refresh={refresh} onSheet={setSheet} canAct={canAct && !state.roll_request} seats={state.seats} mine={mine} hideActions={hideActions} />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </main>
 
-      {partyOpen && (
-        <div role="dialog" aria-label="Party" className="fixed inset-0 z-40 flex flex-col gap-2 bg-black/90 p-2 lg:hidden">
+      {partyOpen && !wide && (
+        <div role="dialog" aria-label="Party" className="fixed inset-0 z-40 flex flex-col gap-2 bg-black/90 p-2">
           <Button size="sm" variant="outline" onClick={() => setPartyOpen(false)} className="self-end text-[10px]">
             Close
           </Button>

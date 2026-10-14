@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/8bit/input'
 import { Settings, type Framework, type SettingsData } from '@/components/Settings'
 import { write } from '@/lib/local'
 import { postJson } from '@/lib/stage'
-import { defaultMode } from '@/lib/view'
 
 interface Campaign {
   slug: string
@@ -94,7 +93,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
 
   // The screen that starts a game says what it is: a place to play, or the shared table that phones join.
   const begin = () => {
-    write('dungeon-view', play === 'phones' ? 'table' : defaultMode())
+    write('dungeon-view', play === 'phones' ? 'table' : 'player')
     start({ new_name: newName.trim(), pitch: pitch.trim(), party, play })
   }
 
@@ -288,7 +287,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
               settings={data.settings}
               frameworks={data.frameworks}
               inGame={false}
-              mode={defaultMode()}
+              mode="player"
               onSaved={(m) => {
                 onChanged(m as MenuData)
                 setPanel('main')

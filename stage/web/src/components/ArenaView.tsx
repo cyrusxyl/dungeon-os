@@ -80,12 +80,12 @@ function drawIntent(ctx: CanvasRenderingContext2D, u: ArenaUnit) {
   ctx.fillText(text, x, y - 2, T * 3 - 6)
 }
 
-function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number] | null, canWalk: boolean, image: Image, aim: Preview | null) {
+function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number] | null, image: Image, aim: Preview | null) {
   ctx.imageSmoothingEnabled = false
   ctx.fillStyle = '#000'
   ctx.fillRect(0, 0, view.w * T, view.h * T)
   drawTiles(ctx, view, image)
-  if (canWalk && !aim) {
+  if (!aim) {
     ctx.fillStyle = 'rgba(95, 168, 224, 0.28)'
     for (const [x, y] of view.walk) ctx.fillRect(x * T, y * T, T, T)
   }
@@ -190,8 +190,8 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
 
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d')
-    if (ctx && view) draw(ctx, view, hover, canWalk, image, aimed ? aim : null)
-  }, [view, hover, canWalk, image, tick, aim, aimed])
+    if (ctx && view) draw(ctx, view, hover, image, aimed ? aim : null)
+  }, [view, hover, image, tick, aim, aimed])
   useEffect(() => {
     if (!aimedId || !hover || !actingAs) return
     let live = true
@@ -264,6 +264,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   }
   const asked = view.pending && mine.includes(view.pending.who) ? view.pending : null
   const name = (id: string) => view.units.find((u) => u.id === id)?.name ?? id
+  const mover = canWalk ? '' : `${name(view.current ?? '')} `
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col">
@@ -285,7 +286,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
         <div className="pointer-events-none absolute top-2 left-2 flex flex-col gap-1">
           <span className="pixel-font bg-black/60 px-2 py-1 text-[10px] text-[var(--gold)]">
             Round {view.round}
-            {canWalk ? ` · ${view.feet_left} ft left` : ''}
+            {view.walk.length ? ` · ${mover}${view.feet_left} ft left` : ''}
           </span>
           {note && <span className="pixel-font bg-black/70 px-2 py-1 text-[8px] text-[var(--bad)]">{note}</span>}
         </div>
