@@ -106,10 +106,15 @@ async def speak(text: str, voice: str = "narrator", style: str | None = None, id
     return Speech(response)
 
 
+# A bracket of roll numbers, "(23 vs AC 15, 5 damage)", or a "(Ruling)" tag: it is for the eye, not for the ear.
+RULES_ASIDE = re.compile(r"\s*\((?:ruling\b[^)]*|(?=[^)]*\d)[^)]*\b(?:vs|against|AC|DC|damage|total|rolled?|HP)\b[^)]*)\)", re.I)
+
+
 def plain(text: str) -> str:
     """Text without markup, as it is read aloud."""
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # [label](url) -> label
     text = re.sub(r"<[^>]+>|[*_`~#]", "", text)
+    text = RULES_ASIDE.sub("", text)
     return " ".join(text.split())
 
 

@@ -118,6 +118,6 @@ Full text: `uv run dnd-cli info conditions <name>`.
 
 ## Tips
 
-- Narrate first, mechanics second: "Your arrow flies true (18 vs AC 15) — 7 damage."
+- Narrate the result in words: "Your arrow flies true and sinks deep." Do not write the numbers (roll, AC, damage). The roll window and the log show them.
 - Keep combat moving: prompt the player whose turn it is.
 - Never invent AC or HP: `encounter status` has them.
