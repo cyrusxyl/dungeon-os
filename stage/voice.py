@@ -6,6 +6,7 @@ import asyncio
 import os
 import re
 import time
+import zlib
 from pathlib import Path
 
 import httpx
@@ -15,6 +16,8 @@ from stage.files import read_json
 CONNECT = httpx.Timeout(30.0, connect=0.3)  # a dead service must answer "no" fast; a live one may take time to speak
 HEALTH_TTL = 10.0
 _health: dict[str, tuple[float, bool]] = {}
+_library: set[str] = set()  # voice slugs the service listed on its last good /health
+GENERIC = {"male": ("tav1-m", "tav3-m", "tav5-m", "tav7-m"), "female": ("tav2-f", "tav4-f", "tav6-f", "tav8-f")}
 _tasks: set[asyncio.Task] = set()
 transport: httpx.AsyncBaseTransport | None = None  # tests set a MockTransport
 
@@ -41,7 +44,10 @@ def forget_health() -> None:
 async def probe(url: str, timeout: object = 2.0) -> bool:
     """Ask the service at `url` if it is up. Not read from the cache; the answer goes into it."""
     try:
-        ok = (await _client().get(f"{url}/health", timeout=timeout)).json().get("ok") is True
+        body = (await _client().get(f"{url}/health", timeout=timeout)).json()
+        ok = body.get("ok") is True
+        if ok:
+            _library.update(v for v in body.get("voices", []) if isinstance(v, str))
     except (httpx.HTTPError, OSError, ValueError, AttributeError):
         ok = False
     _health[url] = (time.monotonic(), ok)
@@ -129,6 +135,17 @@ def voices_map(campaign_dir: Path | None) -> dict[str, str]:
     return found
 
 
+def default_voice(campaign_dir: Path | None, actor: str) -> str | None:
+    """A voice for an actor that `voices.json` does not list: its own library voice, else a generic one picked by body. None for an unknown actor."""
+    if not campaign_dir or not actor:
+        return None
+    if actor in _library and actor != "narrator":
+        return actor
+    body = (read_json(Path(campaign_dir) / "stage" / "actors" / f"{actor}.json") or {}).get("body")
+    pool = GENERIC.get(str(body))
+    return pool[zlib.crc32(actor.encode()) % len(pool)] if pool else None
+
+
 def item(event: dict, campaign_dir: Path | None) -> dict | None:
     """What to speak for a log event: {text, voice, style}, or None when it stays silent."""
     kind, text = event.get("type"), plain(str(event.get("text", "")))
@@ -143,7 +160,8 @@ def item(event: dict, campaign_dir: Path | None) -> dict | None:
     if kind == "narrate" and parts["narration"]:
         return {"text": text, "voice": "narrator", "style": str(event.get("mood") or "neutral")}
     if (kind == "say" and parts["npc"]) or (kind == "pc_say" and parts["player"]):
-        slug = voices_map(campaign_dir).get(str(event.get("actor", "")))
+        actor = str(event.get("actor", ""))
+        slug = voices_map(campaign_dir).get(actor) or default_voice(campaign_dir, actor)
         emotion = str(event.get("emotion") or "neutral")
         if slug:
             return {"text": text, "voice": slug, "style": emotion}

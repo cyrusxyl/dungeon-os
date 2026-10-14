@@ -85,7 +85,7 @@ The first pick was one clip per mood. The user then ticked several clips per moo
 - `@say` emotion is the voice style. There are seven: neutral, happy, angry, sad, surprised, fearful, disgusted (the labels of the emotion models). The portrait face follows the emotion in `stage/lpc.py` (`EMOTION_FACES`): surprised and fearful use the shock face, disgusted the eye-roll face. The art has no separate faces for them. A voice without a clip for the style falls back to neutral.
 - Narration moods and dialogue emotions are two lists on purpose. A narrator delivers a mood. An actor delivers an emotion. One service field (`style`) carries both. A voice library holds the labels that fit its kind.
 - A mood or emotion can hold several reference clips (`<label>.2.wav`). The service picks one per line from a hash of the text.
-- Only voices listed in `<campaign>/stage/voices.json` speak `@say` lines. See `stage/voices.example.json`. An unmapped actor stays silent. Whispers are never voiced.
+- Only voices listed in `<campaign>/stage/voices.json` speak `@say` lines. See `stage/voices.example.json`. An actor that is not listed gets a default: the library voice with its own id, else a generic `tav` voice picked by the `body` in its actor file (`voice.default_voice`). An actor with no actor file stays silent. Whispers are never voiced.
 
 ## What lives in `~/bg3voice` (not in git)
 
