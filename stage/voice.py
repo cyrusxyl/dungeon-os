@@ -115,6 +115,7 @@ def plain(text: str) -> str:
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # [label](url) -> label
     text = re.sub(r"<[^>]+>|[*_`~#]", "", text)
     text = RULES_ASIDE.sub("", text)
+    text = re.sub(r"\s+([.,;:!?])", r"\1", text)  # no gap where a removed aside stood
     return " ".join(text.split())
 
 
