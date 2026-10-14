@@ -12,7 +12,7 @@ def _arena_of(campaign_dir, arena_id: str | None):
     if arena_id is None:
         arena_id = board.arena_id_of(combat.load_state(campaign_dir))
         if arena_id is None:
-            raise arena.ArenaError("no fight on a board is running. Start one with: uv run dnd-cli encounter start goblin:3 --arena")
+            raise arena.ArenaError("no fight on a board is running. Start one with: uv run dnd-cli encounter start goblin:3")
     a = arena.load(campaign_dir, arena_id)
     if a is None:
         raise arena.ArenaError(f"no arena {arena_id!r}.")

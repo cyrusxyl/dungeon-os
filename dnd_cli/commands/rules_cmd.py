@@ -41,9 +41,9 @@ def execute_encounter(campaign, action: str, args) -> int:
         if action == "start":
             pcs = None if args.pcs in (None, "all") else [p for p in args.pcs.split(",") if p]
             lines = combat.start(campaign_dir, state, args.specs, pcs)
-            if args.arena is None:
+            if args.no_arena:
                 return lines
-            lines += board.start(campaign_dir, state, args.arena, stage_state.replay(log_path(campaign_dir)))
+            lines += board.start(campaign_dir, state, args.arena or [], stage_state.replay(log_path(campaign_dir)))
             notify_stage(campaign_dir, {"type": "arena", "arena": state["active_encounter"]["arena"]})
             return lines
         if action == "add":

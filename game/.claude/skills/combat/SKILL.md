@@ -23,7 +23,7 @@ uv run dnd-cli encounter start bandit:2 cassara-whitmore --pcs sireth
 
 ## A fight on a board
 
-Add `--arena` (last) to get a board: the players walk their characters, and the stage plays the creatures. Use it for any fight where position matters: a room, a field, an ambush.
+Every `encounter start` builds a board: the players walk their characters, and the stage plays the creatures. Add `--no-arena` only for a very short fight you run in words (one creature, a brawl of one round). When unsure, keep the board. `--arena` is the same as the default; it carries the options below.
 
 ```bash
 uv run dnd-cli encounter start goblin:2 boss=bugbear --arena layout=pillars size=medium light=lit

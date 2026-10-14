@@ -426,7 +426,8 @@ def create_parser():
     p.add_argument("specs", nargs="*")
     p.add_argument("--pcs", default=None)
     p.add_argument("--arena", nargs="*", default=None, metavar="KEY=VALUE",
-                   help="Fight on a board: layout= size= light= ambush= seed= theme= feature=<thing>@<where> hazard=<kind>@<where>. Put it last.")
+                   help="Board options (a board is the default): layout= size= light= ambush= seed= theme= feature=<thing>@<where> hazard=<kind>@<where>. Put it last.")
+    p.add_argument("--no-arena", action="store_true", help="No board: a short fight the DM runs in words")
     p.add_argument("--campaign", default=None)
     p = enc_sub.add_parser("add", help="Add creatures to the running combat")
     p.add_argument("specs", nargs="+")

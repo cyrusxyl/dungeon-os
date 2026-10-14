@@ -42,7 +42,7 @@ generated floor plan with the arrow keys, WASD, or a click. Sight, fog, and
 wandering-monster checks run in the stage; the DM is called only when the
 party finds something. Design: `dungeon-crawl.md`.
 
-A fight can run on a board. Start it with `dnd-cli encounter start goblin:3 --arena`.
+A fight runs on a board by default: `dnd-cli encounter start goblin:3`. Use `--no-arena` for a fight with no board.
 The stage builds a room from the place where the party is. The room has cover,
 hazards, light and fog.
 

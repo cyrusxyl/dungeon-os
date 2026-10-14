@@ -71,7 +71,7 @@ uv run dnd-cli encounter start goblin:2 boss=bugbear --arena layout=pillars size
 uv run dnd-cli encounter start goblin:3 --arena          # all defaults, from the source
 ```
 
-- Without `--arena`, the fight runs as it does today. No board.
+- A board is the default. With `--no-arena`, the fight runs as it did before the board. No board.
 - `layout=` is `open`, `chokepoint`, `pillars` or `chasm`. The default comes from the source.
 - `size=` is `small` (12 × 8) or `medium` (16 × 10).
 - `light=` is `lit`, `dim` or `dark` (see Light).

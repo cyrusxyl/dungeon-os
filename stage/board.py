@@ -165,7 +165,7 @@ def running(campaign_dir: Path, state: dict) -> tuple[str, dict]:
     arena_id = arena_id_of(state)
     a = arena.load(campaign_dir, arena_id) if arena_id else None
     if a is None:
-        raise BoardError("no fight on a board is running. Start one with: uv run dnd-cli encounter start goblin:3 --arena")
+        raise BoardError("no fight on a board is running. Start one with: uv run dnd-cli encounter start goblin:3")
     return arena_id, a
 
 

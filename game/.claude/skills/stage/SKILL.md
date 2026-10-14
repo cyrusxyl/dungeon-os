@@ -167,7 +167,7 @@ uv run dnd-cli site set sunless-citadel name=Sunless_Citadel theme=crypt size=me
 
 ## Fights on a board
 
-A fight with `--arena` (see the `combat` skill) replaces the scene or the site on the stage with a board until `encounter end`. The players walk and attack on it, and the stage plays the creatures. You are called only for the creatures you play, and at the end. Keep narrating with beats as usual; do not describe the layout or give movement choices. The board stays until `encounter end`, even if you send `@scene`. `@scene` or `@explore` after the fight shows the story again.
+A fight on a board (the default; see the `combat` skill) replaces the scene or the site on the stage with a board until `encounter end`. The players walk and attack on it, and the stage plays the creatures. You are called only for the creatures you play, and at the end. Keep narrating with beats as usual; do not describe the layout or give movement choices. The board stays until `encounter end`, even if you send `@scene`. `@scene` or `@explore` after the fight shows the story again.
 
 ## Rules
 
