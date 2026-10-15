@@ -1479,6 +1479,8 @@ def create_app(
             await run_in_threadpool(go)
         except KeyError:
             return error("No such resource.", 400)
+        except ValueError as e:
+            return error(str(e), 400)
         return JSONResponse({"ok": True})
 
     def roll_for(stage: Stage, req: dict, skip: list[str]) -> list[str]:

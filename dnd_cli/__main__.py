@@ -240,6 +240,20 @@ def create_parser():
     p.add_argument("--back", action="store_true", help="Give a use back instead")
     p.add_argument("--amount", type=int, default=1, help="How many uses (Lay on Hands points)")
 
+    p = character_sub.add_parser("set", help="Record a choice: set <campaign> <name> subclass|fighting_style \"<value>\"")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("field", choices=["subclass", "fighting_style"])
+    p.add_argument("value")
+
+    p = character_sub.add_parser("add", help="Add a spell or a feat: add <campaign> <name> spell|feat \"<value>\" [--prepared] [--desc TEXT]")
+    p.add_argument("campaign")
+    p.add_argument("name")
+    p.add_argument("kind", choices=["spell", "feat"])
+    p.add_argument("value")
+    p.add_argument("--prepared", action="store_true", help="For a spell: add it to spells_prepared instead of spells_known")
+    p.add_argument("--desc", default="", help="For a feat: a short description")
+
     p = character_sub.add_parser("item", help="add|remove an inventory item: item <campaign> <name> add|remove \"<item>\" [--qty N] [--canon]")
     p.add_argument("campaign")
     p.add_argument("name")
@@ -744,6 +758,10 @@ def main():
                     print("Error: --amount must be 1 or more (use --back to give uses back).", file=sys.stderr)
                     return 1
                 return character_cmd.execute_use(args.campaign, args.name, args.resource, -args.amount if args.back else args.amount)
+            elif cc == "set":
+                return character_cmd.execute_set(args.campaign, args.name, args.field, args.value)
+            elif cc == "add":
+                return character_cmd.execute_add(args.campaign, args.name, args.kind, args.value, args.prepared, args.desc)
             elif cc == "restore-slots":
                 return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
             if cc == "item":

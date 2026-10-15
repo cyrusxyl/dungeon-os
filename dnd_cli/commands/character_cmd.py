@@ -101,8 +101,44 @@ def execute_use(campaign: str, name: str, resource: str, delta: int) -> int:
         except KeyError:
             names = ", ".join(r["name"] for r in resources.for_sheet(data)) or "none"
             raise character.CharacterError(f"{name} has no resource {resource!r}. Resources: {names}.") from None
+        except ValueError as e:
+            raise character.CharacterError(f"{name}: {e}") from None
         character.save(campaign_dir, name, data)
         print(f"{name}: {res['name']} {res['max'] - res['used']}/{res['max']} left")
+        return 0
+    return _run(campaign, go)
+
+
+def execute_set(campaign: str, name: str, field: str, value: str) -> int:
+    """Record a subclass or fighting style choice. `character.save` validates the sheet."""
+    def go(campaign_dir):
+        data = character.load(campaign_dir, name)
+        data[field] = value
+        character.save(campaign_dir, name, data)
+        print(f"{name}: {field} is now {value}")
+        return 0
+    return _run(campaign, go)
+
+
+def execute_add(campaign: str, name: str, kind: str, value: str, prepared: bool = False, desc: str = "") -> int:
+    """Add a spell (known, or prepared with --prepared) or a feat. `character.save` validates the sheet."""
+    def go(campaign_dir):
+        data = character.load(campaign_dir, name)
+        if kind == "spell":
+            key = "spells_prepared" if prepared else "spells_known"
+            sc = data.get("spellcasting")
+            if not sc:
+                raise character.CharacterError(f"{name} has no spellcasting.")
+            if value.lower() in (s.lower() for s in sc.get(key, [])):
+                raise character.CharacterError(f"{name} already has {value} in {key}.")
+            sc.setdefault(key, []).append(value)
+        else:
+            feats = data.setdefault("features_and_traits", [])
+            if value.lower() in (f.get("name", "").lower() for f in feats):
+                raise character.CharacterError(f"{name} already has {value}.")
+            feats.append({"name": value, "description": desc})
+        character.save(campaign_dir, name, data)
+        print(f"{name}: added {kind} {value}")
         return 0
     return _run(campaign, go)
 
