@@ -1,0 +1,15 @@
+{
+  "_comment": "Perk catalog for `dnd-cli loot roll` and `loot force`. DRAFT: GitHub issue #1. A perk is a prefix or a suffix on a weapon or an armor. `rarity` is the lowest item rarity that can roll it. `weight` is the roll weight. `effect` is the id of a preset in dnd_cli/effects.py, or null. When `effect` is null, the DM must rule the perk: `ruling` says how, and `needs` names the new effect type that would let the engine apply it. A perk that is not in this list stays free text. Common and legendary items get no rolled perk. See combat-board.md, section 7.",
+  "perks": [
+    {"name": "+1", "slot": "prefix", "types": ["weapon", "armor"], "rarity": "uncommon", "weight": 5, "effect": null,
+     "ruling": "Weapon: +1 to attack rolls and damage rolls. Armor: +1 AC.", "needs": "a flat bonus to attack, damage or AC"},
+    {"name": "Keen", "slot": "prefix", "types": ["weapon"], "rarity": "uncommon", "weight": 3, "effect": null,
+     "ruling": "A critical hit on a natural 19 or 20.", "needs": "a change to the critical range"},
+    {"name": "Blessed", "slot": "prefix", "types": ["weapon", "armor"], "rarity": "uncommon", "weight": 3, "effect": "bless",
+     "ruling": "While the item is used, the wearer has Bless (+1d4 to attack rolls and saving throws). It needs no concentration.", "needs": null},
+    {"name": "of Warding", "slot": "suffix", "types": ["armor"], "rarity": "uncommon", "weight": 2, "effect": null,
+     "ruling": "+1 to saving throws against spells.", "needs": "a flat bonus to one kind of save"},
+    {"name": "of Flame", "slot": "suffix", "types": ["weapon"], "rarity": "rare", "weight": 2, "effect": null,
+     "ruling": "On a hit: +1d6 fire damage. The blade can light a fire.", "needs": "extra damage dice on a hit"}
+  ]
+}

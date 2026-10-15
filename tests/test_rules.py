@@ -687,7 +687,17 @@ def test_loot() -> None:
     check("a beast carries nothing", not (r := loot.roll(1, "hoard", 1, "Beast"))["coins"] and not r["items"] and "no treasure" in r["note"])
     check("a legendary item is never named: the DM writes it", any(i["rarity"] == "legendary" and i["name"] is None for n in range(40) for i in loot.roll(20, "hoard", n)["items"]))
     check("a bad kind or CR is refused", raises(lambda: loot.roll(1, "pile")) and raises(lambda: loot.roll(-1)))
-    check("the list says how to give it and totals the coins", "gp in all" in "\n".join(loot.lines(loot.roll(1, "hoard", 7))))
+    cat = loot.perks()
+    check("each perk has the fields and an effect that effects.py knows", all({"name", "slot", "types", "rarity", "weight", "effect", "ruling"} <= p.keys() and p["rarity"] in loot.RARITIES and p["weight"] > 0 and (p["effect"] is None or p["effect"] in effects.PRESETS) for p in cat) and len(cat) >= 5)
+    check("a perk with no effect names the effect type it needs", all(p.get("needs") for p in cat if p["effect"] is None))
+    big = [i for n in range(60) for i in loot.roll(20, "hoard", n)["items"]]
+    check("perks follow the rarity: none on common or legendary, a count on the rest", all(len(i["perks"]) <= {"uncommon": 1, "rare": 2, "very rare": 2}.get(i["rarity"], 0) for i in big) and any(len(i["perks"]) == 2 for i in big))
+    check("only a weapon or an armor gets a perk, never twice the same", all(loot.item_type(i["name"]) != "other" and len(set(i["perks"])) == len(i["perks"]) for i in big if i["perks"]) and any(i["perks"] for i in big))
+    check("a +2 weapon does not roll a +1 perk", all("+1" not in i["perks"] for i in big if i["name"] and "+" in i["name"]))
+    check("the same seed gives the same perks", loot.roll(14, "hoard", 5) == loot.roll(14, "hoard", 5))
+    check("a catalog name becomes its ruling, other text stays free", loot.describe_perk("keen").startswith("Keen: ") and loot.describe_perk("keen: it hums near orcs") == "keen: it hums near orcs")
+    check("the list shows the perks", "perk: " in "\n".join(loot.lines({"seed": 1, "coins": {}, "items": [{"name": "Weapon, +1", "rarity": "uncommon", "perks": ["Keen"]}], "note": ""})))
+    check("the list says how to give it and totals the coins","gp in all" in "\n".join(loot.lines(loot.roll(1, "hoard", 7))))
     data = {"name": "Aragorn", "inventory": []}
     sheet.add_item(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
     check("a forced item keeps its perk text and rarity", data["inventory"][0] == {"name": "Longsword", "quantity": 1, "description": "keen: it hums near orcs", "rarity": "uncommon"})

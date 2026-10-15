@@ -1,5 +1,5 @@
 {
-  "_comment": "Treasure by challenge rating for `dnd-cli loot roll`. A coin is [dice, times]. `rarity` weights add up to 100 (cumulative is not needed). Item names are 5e SRD magic items; a perk is free text the DM writes (the perk catalog waits: GitHub issue #1). Legendary items are never listed: the DM writes them. See combat-board.md, section 7.",
+  "_comment": "Treasure by challenge rating for `dnd-cli loot roll`. A coin is [dice, times]. `rarity` weights add up to 100 (cumulative is not needed). Item names are 5e SRD magic items; a perk on a weapon or an armor rolls from stage/data/perks.json (a draft catalog: GitHub issue #1), and any other perk is free text the DM writes. Legendary items are never listed: the DM writes them. See combat-board.md, section 7.",
   "no_treasure": ["beast", "ooze", "plant", "swarm"],
   "tiers": [
     {"max_cr": 4, "individual": {"sp": ["3d6", 1], "gp": ["2d6", 1]}, "hoard": {"sp": ["4d6", 10], "gp": ["4d6", 5]}, "items": "1d3", "rarity": {"common": 70, "uncommon": 30}},
