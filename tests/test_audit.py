@@ -129,8 +129,25 @@ def test_audit() -> None:
         del audit.COSTED["Hex Blade"]
 
 
+def test_retotal() -> None:
+    print("repair recomputes totals")
+    pal = make("Paladin", 3)
+    pal["ability_scores"] = {a: 10 for a in pal["ability_scores"]}
+    pal["ability_scores"]["strength"] = 16
+    pal["proficiency_bonus"] = 4
+    pal["skills"] = {"athletics": 7, "acrobatics": 2, "stealth": 8, "perception": 8}
+    pal["saving_throws"] = {"strength": 7, "dexterity": 0, "wisdom": 0}
+    audit.repair(pal, fetch)
+    check("proficiency bonus is fixed to 2", pal["proficiency_bonus"] == 2)
+    check("proficient skill uses the new bonus", pal["skills"]["athletics"] == 5)
+    check("half proficiency stays half", pal["skills"]["acrobatics"] == 1)
+    check("expertise stays double", pal["skills"]["stealth"] == 4 and pal["skills"]["perception"] == 4)
+    check("saves are recomputed", pal["saving_throws"] == {"strength": 5, "dexterity": 0, "wisdom": 0})
+
+
 if __name__ == "__main__":
     test_level_up()
     test_audit()
+    test_retotal()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

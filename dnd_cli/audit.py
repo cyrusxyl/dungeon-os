@@ -141,7 +141,8 @@ def _repair(sheet_: dict, cls: dict, lvl: dict, _levels: list[dict]) -> list[str
                    f"slots {sheet.api_slots(lvl) or 'none'}")
     spell, want, prof = sheet_.get("spellcasting"), sheet.api_slots(lvl), sheet.prof_from(lvl, sheet_["level"])
     if sheet_.get("proficiency_bonus") != prof:
-        out.append(f"proficiency bonus {sheet_.get('proficiency_bonus')} -> {prof} (skill and save totals not recomputed)")
+        out.append(f"proficiency bonus {sheet_.get('proficiency_bonus')} -> {prof}, skill and save totals recomputed")
+        sheet.retotal(sheet_, sheet_.get("proficiency_bonus") or prof, prof)
         sheet_["proficiency_bonus"] = prof
     if spell is not None and (want or _slot_max(spell)):
         out += [f"level {k} slots max {old} -> {new}" for k, old, new in sheet.sync_slots(spell, want)]

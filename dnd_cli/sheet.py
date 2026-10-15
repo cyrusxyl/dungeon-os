@@ -277,6 +277,28 @@ def _multiple(total: int, mod: int, prof: int) -> int:
     return max(0, min(2, round((total - mod) / prof))) if prof else 0
 
 
+def retotal(sheet: dict, old_prof: int, prof: int) -> None:
+    """Set skill and save totals for a new proficiency bonus.
+
+    The old total shows the bonus the character had: none, half (rounded down),
+    full, or double. Keep that kind and apply it to the new bonus.
+    """
+    m = mods(sheet)
+
+    def new(total: int, mod: int) -> int:
+        extra = total - mod
+        kinds = {0: 0, 1: old_prof // 2, 2: old_prof, 3: 2 * old_prof}
+        kind = min(kinds, key=lambda k: abs(kinds[k] - extra))
+        return mod + (0, prof // 2, prof, 2 * prof)[kind]
+
+    for s, v in sheet.get("skills", {}).items():
+        if s in SKILLS:
+            sheet["skills"][s] = new(v, m[SKILLS[s]])
+    for a, v in sheet.get("saving_throws", {}).items():
+        if a in ABILITIES:
+            sheet["saving_throws"][a] = new(v, m[a])
+
+
 def api_slots(level_data: dict) -> dict[str, int]:
     """{"1": 3, ...}: the spell slots the API gives at this class level."""
     sc = level_data.get("spellcasting") or {}
