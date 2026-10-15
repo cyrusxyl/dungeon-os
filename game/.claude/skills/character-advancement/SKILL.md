@@ -27,8 +27,9 @@ uv run dnd-cli character level-up sireth --asi none          # ...when the playe
 One command does the whole level from the 5e API: level, HP and hit dice, proficiency bonus, every skill, save and weapon bonus, spell DC and attack bonus, spell slots, and the new class features (written into `features_and_traits` with a short description). It keeps each skill's proficiency or expertise as it was. It prints the gains, the class resources (rage, ki, sneak attack…), and how many spells the character may know.
 
 You and the player still choose:
-1. **ASI or feat** (levels 4, 8, 12, 16, 19 for most classes; the command refuses until you give `--asi`). +2 to one score or +1 to two; no score above 20. A feat: `uv run dnd-cli get feats/<index> --fields name,desc,prerequisites`, check the prerequisites, then add it to `features_and_traits` with the Edit tool (text only; a +1 score from a half-feat goes in `--asi str+1`).
-2. **New spells** (known casters, wizards' two spells per level): `uv run dnd-cli search spells --class <class> --level <n>`, then add the choices to `spellcasting.spells_known` with the Edit tool.
+1. **ASI or feat** (levels 4, 8, 12, 16, 19 for most classes; the command refuses until you give `--asi`). +2 to one score or +1 to two; no score above 20. A feat: `uv run dnd-cli get feats/<index> --fields name,desc,prerequisites`, check the prerequisites, then run `uv run dnd-cli character add <id> feat "<name>" --desc "<short text>"` (text only; a +1 score from a half-feat goes in `--asi str+1`).
+2. **New spells** (known casters, wizards' two spells per level): `uv run dnd-cli search spells --class <class> --level <n>`, then run `uv run dnd-cli character add <id> spell "<name>"` for each choice. Add `--prepared` for a prepared spell.
+3. **Subclass and Fighting Style** (the player decides): `uv run dnd-cli character set <id> subclass "<name>"` or `character set <id> fighting_style "<name>"`. Do not choose for the player.
 
 Then narrate the level in one short beat: "Sireth reaches level 4 — HP 31, Ki 4."
 

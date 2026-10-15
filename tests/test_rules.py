@@ -7,6 +7,8 @@ Plain asserts, a seeded RNG, and stub monster data: no network.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import random
@@ -257,6 +259,14 @@ def test_effects(c: Path) -> None:
     combat.heal(c, state, "legolas", 100)
 
 
+def raises_value(fn) -> bool:
+    try:
+        fn()
+    except ValueError:
+        return True
+    return False
+
+
 def test_resources(c: Path) -> None:
     print("class resources and turn actions")
     fighter = {"class": "Fighter", "level": 3, "ability_scores": {"charisma": 10}}
@@ -266,8 +276,10 @@ def test_resources(c: Path) -> None:
     check("bardic inspiration follows CHA (at least 1)", resources.for_sheet({"class": "Bard", "level": 1, "ability_scores": {"charisma": 16}})[0]["max"] == 3)
     pal = {"class": "Paladin", "level": 3, "ability_scores": {"charisma": 16}}
     check("Lay on Hands holds 5 HP per level", next(r for r in resources.for_sheet(pal) if r["name"] == "Lay on Hands")["max"] == 15)
-    resources.spend(fighter, "second wind")
-    check("a spend is counted, and cannot pass the max", resources.spend(fighter, "Second Wind")["used"] == 1)
+    check("a spend is counted", resources.spend(fighter, "Second Wind")["used"] == 1)
+    check("a spend above what is left is refused and changes nothing", raises_value(lambda: resources.spend(fighter, "Second Wind")) and fighter["resources_used"]["Second Wind"] == 1)
+    check("a big spend of a pool is refused", raises_value(lambda: resources.spend(pal, "Lay on Hands", 16)) and not pal.get("resources_used"))
+    check("the whole pool can be spent", resources.spend(pal, "Lay on Hands", 15)["used"] == 15)
     check("a use can be given back", resources.spend(fighter, "Second Wind", -1)["used"] == 0)
     monk = {"class": "Monk", "level": 5, "ability_scores": {}}
     resources.spend(monk, "Ki", 3)
@@ -283,6 +295,21 @@ def test_resources(c: Path) -> None:
     combat.spend_turn(state, "aragorn", "reaction")
     check("a reaction is marked used", state["active_encounter"]["resources"]["aragorn"] == {"reaction": True})
     check("only an action, bonus action or reaction counts", raises(lambda: combat.spend_turn(state, "aragorn", "dance")))
+    from dnd_cli.commands import character_cmd as cc
+
+    def run(fn, *args, **kw):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            return fn(str(c), *args, **kw)
+    before = character.load(c, "aragorn")
+    check("character use above what is left fails and saves nothing", run(cc.execute_use, "aragorn", "Second Wind", 5) == 1 and character.load(c, "aragorn") == before)
+    check("character set records a fighting style", run(cc.execute_set, "aragorn", "fighting_style", "Defense") == 0 and character.load(c, "aragorn")["fighting_style"] == "Defense")
+    check("character set records a subclass", run(cc.execute_set, "aragorn", "subclass", "Champion") == 0 and character.load(c, "aragorn")["subclass"] == "Champion")
+    check("character add puts a spell in spells_known", run(cc.execute_add, "legolas", "spell", "Fog Cloud") == 0 and "Fog Cloud" in character.load(c, "legolas")["spellcasting"]["spells_known"])
+    check("character add --prepared uses spells_prepared", run(cc.execute_add, "legolas", "spell", "Fog Cloud", prepared=True) == 0 and character.load(c, "legolas")["spellcasting"]["spells_prepared"] == ["Fog Cloud"])
+    check("the same spell twice is refused", run(cc.execute_add, "legolas", "spell", "fog cloud") == 1)
+    check("a spell for a non-caster is refused", run(cc.execute_add, "aragorn", "spell", "Fog Cloud") == 1)
+    check("character add puts a feat in features_and_traits", run(cc.execute_add, "aragorn", "feat", "Alert", desc="+5 initiative.") == 0
+          and {"name": "Alert", "description": "+5 initiative."} in character.load(c, "aragorn")["features_and_traits"])
     check("only a combatant counts", raises(lambda: combat.spend_turn(state, "bilbo", "action")))
     combat.next_turn(c, state)
     check("the next combatant starts with all three free", state["active_encounter"]["resources"][state["active_encounter"]["current_turn"]] == {})

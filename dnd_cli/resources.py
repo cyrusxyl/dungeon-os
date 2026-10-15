@@ -40,11 +40,17 @@ def for_sheet(sheet: dict) -> list[dict]:
 
 
 def spend(sheet: dict, name: str, delta: int = 1) -> dict:
-    """Spend (`delta` > 0) or get back (`delta` < 0) uses of a resource. Raises KeyError for an unknown name."""
+    """Spend (`delta` > 0) or get back (`delta` < 0) uses of a resource. Raises KeyError for an unknown name.
+
+    Raises ValueError if `delta` is more than what is left. Nothing changes then.
+    """
     res = next((r for r in for_sheet(sheet) if r["name"].lower() == name.lower()), None)
     if res is None:
         raise KeyError(name)
-    used = max(0, min(res["max"], res["used"] + delta))
+    left = res["max"] - res["used"]
+    if delta > left:
+        raise ValueError(f"{res['name']}: only {left} left, cannot spend {delta}.")
+    used = max(0, res["used"] + delta)
     sheet.setdefault("resources_used", {})[res["name"]] = used
     return {**res, "used": used}
 

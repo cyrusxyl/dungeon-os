@@ -17,7 +17,7 @@ Never run the question workflow below on the stage. The player makes characters 
 
 The workflow below is for this view only.
 
-Make every sheet with `character new` and `level-up`. Never write or patch a sheet by hand. After any change, run `uv run dnd-cli character validate <id> --fix`. You talk through the choices. The program does the arithmetic. Do not write the sheet JSON by hand. Do not edit `state.json` or the player file for a new character.
+Make every sheet with `character new` and `level-up`. Never write or patch a sheet by hand. After any change, run `uv run dnd-cli character validate <id> --fix`. You talk through the choices. The program does the arithmetic. Do not write the sheet JSON by hand. Record a later choice with `character set <id> subclass|fighting_style "<name>"`, `character add <id> spell "<name>"` (`--prepared` for prepared spells) or `character add <id> feat "<name>"`. Each command checks the sheet against the schema. Do not edit `state.json` or the player file for a new character.
 
 ## Lookups
 
