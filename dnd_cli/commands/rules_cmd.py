@@ -241,7 +241,7 @@ def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarit
     def fn(campaign_dir, data):
         if rarity and rarity not in loot.RARITIES:
             raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
-        return [sheet.add_item(data, item, qty, perk, rarity)]
+        return [sheet.add_item(data, item, qty, loot.describe_perk(perk), rarity)]
     return _edit_sheet(campaign, who, fn)
 
 
