@@ -155,11 +155,7 @@ async def scenarios(page: Page, c: Path) -> None:
     await page.shot("request-unread")
     status = await page.eval("document.body.innerText")
     check("the DM is idle, so only the unread story can hold the button back", "Your move" in status or "Wait for the DM" in status)
-    check("the Roll button is disabled while narration is unread", await page.eval(
-        "[...document.querySelectorAll('[role=dialog] button')].some(b => /Wait for the DM/.test(b.textContent) && b.disabled)"))
-    await page.click("Roll")
-    await asyncio.sleep(0.5)
-    check("a click on it rolls nothing", await page.eval("Boolean(document.querySelector('[role=dialog]'))"))
+    check("the window waits until the story is read", not await page.eval("Boolean(document.querySelector('[role=dialog][aria-label$=\" roll\"]'))"))
 
 
 async def click_starting(page: Page, text: str) -> bool:

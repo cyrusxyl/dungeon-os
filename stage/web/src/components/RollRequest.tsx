@@ -9,11 +9,13 @@ import { postJson, type RollRequest as Request } from '@/lib/stage'
 /**
  * The window before a roll the DM asked for. Like Baldur's Gate 3, the player sees the target number and every
  * tile that will add to the d20, can add a bonus (Guidance, Bless, advantage...) or leave one off, and clicks Roll.
+ * `blocked` is the reason the button is off (shown on the button), or null when the player can roll.
  */
-export function RollRequest({ request, party, refresh, canRoll }: { request: Request; party: Party | null; refresh: () => void; canRoll: boolean }) {
+export function RollRequest({ request, party, refresh, blocked }: { request: Request; party: Party | null; refresh: () => void; blocked: string | null }) {
   const [skip, setSkip] = useState<string[]>([])
   const [rolling, setRolling] = useState(false)
   const button = useRef<HTMLButtonElement>(null)
+  const canRoll = !blocked
   const char = party?.characters.find((c) => c.id === request.who)
   const catalogue = party?.effects ?? []
   // The effects on the character that this kind of roll uses.
@@ -88,7 +90,7 @@ export function RollRequest({ request, party, refresh, canRoll }: { request: Req
           disabled={!canRoll || rolling}
           className="pixel-font mt-1 border-4 border-[var(--gold)] bg-[var(--gold)] px-6 py-2 text-xs text-[var(--ink)] hover:bg-[var(--parchment)] disabled:opacity-50"
         >
-          {rolling ? 'Rolling…' : canRoll ? 'Roll' : 'Wait for the DM…'}
+          {rolling ? 'Rolling…' : blocked ?? 'Roll'}
         </button>
       </div>
     </Shell>
