@@ -323,7 +323,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
     <>
       {/* Show the window only after the narration before it is read: Roll needs caughtUp, so an earlier window is stuck on "Wait for the DM". */}
       {state.roll_request && !showCreator && (mode === 'table' || caughtUp) && (
-        <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} canRoll={canType && caughtUp && mine.includes(state.roll_request.who)} />
+        <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} blocked={!mine.includes(state.roll_request.who) ? 'Not your roll' : !caughtUp ? 'Read the narration first' : !canType ? 'Wait for the DM…' : null} />
       )}
       {needsRole && <RoleScreen onTable={() => setMode('table')} onPlay={() => setMode(defaultMode())} />}
       {settingsOpen && <SettingsPanel isHost={isHost} mode={mode} onClose={() => setSettingsOpen(false)} />}

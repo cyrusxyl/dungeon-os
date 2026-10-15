@@ -1016,6 +1016,16 @@ def test_seats() -> None:
             check("curly and straight quotes both count", said()[1:] == ["For Gondor now"])
             await post("/api/input", {"text": 'Say "no" to the guard', "choice": True})
             check("a choice-button click is never a spoken line", len(said()) == 2)
+            await post("/api/input", {"text": 'I whisper "the key is hidden"', "whisper": True})
+            check("a whisper to the DM is never a spoken line", len(said()) == 2)
+            await post("/api/input", {"text": 'End the session "now"', "as_host": True})
+            check("a host line is never a spoken line", len(said()) == 2)
+            stage.state["dm"] = {"status": "busy"}
+            status, r = await post("/api/input", {"text": 'I say "hello"'})
+            check("a line while the DM is busy is refused and not logged", status == 409 and len(said()) == 2)
+            stage.state["dm"] = {"status": "idle"}
+            await post("/api/input", {"text": 'I say "hello"'})
+            check("a spoken line is logged once", said()[2:] == ["hello"])
             sent.clear()
             await post("/api/seat/claim", {"who": "legolas", "name": "Alex"})
             set_turn("legolas")
@@ -1023,6 +1033,9 @@ def test_seats() -> None:
             check("a line for a character that is not yours is refused", status == 403)
             status, r = await post("/api/input", {"text": "hi", "who": "legolas"})
             check("with two seats the player says which one", status == 200 and sent == ["[Alex as Legolas] hi"])
+            set_turn("aragorn")
+            status, r = await post("/api/input", {"text": 'I say "my turn"', "who": "legolas"})
+            check("a line out of turn is refused and not logged", status == 409 and "my turn" not in said())
             await post("/api/seat/release", {"who": "legolas"})
 
             for path in ("/api/game/save", "/api/restart", "/api/game/quit"):
