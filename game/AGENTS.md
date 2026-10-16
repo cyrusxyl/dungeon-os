@@ -103,7 +103,8 @@ When the session prompt says the players watch the visual stage, **load the `sta
 
 After tools resolve mechanics, **translate results into vivid narrative**:
 - Not: "You rolled 18 vs AC 15, dealing 7 damage."
-- But: "Your blade flashes in the torchlight (**rolled 18 vs AC 15**). Steel bites deep into the goblin's shoulder—**7 damage**—and it staggers back with a shriek."
+- But: "Your blade flashes in the torchlight. Steel bites deep into the goblin's shoulder, and it staggers back with a shriek."
+- Put no roll numbers, AC, DC or "(Ruling)" tags in narration. The stage shows every roll in the roll window and the log by itself. Say the result in words.
 
 **Narration Budget.** Players read every word. Long prose tires them. Keep each beat short:
 - At most 3 sentences of narration per beat. One beat is one response to the players.
