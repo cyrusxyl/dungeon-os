@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
 import { VoiceServer } from '@/components/VoiceServer'
 import { Tabs, type Tab } from '@/components/Tabs'
 import { VoiceToggle } from '@/components/VoiceToggle'
+import { setPrefs, usePrefs, type GameplayPrefs } from '@/lib/prefs'
 import { postJson } from '@/lib/stage'
 import type { Mode } from '@/lib/view'
 
@@ -70,6 +71,70 @@ function VoiceSettings({
           {label}
         </label>
       ))}
+    </>
+  )
+}
+
+/** One choice out of a few, as radio buttons. Same look as the DM tab. */
+function Choice<T extends string>({ legend, value, options, help, onChange }: { legend: string; value: T; options: [T, string][]; help?: string; onChange: (v: T) => void }) {
+  const name = useId()
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="mb-2 text-lg">{legend}</legend>
+      {options.map(([v, label]) => (
+        <label key={v} className="flex items-center gap-3 text-lg">
+          <input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} className="accent-[var(--gold)]" />
+          {label}
+        </label>
+      ))}
+      {help && <p className="text-sm text-[var(--dim)]">{help}</p>}
+    </fieldset>
+  )
+}
+
+const DICE_HELP: Record<GameplayPrefs['dice'], string> = {
+  tray: 'Every die tumbles. The damage dice show in rows first. Then all of them are thrown into one box.',
+  text: 'Only the d20 tumbles. The damage shows as text.',
+  off: 'No roll window. The roll goes to the story log only.',
+}
+
+/** How this device shows rolls. It applies at once and is saved in this browser: no Save button, no server. */
+function GameplaySettings() {
+  const prefs = usePrefs()
+  return (
+    <>
+      <p className="text-sm text-[var(--dim)]">These options apply to this device only. They take effect at once.</p>
+      <Choice
+        legend="Dice display"
+        value={prefs.dice}
+        options={[['tray', 'Tray'], ['text', 'Text'], ['off', 'Off']]}
+        help={DICE_HELP[prefs.dice]}
+        onChange={(dice) => setPrefs({ dice })}
+      />
+      <Choice
+        legend="Damage throw"
+        value={prefs.throw}
+        options={[['auto', 'Automatic'], ['click', 'Click to throw']]}
+        help={prefs.throw === 'auto' ? 'The dice are thrown after one second. A click throws them at once.' : 'The dice wait for a click.'}
+        onChange={(v) => setPrefs({ throw: v })}
+      />
+      <Choice
+        legend="Roll speed"
+        value={prefs.speed}
+        options={[['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']]}
+        help="Instant shows the dice already landed. A system that asks for less motion does the same."
+        onChange={(speed) => setPrefs({ speed })}
+      />
+      <Choice
+        legend="Keep the window open"
+        value={prefs.hold}
+        options={[['short', 'Short'], ['normal', 'Normal'], ['long', 'Long'], ['click', 'Until I click']]}
+        onChange={(hold) => setPrefs({ hold })}
+      />
+      <label className="flex items-center gap-3 text-lg">
+        <input type="checkbox" checked={prefs.tiles} onChange={(e) => setPrefs({ tiles: e.target.checked })} className="accent-[var(--gold)]" />
+        Show what adds to the roll
+      </label>
     </>
   )
 }
@@ -223,7 +288,8 @@ export function Settings({
     ),
   }
 
-  const tabs = inGame ? [voiceTab] : [dm, voiceTab]
+  const gameplay: Tab = { id: 'gameplay', label: 'Gameplay', body: <GameplaySettings /> }
+  const tabs = inGame ? [gameplay, voiceTab] : [dm, gameplay, voiceTab]
   return (
     <div className="flex flex-col gap-4">
       <Tabs tabs={tabs} label="Settings" />

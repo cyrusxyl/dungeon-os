@@ -131,3 +131,5 @@ body {
 @keyframes dm-dots { 0% { content: ''; } 25% { content: '.'; } 50% { content: '..'; } 75% { content: '...'; } }
 .dm-bob { animation: dm-bob 1.6s steps(2) infinite; }
 .dm-dots::after { content: '...'; animation: dm-dots 1.2s steps(1) infinite; }
+/* A critical hit: the damage dice glow gold. */
+.die-crit { filter: drop-shadow(0 0 5px var(--gold)); }

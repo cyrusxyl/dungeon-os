@@ -64,6 +64,12 @@ def problems(event: dict, kind: str, before: list[str], after: list[str], flags:
         if spent != should_spend:
             bad.append(f"{eid}: {'spent' if spent else 'kept'}, expected {'spent' if should_spend else 'kept'}")
 
+    # Damage dice come in groups, one per die type, and the groups hold the same faces as the flat list.
+    for dmg in detail.get("damage", []):
+        flat = [f for g in dmg.get("groups", []) for f in g["faces"]]
+        if flat != dmg["faces"] or any(not g["die"].split("d")[0].isdigit() or len(g["faces"]) != int(g["die"].split("d")[0]) for g in dmg["groups"]):
+            bad.append(f"damage groups {dmg.get('groups')} do not match faces {dmg['faces']}")
+
     # The outcome follows the numbers. An attack's natural 20 and 1 are real; a check or save judges only total vs DC.
     if kind == "attack":
         if (roll["outcome"] == "crit") != (d20[kept] == 20) or (roll["outcome"] == "fumble") != (d20[kept] == 1):

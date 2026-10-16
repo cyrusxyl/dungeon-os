@@ -144,7 +144,7 @@ export interface RollDetail {
   /** Only when the players may see it (a hidden DC or a monster's AC is left out). */
   target?: { label: string; value: number }
   rolls: RollEntry[]
-  damage?: { type: string; expr: string; faces: number[]; total: number }[]
+  damage?: { type: string; expr: string; faces: number[]; /** One entry per die type, so the tray can draw the right dice. Absent in old rolls. */ groups?: { die: string; faces: number[] }[]; total: number }[]
 }
 
 export interface RollRequest {

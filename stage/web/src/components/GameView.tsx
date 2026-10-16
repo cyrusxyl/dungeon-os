@@ -430,7 +430,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
           {isHost && state.creating && !state.new_party && !showCreator &&
             menuButton('Close creator', () => postJson('/api/creation/done', { force: true }), 'Close the character creator that another device left open.')}
           {isHost && menuButton('Console', () => setConsoleOpen((v) => !v))}
-          {menuButton('Settings', () => setSettingsOpen(true), 'Voice and sound. To change the DM, end the session first.')}
+          {menuButton('Settings', () => setSettingsOpen(true), 'Dice, voice and sound. To change the DM, end the session first.')}
           {isHost && saveName !== null ? (
             <form
               className="flex w-full flex-wrap items-center gap-2"

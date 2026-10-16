@@ -88,6 +88,11 @@ def _secret_feed(secret: bool, recs: list[dict], text: str) -> None:
         stage_feed(text)
 
 
+def _shown_damage(dtype: str, expr: str, groups: list[dict], total: int) -> dict:
+    """One damage entry for the roll window. `faces` is every die in one list (old clients); `groups` keeps them by die type."""
+    return {"type": dtype, "expr": expr, "faces": [f for g in groups for f in g["faces"]], "groups": groups, "total": total}
+
+
 def _d20_groups(faces: list[int], kept: int) -> list[dict]:
     """The kept d20 first (the legacy dice box colours a natural 20 or 1 from it)."""
     rest = list(faces)
@@ -786,7 +791,7 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
         amount, dmg_groups = dice.roll(expr, rng, crit=crit)
         groups += dmg_groups
         total_text.append(f"{amount} {dtype}".strip())
-        shown_dmg.append({"type": dtype, "expr": expr, "faces": [f for g in dmg_groups for f in g["faces"]], "total": amount})
+        shown_dmg.append(_shown_damage(dtype, expr, dmg_groups, amount))
         lines.append(damage(campaign_dir, state, target, amount, dtype, crit=crit))
     stage_roll(f"{a_rec['name']}: {act['name']} — {' + '.join(total_text)} damage", to_hit, groups, secret,
                detail(shown_dmg))
@@ -898,8 +903,7 @@ def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, 
             if taken:
                 lines.append(damage(campaign_dir, state, t, taken, damage_type))
     shown = f"{abil[:3].upper()} save" + (f", {amount} {damage_type} damage".rstrip() if amount is not None else "")
-    shown_dmg = ([{"type": damage_type, "expr": damage_expr, "faces": [f for g in dmg_groups for f in g["faces"]],
-                   "total": amount}] if amount is not None else None)
+    shown_dmg = [_shown_damage(damage_type, damage_expr, dmg_groups, amount)] if amount is not None else None
     detail = roll_detail("save", f"{abil.capitalize()} Saving Throw", "Half damage on a success" if half and amount else "",
                          entries, None if hide_dc else {"label": "Difficulty Class", "value": dc}, shown_dmg)
     # One target: its save total. Several: how many succeeded.
