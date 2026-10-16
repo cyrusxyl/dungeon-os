@@ -1,6 +1,6 @@
 """Treasure for `dnd-cli loot roll`: coins and items from the challenge rating, the kind of treasure and a seed.
 
-The table is stage/data/loot.json. The same seed gives the same list. The engine rolls; the DM decides: it gives
+The table is stage/data/loot.json and the perks are in stage/data/perks.json. The same seed gives the same list. The engine rolls; the DM decides: it gives
 coins with `character gold`, items with `character item add` or `loot force`, and rerolls with another seed.
 """
 
@@ -15,6 +15,7 @@ from dnd_cli import dice
 from dnd_cli.combat import RulesError
 
 LOOT_PATH = Path(__file__).resolve().parents[1] / "stage" / "data" / "loot.json"
+PERKS_PATH = LOOT_PATH.with_name("perks.json")
 KINDS = ("individual", "hoard")
 RARITIES = ("common", "uncommon", "rare", "very rare", "legendary")
 IN_GP = {"cp": 0.01, "sp": 0.1, "gp": 1, "pp": 10}
@@ -25,12 +26,76 @@ def table() -> dict:
     return json.loads(LOOT_PATH.read_text())
 
 
+@cache
+def perks() -> dict:
+    return json.loads(PERKS_PATH.read_text())
+
+
+def _fits(perk: dict, gear_type: str, rarity: str) -> bool:
+    top = perk.get("until", "very rare")
+    return gear_type in perk["types"] and RARITIES.index(perk["rarity"]) <= RARITIES.index(rarity) <= RARITIES.index(top)
+
+
+def roll_perks(gear_type: str, rarity: str, rng: random.Random) -> list[dict]:
+    """The perks of one gear item. A weapon of uncommon rarity or more starts with an enchant (+1, +2, +3).
+    No two perks of one `group` meet on one item."""
+    want = perks()["per_rarity"].get(rarity, 0)
+    fit = [p for p in perks()["perks"] if _fits(p, gear_type, rarity)]
+    chosen: list[dict] = []
+
+    def pick(pool: list[dict]) -> None:
+        pool = [p for p in pool if p not in chosen and not (p.get("group") and any(c.get("group") == p["group"] for c in chosen))]
+        if pool and len(chosen) < want:
+            chosen.append(rng.choices(pool, weights=[p["weight"] for p in pool])[0])
+
+    if gear_type == "weapon":
+        pick([p for p in fit if p.get("group") == "enchant"])
+    while len(chosen) < want:
+        before = len(chosen)
+        pick(fit)
+        if len(chosen) == before:  # nothing else fits
+            break
+    return chosen
+
+
+def gear_name(base: str, chosen: list[dict]) -> str:
+    """`+1 Keen Longsword of Flame and Warding`: prefixes, the base name, then the suffixes."""
+    prefix = [p["name"] for p in chosen if p["slot"] == "prefix"]
+    suffix = [p["name"] for p in chosen if p["slot"] == "suffix"]
+    tail = (" " + suffix[0] + "".join(" and " + s.removeprefix("of ") for s in suffix[1:])) if suffix else ""
+    return " ".join(prefix + [base]) + tail
+
+
+def gear(rarity: str, rng: random.Random) -> dict:
+    """One armor, weapon or accessory with its rolled perks. `effects` are presets to add when it is worn;
+    `rulings` are perks that the DM must rule."""
+    g = table()["gear"]
+    kind = rng.choices(list(g["types"]), weights=list(g["types"].values()))[0]
+    chosen = roll_perks(kind, rarity, rng)
+    base = rng.choice(g["bases"][kind])
+    return {"name": gear_name(base, chosen), "rarity": rarity, "type": kind, "perks": [p["name"] for p in chosen],
+            "effects": [p["effect"] for p in chosen if p["effect"]],
+            "rulings": [f"{p['name']}: {p['ruling']}" for p in chosen if not p["effect"]]}
+
+
+def hints(perk_text: str, who: str) -> list[str]:
+    """For `loot force`: the catalog perks named in the free text (split at commas), and what to do with each."""
+    out = []
+    for word in (w.strip().lower() for w in perk_text.split(",")):
+        for p in perks()["perks"]:
+            if p["name"].lower() == word:
+                out.append(f"{p['name']} ({'/'.join(p['types'])}): " + (f"wear it, then `effect add {who} {p['effect']}`." if p["effect"]
+                                                                       else f"you rule it: {p['ruling']}"))
+    return out
+
+
 def tier(cr: float) -> dict:
     return next(t for t in table()["tiers"] if cr <= t["max_cr"])
 
 
 def roll(cr: float, kind: str = "individual", seed: int | None = None, creature_type: str = "") -> dict:
-    """{"seed", "coins": {"gp": 12}, "items": [{"name", "rarity"}], "note"}. A legendary item has no name: the DM writes it."""
+    """{"seed", "coins": {"gp": 12}, "items": [{"name", "rarity"}], "note"}. A legendary item has no name: the DM writes it.
+    A gear item also has "type", "perks", "effects" (presets) and "rulings" (perks the DM must rule)."""
     if kind not in KINDS:
         raise RulesError(f"kind is one of {', '.join(KINDS)}.")
     if cr < 0:
@@ -47,6 +112,9 @@ def roll(cr: float, kind: str = "individual", seed: int | None = None, creature_
     if kind == "hoard":
         for _ in range(dice.roll(t["items"], rng)[0]):
             rarity = rng.choices(list(t["rarity"]), weights=list(t["rarity"].values()))[0]
+            if rarity != "legendary" and rng.random() < table()["gear"]["chance"].get(rarity, 0):
+                out["items"].append(gear(rarity, rng))
+                continue
             pool = table()["items"].get(rarity)
             out["items"].append({"name": rng.choice(pool) if pool else None, "rarity": rarity})
     return out
@@ -61,5 +129,10 @@ def lines(result: dict) -> list[str]:
     out.append(f"  Coins: {coins} ({total} gp in all)" if coins else "  Coins: none")
     for item in result["items"]:
         out.append(f"  {item['name'] or 'A legendary item: write it yourself'} ({item['rarity']})")
+        if item.get("effects"):
+            out.append(f"      effects when worn: {', '.join(item['effects'])}")
+        out += [f"      you rule: {r}" for r in item.get("rulings", [])]
     out.append("  Give coins with `character gold <who> +N` (in gp), items with `character item <who> add \"<item>\"`, or `loot force \"<item>\" --to <who> --perk \"...\"`.")
+    if any(i.get("effects") for i in result["items"]):
+        out.append("  Put an effect on the wearer with `effect add <who> <effect>`; take it off with `effect remove`.")
     return out

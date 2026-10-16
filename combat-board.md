@@ -327,11 +327,11 @@ The engine does this. `combat.end` splits the XP of defeated foes among the part
 
 The engine rolls. The DM decides.
 
-- **Catalogs.** Equipment and magic items, with rarity, from the 5e data in `.cache`. A small perk catalog: a name, the item types it fits, a rarity weight, and an effect.
-- **Rarity sets power.** Common: no perk. Uncommon: one small perk. Rare: two. Very rare: strong perks. Legendary: a unique item that the DM writes.
+- **Catalogs.** Fixed items (potions, scrolls, tools) by rarity, and gear (weapons, armor, rings, amulets, cloaks, boots, gloves, helmets) with rolled perks. The perk catalog is `stage/data/perks.json`: a name, the item types it fits, a lowest and highest rarity, a roll weight, and an effect or a ruling.
+- **Rarity sets power.** Common: no perk. Uncommon: one perk. Rare: two. Very rare: two, with the strong ones (+3, Keen, Unyielding, Blessed). Legendary: a unique item that the DM writes. A weapon of uncommon rarity or more always starts with its enchant (+1, +2, +3), as in Baldur's Gate 3. Accessories roll perks like other gear. Potions and scrolls never do.
 - **Roll.** `uv run dnd-cli loot roll --cr 1 --kind individual|hoard --seed N` picks coins and items from the CR and the foe types. The same seed gives the same list. The stage shows the list to the DM, not to the players.
 - **Control.** The DM can accept, reroll, swap an item, or force one: `loot force longsword perk=keen`. A perk can be free text. The DM writes the lore.
-- **Effects.** A perk compiles to an effect (see `dnd-cli effect add`). A +1 weapon changes the roll without new code.
+- **Effects.** A perk compiles to an effect preset (see `dnd-cli effect add`), or the DM rules it. The roll lists the presets to add when the item is worn. `effect add` and `effect remove` are the DM's: the engine does not track what a character wears. The effect parts are in `dnd_cli/effects.py`: flat bonus on a roll (with an optional ability or skill filter), weapon bonuses (to-hit, damage, crit range, extra damage dice, target type), Armor Class, resistance and flat damage reduction. A weapon part touches weapon attacks only, not Unarmed Strike, spells or thrown items.
 
 The 5e API has no treasure tables, so the first version uses a small table by CR tier in `stage/data/loot.json`. It has coins for an individual or a hoard, and item names by rarity. A legendary item is never named: the DM writes it.
 
