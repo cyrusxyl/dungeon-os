@@ -91,6 +91,8 @@ uv run dnd-cli loot force "Longsword" --to aragorn --perk "keen: it hums near or
 
 It prints "LEVEL UP READY" for a character who reached the next level (see the `character-advancement` skill). Then offer a search, loot, or a rest (`uv run dnd-cli rest short` / `rest long`).
 
+`loot roll` lists gear with its perks, for example `+1 Longsword of Flame (rare)`. It names the effects to add when the character wears the item (`uv run dnd-cli effect add aragorn magic-weapon-1`) and the perks you must rule yourself. Remove the effect when the item comes off (`effect remove`). `loot force` with a catalog perk name (`--perk "Keen"`) prints the same hint.
+
 ## Conditions: what to apply
 
 Give `--adv` or `--dis` from these when you call `attack`, `save` or `check`:

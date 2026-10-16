@@ -20,6 +20,8 @@ from test_rules import campaign, fight, staged
 ROUNDS = 400
 PCS = ["aragorn", "legolas"]
 LABEL_TO_ID = {v["label"]: k for k, v in effects.PRESETS.items()}
+# The audit knows the roll effects (bonus dice, advantage). Flat, weapon and defense parts have their own tests in test_rules.py.
+POOL = [k for k, v in effects.PRESETS.items() if "bonus" in v or "mode" in v or "flat" in v]
 
 
 def problems(event: dict, kind: str, before: list[str], after: list[str], flags: dict) -> list[str]:
@@ -89,11 +91,11 @@ def main() -> int:
                 combat.heal(c, state, pc, 100)
                 for eid in effects.PRESETS:
                     effects.remove(c, pc, eid)
-                for eid in rng.sample(list(effects.PRESETS), rng.randint(0, 4)):
+                for eid in rng.sample(POOL, rng.randint(0, 4)):
                     effects.add(c, pc, eid)
             kind = rng.choice(["check", "save", "attack"])
             flags = {"adv": rng.random() < 0.25, "dis": rng.random() < 0.25, "dc": rng.randint(5, 25), "hide": rng.random() < 0.3,
-                     "skip": set(rng.sample(list(effects.PRESETS), rng.randint(0, 2))), "target_is_pc": False}
+                     "skip": set(rng.sample(POOL, rng.randint(0, 2))), "target_is_pc": False}
             secret = rng.random() < 0.1
             args = {"adv": flags["adv"], "dis": flags["dis"], "secret": secret, "skip": tuple(flags["skip"])}
             if kind == "attack":

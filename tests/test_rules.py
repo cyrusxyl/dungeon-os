@@ -702,6 +702,114 @@ def test_session_end(c: Path) -> None:
     check("game time is set", json.loads((c / "state.json").read_text())["game_time"] == "Day 2")
 
 
+def test_gear(c: Path) -> None:
+    """The effect types that item perks use: weapon bonuses, crit range, extra dice, AC, saves, resistance."""
+    print("gear effects")
+    state = fight(c)
+    gob = state["active_encounter"]["monsters"]["goblin#1"]
+    gob["hp"], gob["ac"], gob["resist"] = {"current": 500, "max": 500}, 10, []
+
+    def swing(vals, weapon="longsword", ac=10):
+        gob["ac"] = ac
+        hp = gob["hp"]["current"]
+        line = []
+        ev = staged(c, lambda: line.append(combat.attack(c, state, "aragorn", weapon, "goblin#1", rng=Fixed(*vals), cost=None)))
+        return ev[0]["detail"]["rolls"][0], hp - gob["hp"]["current"], line[0]
+
+    base, base_dmg, _ = swing([12, 4])
+    effects.add(c, "aragorn", "magic-weapon-1")
+    r, dmg, line = swing([12, 4])
+    check("a +1 weapon adds 1 to the to-hit, as its own tile, and 1 to the damage",
+          r["total"] == base["total"] + 1 and dmg == base_dmg + 1 and {"label": "+1 Weapon", "value": 1} in r["mods"]
+          and "+1 weapon +1" in " ".join(line))
+    plain, plain_dmg, _ = swing([12], "unarmed strike")
+    effects.remove(c, "aragorn", "magic-weapon-1")
+    off, off_dmg, _ = swing([12], "unarmed strike")
+    check("a +1 weapon does not touch Unarmed Strike", plain["total"] == off["total"] and plain_dmg == off_dmg)
+    effects.add(c, "aragorn", "magic-weapon-1")
+    ev = staged(c, lambda: combat.attack(c, state, "aragorn", "improvised", "goblin#1", rng=Fixed(12, 3), damage_expr="1d4", cost=None))
+    check("a thrown improvised item gets no weapon bonus", [t["label"] for t in ev[0]["detail"]["rolls"][0]["mods"]] == ["Attack Bonus"])
+    effects.remove(c, "aragorn", "magic-weapon-1")
+
+    effects.add(c, "aragorn", "keen-edge")
+    r, dmg, _ = swing([19, 4, 4])
+    check("Keen: a natural 19 that hits is a critical hit and doubles the dice", r["outcome"] == "crit" and dmg == 8 + 3)
+    r, _, _ = swing([19, 4, 4], ac=40)
+    check("Keen: a natural 19 that misses is only a miss", r["outcome"] == "miss")
+    r, _, _ = swing([18, 4, 4])
+    check("Keen: an 18 is not a critical hit", r["outcome"] == "hit")
+    effects.remove(c, "aragorn", "keen-edge")
+    r, _, _ = swing([19, 4, 4])
+    check("without Keen a 19 is a plain hit", r["outcome"] == "hit")
+
+    effects.add(c, "aragorn", "flame-edge")
+    r, dmg, line = swing([12, 4, 3])
+    check("of Flame: +1d4 fire damage on a hit, named in the output", dmg == 4 + 3 + 3 and "3 fire" in " ".join(line))
+    r, dmg, _ = swing([20, 4, 4, 2, 2])
+    check("extra dice are doubled on a critical hit", r["outcome"] == "crit" and dmg == 8 + 3 + 4)
+    r, dmg, _ = swing([2, 4, 4], ac=40)
+    check("extra dice need a hit", dmg == 0)
+    gob["resist"] = ["fire"]
+    r, dmg, _ = swing([12, 4, 4])
+    check("the extra damage keeps its own type: a fire resistant target halves it", dmg == 4 + 3 + 2)
+    effects.remove(c, "aragorn", "flame-edge")
+    effects.add(c, "aragorn", "purging-edge")
+    r, dmg, _ = swing([12, 4, 4])
+    check("Purging does nothing against a goblin", dmg == 4 + 3)
+    gob["ctype"] = "undead"
+    r, dmg, _ = swing([12, 4, 5])
+    check("Purging adds 1d6 radiant against an undead", dmg == 4 + 3 + 5)
+    gob["ctype"] = "humanoid"
+    effects.remove(c, "aragorn", "purging-edge")
+
+    sheet_ac = character.load(c, "aragorn")["armor_class"]
+    effects.add(c, "aragorn", "magic-armor-2")
+    check("+2 armor adds to the combat record, not to the sheet", combat.combatant(c, state, "aragorn")["ac"] == sheet_ac + 2
+          and character.load(c, "aragorn")["armor_class"] == sheet_ac)
+    lines = combat.attack(c, state, "goblin#1", "scimitar", "aragorn", rng=Fixed(sheet_ac + 1 - 4), cost=None)  # the goblin's +4 just reaches the bare AC + 1
+    check("a hit on the bare AC misses the armor", "miss" in lines[-1] and f"vs AC {sheet_ac + 2}" in lines[-1])
+    effects.remove(c, "aragorn", "magic-armor-2")
+    check("the bonus ends with the effect", combat.combatant(c, state, "aragorn")["ac"] == sheet_ac)
+
+    r = staged(c, lambda: combat.save(c, state, ["aragorn"], "dex", 12, rng=Fixed(9)))[0]["detail"]["rolls"][0]
+    effects.add(c, "aragorn", "warding")
+    w = staged(c, lambda: combat.save(c, state, ["aragorn"], "dex", 12, rng=Fixed(9)))[0]["detail"]["rolls"][0]
+    check("Warding adds 1 to a save as a tile, and the effect stays", w["total"] == r["total"] + 1
+          and {"label": "Warding", "value": 1} in w["mods"] and effects.active(c, "aragorn") == ["warding"])
+    a = staged(c, lambda: combat.attack(c, state, "aragorn", "unarmed strike", "goblin#1", rng=Fixed(9), cost=None))[0]["detail"]["rolls"][0]
+    check("Warding does not touch an attack", all(t["label"] != "Warding" for t in a["mods"]))
+    effects.remove(c, "aragorn", "warding")
+
+    effects.add(c, "aragorn", "might")
+    s_str = staged(c, lambda: combat.save(c, state, ["aragorn"], "str", 12, rng=Fixed(9)))[0]["detail"]["rolls"][0]
+    s_dex = staged(c, lambda: combat.save(c, state, ["aragorn"], "dex", 12, rng=Fixed(9)))[0]["detail"]["rolls"][0]
+    c_ath = staged(c, lambda: combat.check(c, state, ["aragorn"], "athletics", rng=Fixed(9)))[0]["detail"]["rolls"][0]
+    c_acr = staged(c, lambda: combat.check(c, state, ["aragorn"], "acrobatics", rng=Fixed(9)))[0]["detail"]["rolls"][0]
+    has = lambda roll: any(t["label"] == "Might" for t in roll["mods"])  # noqa: E731
+    check("Might counts for Strength saves and Strength skills, not for Dexterity", has(s_str) and has(c_ath) and not has(s_dex) and not has(c_acr))
+    effects.remove(c, "aragorn", "might")
+
+    combat.heal(c, state, "aragorn", 100)
+    effects.add(c, "aragorn", "fire-ward")
+    check("Fire Resistance halves fire damage", "takes 5 (resists fire)" in combat.damage(c, state, "aragorn", 10, "fire"))
+    check("it does not touch cold damage", "takes 10:" in combat.damage(c, state, "aragorn", 10, "cold"))
+    effects.remove(c, "aragorn", "fire-ward")
+    effects.add(c, "aragorn", "cushioning")
+    check("Cushioning takes 1 off a slashing hit", "takes 4 (gear absorbs 1)" in combat.damage(c, state, "aragorn", 5, "slashing"))
+    check("it does not touch fire damage", "takes 5:" in combat.damage(c, state, "aragorn", 5, "fire"))
+    effects.add(c, "aragorn", "unyielding")
+    check("Cushioning and Unyielding add up, and damage stops at 0", "takes 0" in combat.damage(c, state, "aragorn", 3, "slashing"))
+    effects.remove(c, "aragorn", "cushioning")
+    effects.remove(c, "aragorn", "unyielding")
+
+    effects.add(c, "aragorn", "blessed")
+    b = staged(c, lambda: combat.save(c, state, ["aragorn"], "dex", 12, rng=Fixed(3, 9)))[0]["detail"]["rolls"][0]
+    check("Blessed is Bless without concentration: +1d4 on saves, kept", b["bonus"][0]["label"] == "Blessed" and effects.active(c, "aragorn") == ["blessed"]
+          and effects.PRESETS["bless"]["concentration"] and not effects.PRESETS["blessed"]["concentration"])
+    effects.remove(c, "aragorn", "blessed")
+    check("the stage lists every preset with a tone", all(e["tone"] for e in effects.catalogue()))
+
+
 def test_loot() -> None:
     print("loot")
     a, b = loot.roll(1, "hoard", 7), loot.roll(1, "hoard", 7)
@@ -714,20 +822,46 @@ def test_loot() -> None:
     check("a beast carries nothing", not (r := loot.roll(1, "hoard", 1, "Beast"))["coins"] and not r["items"] and "no treasure" in r["note"])
     check("a legendary item is never named: the DM writes it", any(i["rarity"] == "legendary" and i["name"] is None for n in range(40) for i in loot.roll(20, "hoard", n)["items"]))
     check("a bad kind or CR is refused", raises(lambda: loot.roll(1, "pile")) and raises(lambda: loot.roll(-1)))
-    cat = loot.perks()
-    check("each perk has the fields and an effect that effects.py knows", all({"name", "slot", "types", "rarity", "weight", "effect", "ruling"} <= p.keys() and p["rarity"] in loot.RARITIES and p["weight"] > 0 and (p["effect"] is None or p["effect"] in effects.PRESETS) for p in cat) and len(cat) >= 5)
-    check("a perk with no effect names the effect type it needs", all(p.get("needs") for p in cat if p["effect"] is None))
-    big = [i for n in range(60) for i in loot.roll(20, "hoard", n)["items"]]
-    check("perks follow the rarity: none on common or legendary, a count on the rest", all(len(i["perks"]) <= {"uncommon": 1, "rare": 2, "very rare": 2}.get(i["rarity"], 0) for i in big) and any(len(i["perks"]) == 2 for i in big))
-    check("only a weapon or an armor gets a perk, never twice the same", all(loot.item_type(i["name"]) != "other" and len(set(i["perks"])) == len(i["perks"]) for i in big if i["perks"]) and any(i["perks"] for i in big))
-    check("a +2 weapon does not roll a +1 perk", all("+1" not in i["perks"] for i in big if i["name"] and "+" in i["name"]))
-    check("the same seed gives the same perks", loot.roll(14, "hoard", 5) == loot.roll(14, "hoard", 5))
-    check("a catalog name becomes its ruling, other text stays free", loot.describe_perk("keen").startswith("Keen: ") and loot.describe_perk("keen: it hums near orcs") == "keen: it hums near orcs")
-    check("the list shows the perks", "perk: " in "\n".join(loot.lines({"seed": 1, "coins": {}, "items": [{"name": "Weapon, +1", "rarity": "uncommon", "perks": ["Keen"]}], "note": ""})))
-    check("the list says how to give it and totals the coins","gp in all" in "\n".join(loot.lines(loot.roll(1, "hoard", 7))))
     data = {"name": "Aragorn", "inventory": []}
     sheet.add_item(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
     check("a forced item keeps its perk text and rarity", data["inventory"][0] == {"name": "Longsword", "quantity": 1, "description": "keen: it hums near orcs", "rarity": "uncommon"})
+    hints = loot.hints("Keen, of Flame, hums", "aragorn")
+    check("loot force names the effect of a catalog perk and says when the DM must rule", any("effect add aragorn keen-edge" in h for h in hints)
+          and any("effect add aragorn flame-edge" in h for h in hints) and len(hints) == 2
+          and any("you rule it" in h for h in loot.hints("vicious", "aragorn")))
+
+    print("perk catalog")
+    book = loot.perks()["perks"]
+    kinds = set(loot.table()["gear"]["bases"])
+    check("the catalog has 20 to 30 perks", 20 <= len(book) <= 30)
+    check("a perk fits known types, a rarity and a slot", all(set(p["types"]) <= kinds and p["rarity"] in loot.RARITIES[1:4]
+                                                              and p.get("until", "very rare") in loot.RARITIES[1:4] and p["slot"] in ("prefix", "suffix")
+                                                              and p["weight"] > 0 for p in book))
+    check("a perk is a known effect, or the DM rules it and says what is missing",
+          all((p["effect"] in effects.PRESETS) if p["effect"] else bool(p["ruling"] and p["needs"]) for p in book))
+    check("a perk effect needs no concentration", all(not effects.PRESETS[p["effect"]]["concentration"] for p in book if p["effect"]))
+    check("a perk has one name per type", len({(p["name"], t) for p in book for t in p["types"]}) == sum(len(p["types"]) for p in book))
+    check("more perks are compiled than left to the DM, and some are left to the DM", sum(1 for p in book if p["effect"]) > sum(1 for p in book if not p["effect"]) > 0)
+    check("every item type has a roll weight", set(loot.table()["gear"]["types"]) == kinds)
+    gear = [i for n in range(150) for i in loot.roll(20, "hoard", n)["items"] if i.get("type")]
+    by_name = {(p["name"], t): p for p in book for t in p["types"]}
+    fine = all(all((n, i["type"]) in by_name and by_name[(n, i["type"])]["rarity"] in loot.RARITIES[:loot.RARITIES.index(i["rarity"]) + 1]
+                   for n in i["perks"]) for i in gear)
+    check("a rolled perk fits the item type and its rarity", bool(gear) and fine)
+    counts = {r: {len(i["perks"]) for i in gear if i["rarity"] == r} for r in ("rare", "very rare")}
+    check("rare and very rare gear has two perks", counts == {"rare": {2}, "very rare": {2}})
+    low = [i for n in range(300) for i in loot.roll(3, "hoard", n)["items"] if i.get("type")]
+    check("uncommon gear has one perk and common gear none", {len(i["perks"]) for i in low if i["rarity"] == "uncommon"} == {1}
+          and {len(i["perks"]) for i in low if i["rarity"] == "common"} == {0})
+    check("an uncommon weapon is only an enchant", all(i["perks"] == ["+1"] for i in low if i["rarity"] == "uncommon" and i["type"] == "weapon"))
+    check("a weapon starts with its enchant, and no second enchant joins it",
+          all(i["perks"][0] in ("+1", "+2", "+3") and not set(i["perks"][1:]) & {"+1", "+2", "+3"} for i in gear if i["type"] == "weapon"))
+    check("accessories roll perks", {i["type"] for i in gear if i["perks"]} >= {"ring", "amulet", "cloak", "boots", "gloves", "helmet"})
+    check("a fixed item (potion, scroll) never has perks", all(not i.get("perks") for n in range(60) for i in loot.roll(20, "hoard", n)["items"] if not i.get("type")))
+    check("the same seed gives the same items and the same perks", all(loot.roll(14, "hoard", n) == loot.roll(14, "hoard", n) for n in range(30))
+          and any(i["perks"] for n in range(30) for i in loot.roll(14, "hoard", n)["items"] if i.get("type")))
+    text = "\n".join(line for n in range(40) for line in loot.lines(loot.roll(14, "hoard", n)))
+    check("the list names the effects to add and the perks to rule", "effects when worn:" in text and "you rule:" in text and "effect add <who>" in text)
 
 
 if __name__ == "__main__":
@@ -737,6 +871,7 @@ if __name__ == "__main__":
         c = campaign(Path(tmp))
         test_combat(c)
         test_effects(c)
+        test_gear(c)
         test_resources(c)
         test_actions(c)
         test_paladin(c)

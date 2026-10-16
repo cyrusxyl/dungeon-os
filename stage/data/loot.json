@@ -1,5 +1,5 @@
 {
-  "_comment": "Treasure by challenge rating for `dnd-cli loot roll`. A coin is [dice, times]. `rarity` weights add up to 100 (cumulative is not needed). Item names are 5e SRD magic items; a perk on a weapon or an armor rolls from stage/data/perks.json (a draft catalog: GitHub issue #1), and any other perk is free text the DM writes. Legendary items are never listed: the DM writes them. See combat-board.md, section 7.",
+  "_comment": "Treasure by challenge rating for `dnd-cli loot roll`. A coin is [dice, times]. `rarity` weights add up to 100 (cumulative is not needed). `items` are fixed items by rarity: potions, scrolls, tools. They never roll perks. `gear` is armor, weapons and accessories: `chance` is the chance by rarity that an item is gear, `types` are the roll weights of the gear types, `bases` are the plain names. Gear of uncommon rarity and above rolls perks from stage/data/perks.json. A legendary item is never listed: the DM writes it. See combat-board.md, section 7.",
   "no_treasure": ["beast", "ooze", "plant", "swarm"],
   "tiers": [
     {"max_cr": 4, "individual": {"sp": ["3d6", 1], "gp": ["2d6", 1]}, "hoard": {"sp": ["4d6", 10], "gp": ["4d6", 5]}, "items": "1d3", "rarity": {"common": 70, "uncommon": 30}},
@@ -9,8 +9,22 @@
   ],
   "items": {
     "common": ["Potion of healing", "Potion of climbing", "Spell scroll (cantrip)", "Alchemist's fire", "Acid"],
-    "uncommon": ["Potion of greater healing", "Bag of holding", "Cloak of protection", "Boots of elvenkind", "Gloves of thievery", "Wand of magic missiles", "Weapon, +1", "Ammunition, +1", "Rope of climbing"],
-    "rare": ["Potion of superior healing", "Weapon, +2", "Armor, +1", "Ring of protection", "Cloak of displacement", "Wand of fireballs"],
-    "very rare": ["Potion of supreme healing", "Weapon, +3", "Armor, +2", "Ring of regeneration", "Staff of power"]
+    "uncommon": ["Potion of greater healing", "Potion of speed", "Bag of holding", "Wand of magic missiles", "Ammunition, +1", "Rope of climbing"],
+    "rare": ["Potion of superior healing", "Potion of invisibility", "Cloak of displacement", "Wand of fireballs"],
+    "very rare": ["Potion of supreme healing", "Potion of cloud giant strength", "Staff of power"]
+  },
+  "gear": {
+    "chance": {"common": 0.25, "uncommon": 0.6, "rare": 0.7, "very rare": 0.7},
+    "types": {"weapon": 4, "armor": 3, "ring": 1, "amulet": 1, "cloak": 1, "boots": 1, "gloves": 1, "helmet": 1},
+    "bases": {
+      "weapon": ["Dagger", "Shortsword", "Rapier", "Scimitar", "Longsword", "Battleaxe", "Greatsword", "Warhammer", "Mace", "Spear", "Quarterstaff", "Shortbow", "Longbow", "Light Crossbow", "Hand Crossbow"],
+      "armor": ["Leather Armor", "Studded Leather", "Chain Shirt", "Scale Mail", "Half Plate", "Chain Mail", "Plate Armor", "Shield"],
+      "ring": ["Ring"],
+      "amulet": ["Amulet"],
+      "cloak": ["Cloak"],
+      "boots": ["Boots"],
+      "gloves": ["Gloves"],
+      "helmet": ["Helmet", "Circlet"]
+    }
   }
 }

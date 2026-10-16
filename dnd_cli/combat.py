@@ -95,13 +95,15 @@ def _d20_groups(faces: list[int], kept: int) -> list[dict]:
     return [{"die": "1d20", "faces": [kept]}] + ([{"die": "1d20 dropped", "faces": rest}] if rest else [])
 
 
-def _d20(campaign_dir: Path, cid: str, kind: str, adv: bool, dis: bool, rng, skip=()) -> dict:
-    """One d20 roll for a creature, with its active effects: advantage, disadvantage and bonus dice."""
-    fx = effects.apply(campaign_dir, cid, kind, rng, skip)
+def _d20(campaign_dir: Path, cid: str, kind: str, adv: bool, dis: bool, rng, skip=(), tags=()) -> dict:
+    """One d20 roll for a creature, with its active effects: advantage, disadvantage, bonus dice and flat bonuses.
+
+    `tags` say what the roll is about (its ability, its skill) for effects that need one."""
+    fx = effects.apply(campaign_dir, cid, kind, rng, skip, tags)
     adv, dis = adv or fx["adv"], dis or fx["dis"]
     kept, faces = dice.d20(rng, adv, dis)
     mode = "normal" if len(faces) == 1 else "advantage" if adv else "disadvantage"
-    return {"kept": kept, "faces": faces, "mode": mode, "bonus": fx["bonus"], "used": fx["used"]}
+    return {"kept": kept, "faces": faces, "mode": mode, "bonus": fx["bonus"], "flat": fx["flat"], "used": fx["used"]}
 
 
 def _fx_note(roll: dict) -> str:
@@ -109,7 +111,7 @@ def _fx_note(roll: dict) -> str:
     notes = []
     if roll["mode"] != "normal":
         notes.append(f"{roll['mode']} {','.join(map(str, roll['faces']))}")
-    notes += [f"{b['label'].lower()} {dice.signed(b['value'])}" for b in roll["bonus"]]
+    notes += [f"{b['label'].lower()} {dice.signed(b['value'])}" for b in roll["bonus"] + roll.get("flat", [])]
     return f" ({'; '.join(notes)})" if notes else ""
 
 
@@ -159,7 +161,9 @@ def roll_preview(campaign_dir: Path, state: dict, cid: str, what: str) -> dict:
 
 
 def _entry(rec: dict, roll: dict, tiles: list[dict], outcome: str | None = None, total: int | None = None) -> dict:
-    """One creature's roll for the roll window. The total is the d20 plus every tile and bonus die."""
+    """One creature's roll for the roll window. The total is the d20 plus every tile and bonus die.
+    Flat bonuses from effects join the tiles."""
+    tiles = tiles + roll.get("flat", [])
     total = roll["kept"] + sum(t["value"] for t in tiles) + sum(b["value"] for b in roll["bonus"]) if total is None else total
     return {"who": rec["id"], "name": rec["name"], "d20": roll["faces"], "kept": roll["faces"].index(roll["kept"]),
             "mode": roll["mode"], "mods": tiles, "bonus": roll["bonus"], "total": total, "outcome": outcome}
@@ -244,10 +248,10 @@ def pc_record(sheet: dict, cid: str) -> dict:
                         "damage": [[w["damage"], w.get("damage_type", "")]] if w.get("damage") else []})
     # Bare fists, as in Baldur's Gate 3: 1 + Strength modifier, bludgeoning.
     attacks.append({"name": "Unarmed Strike", "bonus": mods["strength"] + sheet.get("proficiency_bonus", 2), "reach_ft": 5,
-                    "damage": [[f"1{dice.signed(mods['strength'])}", "bludgeoning"]]})
+                    "damage": [[f"1{dice.signed(mods['strength'])}", "bludgeoning"]], "plain": True})
     spell = sheet.get("spellcasting") or {}
     if "spell_attack_bonus" in spell:
-        attacks.append({"name": "spell", "bonus": spell["spell_attack_bonus"], "damage": []})
+        attacks.append({"name": "spell", "bonus": spell["spell_attack_bonus"], "damage": [], "plain": True})
     return {
         "id": cid, "kind": "pc", "name": sheet.get("name", cid), "ac": sheet.get("armor_class", 10),
         "hp": sheet["hp"], "mods": mods,
@@ -341,7 +345,12 @@ def combatant(campaign_dir: Path, state: dict, cid: str) -> dict:
     if cid in (enc.get("monsters") or {}):
         return enc["monsters"][cid]
     if character.character_path(campaign_dir, cid).exists():
-        return pc_record(character.load(campaign_dir, cid), cid)
+        rec = pc_record(character.load(campaign_dir, cid), cid)
+        fx = effects.defense(campaign_dir, cid)  # worn gear: Armor Class and resistances
+        rec["ac"] += fx["ac"]
+        rec["resist"] = rec["resist"] + fx["resist"]
+        rec["reduce"] = fx["reduce"]
+        return rec
     known = list((enc.get("monsters") or {})) + party(campaign_dir, state)
     raise RulesError(f"no combatant {cid!r}. Known: {', '.join(known) or 'none'}.")
 
@@ -371,6 +380,8 @@ def damage(campaign_dir: Path, state: dict, cid: str, amount: int, dtype: str = 
     """Apply damage; returns the DM line. PCs are saved to their sheet; creatures stay in the encounter."""
     rec = combatant(campaign_dir, state, cid)
     amount, note = _scaled(rec, amount, dtype.lower())
+    if amount and (cut := rec.get("reduce", {}).get(dtype.lower(), 0) + rec.get("reduce", {}).get("all", 0)):
+        amount, note = max(0, amount - cut), note + f" (gear absorbs {min(cut, amount)})"
     concentrating = any(c["condition"] == "concentrating" for c in _conditions(state, cid))
     conc = f"; concentration save DC {max(10, amount // 2)}" if concentrating and amount else ""
     if rec["kind"] == "pc":
@@ -716,7 +727,7 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     a_rec = combatant(campaign_dir, state, attacker)
     t_rec = combatant(campaign_dir, state, target)
     if weapon.lower() == "improvised" and damage_expr:
-        act = {"name": "improvised", "bonus": 0, "damage": []}  # a thrown item or an improvised weapon: the to-hit is all in `bonus`
+        act = {"name": "improvised", "bonus": 0, "damage": [], "plain": True}  # a thrown item or an improvised weapon: the to-hit is all in `bonus`
     else:
         act = _find_attack(a_rec, weapon)
     if "dc" in act:
@@ -745,11 +756,15 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
         condition(state, attacker, "remove", "hidden")
     r = _d20(campaign_dir, attacker, "attack", adv, dis, rng, skip)
     kept = r["kept"]
+    # Weapon gear (a +1 sword, Keen, of Flame) touches weapon attacks only, not Unarmed Strike, spells or throws.
+    wfx = effects.NO_WEAPON if act.get("plain") else effects.weapon(campaign_dir, attacker, str(t_rec.get("ctype", "")))
+    r["flat"] = r["flat"] + wfx["hit"]
     tiles = [{"label": "Attack Bonus", "value": act["bonus"]}] + ([{"label": "Bonus", "value": bonus}] if bonus else [])
     entry = _entry(a_rec, r, tiles)
     to_hit = entry["total"]
-    crit, fumble = kept == 20, kept == 1
-    hit = crit or (not fumble and to_hit >= t_rec["ac"])
+    fumble = kept == 1
+    hit = kept == 20 or (not fumble and to_hit >= t_rec["ac"])
+    crit = hit and kept >= wfx["crit"]  # a natural 20 always hits; a lower crit range (Keen) crits only when it hits
     entry["outcome"] = "crit" if crit else "fumble" if fumble else "hit" if hit else "miss"
     groups = _d20_groups(r["faces"], kept) + [{"die": b["die"], "faces": b["faces"]} for b in r["bonus"]]
     # A monster's AC stays behind the screen; the AC of a player character is on their sheet.
@@ -765,7 +780,9 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
         _secret_feed(secret, [t_rec], f"{a_rec['name']}'s {act['name']} misses {t_rec['name']}.")
         return turn_lines + [head + (" \u2014 natural 1, miss" if fumble else " \u2014 miss")]
     lines, total_text, shown_dmg = [], [], []
-    for expr, dtype in parts:
+    if wfx["dmg"] and parts:
+        parts = [[parts[0][0] + dice.signed(wfx["dmg"]), parts[0][1]]] + parts[1:]
+    for expr, dtype in parts + wfx["extra"]:
         amount, dmg_groups = dice.roll(expr, rng, crit=crit)
         groups += dmg_groups
         total_text.append(f"{amount} {dtype}".strip())
@@ -865,7 +882,7 @@ def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, 
         amount, dmg_groups = dice.roll(damage_expr, rng)
     lines, groups, entries, successes, total = [], [], [], 0, 0
     for t, rec in zip(targets, recs):
-        r = _d20(campaign_dir, t, "save", adv, dis, rng, skip)
+        r = _d20(campaign_dir, t, "save", adv, dis, rng, skip, (abil,))
         bonus = save_bonus(rec, abil)
         entry = _entry(rec, r, _tiles(rec, abil, bonus, f"{abil.capitalize()} Save"))
         total = entry["total"]
@@ -909,7 +926,7 @@ def check(campaign_dir: Path, state: dict, who: list[str], what: str, dc: int | 
         if passive:
             lines.append(f"{cid} passive {label}: {10 + bonus + (5 if adv else 0) - (5 if dis else 0)}")
             continue
-        r = _d20(campaign_dir, cid, spec["kind"], adv, dis, rng, skip)
+        r = _d20(campaign_dir, cid, spec["kind"], adv, dis, rng, skip, (spec["abil"], what if what in SKILLS else ""))
         entry = _entry(rec, r, spec["tiles"])
         total = entry["total"]
         ok = dc is not None and total >= dc
