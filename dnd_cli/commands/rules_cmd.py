@@ -171,7 +171,8 @@ def execute_effect(campaign, op: str, who: str | None, name: str | None) -> int:
             raise combat.RulesError(str(e)) from e
         spec = effects.PRESETS[name]
         return _out([f"{who}: {spec['label']} {'on' if op == 'add' else 'off'}"
-                     + (f" — {spec['info']}; the next matching roll uses it." if op == "add" else ".")])
+                     + (f" — {spec['info']}; " + ("the next matching roll uses it." if spec["use"] == "next"
+                                                  else "it stays until you remove it.") if op == "add" else ".")])
     return run_stage(campaign, fn, *ERRORS)
 
 
@@ -237,11 +238,11 @@ def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str
 
 
 def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None) -> int:
-    """Give an item the DM chose, with a perk written as free text (the lore is the DM's)."""
+    """Give an item the DM chose, with a perk written as free text (the lore is the DM's). A catalog perk in the text adds a hint."""
     def fn(campaign_dir, data):
         if rarity and rarity not in loot.RARITIES:
             raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
-        return [sheet.add_item(data, item, qty, perk, rarity)]
+        return [sheet.add_item(data, item, qty, perk, rarity)] + loot.hints(perk, who)
     return _edit_sheet(campaign, who, fn)
 
 
