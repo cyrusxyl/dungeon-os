@@ -21,7 +21,7 @@ ROUNDS = 400
 PCS = ["aragorn", "legolas"]
 LABEL_TO_ID = {v["label"]: k for k, v in effects.PRESETS.items()}
 # The audit knows the roll effects (bonus dice, advantage). Flat, weapon and defense parts have their own tests in test_rules.py.
-POOL = [k for k, v in effects.PRESETS.items() if "bonus" in v or "mode" in v]
+POOL = [k for k, v in effects.PRESETS.items() if "bonus" in v or "mode" in v or "flat" in v]
 
 
 def problems(event: dict, kind: str, before: list[str], after: list[str], flags: dict) -> list[str]:
