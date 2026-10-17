@@ -250,6 +250,52 @@ def _mood(img: Image.Image, mood: str) -> Image.Image:
     return rgb.convert("RGBA")
 
 
+def _placed(r: dict) -> list[tuple[str, str, int]]:
+    """Every prop of a resolved spec as (name, slot, nudge), in drawing order: wall, flat, then back to front."""
+    cat = catalog()
+    placed = [(name, slot, 0) for slot, name in r["slots"].items() if name]
+    per_zone: dict[str, int] = {}
+    for name, zone in r["add"]:
+        n = per_zone.get(zone, 0) + (1 if r["slots"].get(zone) else 0)
+        per_zone[zone] = per_zone.get(zone, 0) + 1
+        nudge = 0 if n == 0 else (36 * ((n + 1) // 2)) * (1 if n % 2 else -1)
+        placed.append((name, zone, nudge))
+
+    def order(entry):
+        name, slot, _ = entry
+        if slot in WALL_SLOTS:
+            return (0, 0)
+        if cat["props"][name].get("flat"):
+            return (1, 0)
+        return (2, ZONE_BASELINE[slot.split("_")[0]])
+
+    return sorted(placed, key=order)
+
+
+def _spot(img: Image.Image, name: str, slot: str, nudge: int) -> tuple[int, int]:
+    """Where a prop's image is pasted: its top-left corner, kept near the stage."""
+    x, y = _place(img, name, slot, nudge)
+    return max(-img.width // 2, min(W - img.width // 2, x)), y
+
+
+def stand_points(spec: dict) -> list[dict]:
+    """Where an actor can stand or sit on each prop that allows it, in stage pixels.
+
+    A prop's `stand` entry in scenery.json gives its mode and its points in the prop image's own pixels:
+    `sit` (the point is the hip: the stage cuts the sprite there, because LPC has no sitting pose) or `on`
+    (the point is the feet). Result: [{"slot", "prop", "mode", "points": [[x, y], ...]}]; the slot is
+    where the prop stands, so the DM writes `@enter <actor> on <slot>`.
+    """
+    out = []
+    for name, slot, nudge in _placed(resolve(spec)):
+        stand = catalog()["props"][name].get("stand")
+        if stand:
+            x, y = _spot(prop_image(name), name, slot, nudge)
+            out.append({"slot": slot, "prop": name, "mode": stand["mode"],
+                        "points": [[x + px, y + py] for px, py in stand["at"]]})
+    return out
+
+
 def render(spec: dict, stuff: list | tuple = ()) -> Image.Image:
     """The scene image. `stuff`: item icons pasted over the props, before the mood tint."""
     r = resolve(spec)
@@ -269,30 +315,10 @@ def render(spec: dict, stuff: list | tuple = ()) -> Image.Image:
             for col in range(first, last + 1):
                 img.alpha_composite(_wall_tile(style, col, first, last), (col * T, 0))
 
-    placed = []
-    for slot, name in r["slots"].items():
-        if name:
-            placed.append((name, slot, 0))
-    per_zone: dict[str, int] = {}
-    for name, zone in r["add"]:
-        n = per_zone.get(zone, 0) + (1 if r["slots"].get(zone) else 0)
-        per_zone[zone] = per_zone.get(zone, 0) + 1
-        nudge = 0 if n == 0 else (36 * ((n + 1) // 2)) * (1 if n % 2 else -1)
-        placed.append((name, zone, nudge))
-
-    def order(entry):
-        name, slot, _ = entry
-        prop = cat["props"][name]
-        if slot in WALL_SLOTS:
-            return (0, 0)
-        if prop.get("flat"):
-            return (1, 0)
-        return (2, ZONE_BASELINE[slot.split("_")[0]])
-
-    for name, slot, nudge in sorted(placed, key=order):
+    for name, slot, nudge in _placed(r):
         pimg = prop_image(name)
-        x, y = _place(pimg, name, slot, nudge)
-        img.alpha_composite(pimg, (max(-pimg.width // 2, min(W - pimg.width // 2, x)), y))
+        x, y = _spot(pimg, name, slot, nudge)
+        img.alpha_composite(pimg, (x, y))
     for path, x, y in stuff:
         icon = Image.open(ensure_dcss() / "item" / path).convert("RGBA")
         icon = icon.crop(icon.getchannel("A").getbbox())

@@ -274,6 +274,25 @@ def test_scenes() -> None:
     for mood in cat["moods"]:
         scenes.render({"template": "street", "mood": mood})
     check("every mood renders", True)
+    from PIL import Image
+    from stage import pose
+
+    stand = [n for n, p in cat["props"].items() if p.get("stand")]
+    off = []
+    for n in stand:
+        spec = {"template": "hall", "slots": {**{s: None for s in scenes.SLOTS}, "mid_center": n}}
+        pim = scenes.prop_image(n)
+        x0, y0 = scenes._spot(pim, n, "mid_center", 0)
+        alpha = pim.getchannel("A")
+        for sx, sy in scenes.stand_points(spec)[0]["points"]:
+            if not alpha.getpixel((sx - x0, sy - y0)):
+                off.append(n)
+    check(f"every stand point lies on opaque pixels of its prop {off}", not off)
+    frame = Image.new("RGBA", (64, 64))
+    frame.paste((200, 50, 50, 255), (22, 13, 42, 63))
+    for facing in ("down", "up", "left", "right"):
+        box = pose.sit(frame, facing).getchannel("A").getbbox()
+        check(f"a seated actor facing {facing} is not taller than a standing one", box[3] <= 63 and box[1] == 13)
     skill = (Path(__file__).resolve().parent.parent / "game" / ".claude" / "skills" / "stage" / "SKILL.md").read_text()
     missing = [n for n in (*cat["templates"], *cat["moods"]) if f"`{n}`" not in skill]
     check(f"the DM skill names every template and mood {missing}", not missing)

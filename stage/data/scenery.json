@@ -774,7 +774,16 @@
         0,
         1,
         3
-      ]
+      ],
+      "stand": {
+        "mode": "sit",
+        "at": [
+          [
+            16,
+            84
+          ]
+        ]
+      }
     },
     "bed": {
       "sheet": "city",
@@ -810,7 +819,24 @@
         0,
         3,
         3
-      ]
+      ],
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            24,
+            40
+          ],
+          [
+            48,
+            46
+          ],
+          [
+            72,
+            40
+          ]
+        ]
+      }
     },
     "stool": {
       "sheet": "city",
@@ -829,6 +855,15 @@
           "portable",
           "breakable",
           "flammable"
+        ]
+      },
+      "stand": {
+        "mode": "sit",
+        "at": [
+          [
+            16,
+            16
+          ]
         ]
       }
     },
@@ -850,6 +885,15 @@
           "breakable",
           "flammable"
         ]
+      },
+      "stand": {
+        "mode": "sit",
+        "at": [
+          [
+            16,
+            17
+          ]
+        ]
       }
     },
     "stool_round": {
@@ -859,7 +903,16 @@
         4,
         1,
         1
-      ]
+      ],
+      "stand": {
+        "mode": "sit",
+        "at": [
+          [
+            16,
+            14
+          ]
+        ]
+      }
     },
     "dresser": {
       "sheet": "city",
@@ -973,6 +1026,15 @@
           "breakable",
           "heavy"
         ]
+      },
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            16,
+            14
+          ]
+        ]
       }
     },
     "barrel_pile": {
@@ -1002,7 +1064,16 @@
         18,
         1,
         1
-      ]
+      ],
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            16,
+            14
+          ]
+        ]
+      }
     },
     "bucket": {
       "sheet": "out",
@@ -1057,7 +1128,16 @@
         12,
         1,
         1
-      ]
+      ],
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            16,
+            12
+          ]
+        ]
+      }
     },
     "stones": {
       "sheet": "out",
@@ -1223,10 +1303,28 @@
       }
     },
     "altar_stone": {
-      "sheet": "dcss:dungeon/altars/altar_base.png"
+      "sheet": "dcss:dungeon/altars/altar_base.png",
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            16,
+            22
+          ]
+        ]
+      }
     },
     "altar_holy": {
-      "sheet": "dcss:dungeon/altars/altar_elyvilon.png"
+      "sheet": "dcss:dungeon/altars/altar_elyvilon.png",
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            16,
+            18
+          ]
+        ]
+      }
     },
     "hearth": {
       "sheet": "city",
@@ -1331,7 +1429,20 @@
       "size": [
         3,
         2
-      ]
+      ],
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            28,
+            28
+          ],
+          [
+            68,
+            28
+          ]
+        ]
+      }
     },
     "gravestone_cross": {
       "sheet": "decor",
@@ -1768,7 +1879,20 @@
         41,
         4,
         3
-      ]
+      ],
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            40,
+            26
+          ],
+          [
+            88,
+            26
+          ]
+        ]
+      }
     },
     "wagon_stall": {
       "sheet": "decor",
@@ -1795,7 +1919,16 @@
         30,
         1,
         1
-      ]
+      ],
+      "stand": {
+        "mode": "sit",
+        "at": [
+          [
+            16,
+            16
+          ]
+        ]
+      }
     },
     "chair_plain": {
       "sheet": "decor",
@@ -1804,7 +1937,16 @@
         30,
         1,
         1
-      ]
+      ],
+      "stand": {
+        "mode": "sit",
+        "at": [
+          [
+            16,
+            22
+          ]
+        ]
+      }
     },
     "trunk_big": {
       "sheet": "decor",
@@ -1822,7 +1964,20 @@
         34,
         2,
         1
-      ]
+      ],
+      "stand": {
+        "mode": "sit",
+        "at": [
+          [
+            18,
+            14
+          ],
+          [
+            46,
+            14
+          ]
+        ]
+      }
     },
     "table_plank": {
       "sheet": "decor",
@@ -1831,7 +1986,20 @@
         35,
         2,
         2
-      ]
+      ],
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            16,
+            20
+          ],
+          [
+            48,
+            20
+          ]
+        ]
+      }
     },
     "banner_white": {
       "sheet": "decor",
@@ -1909,7 +2077,24 @@
         41,
         3,
         3
-      ]
+      ],
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            20,
+            34
+          ],
+          [
+            48,
+            40
+          ],
+          [
+            76,
+            34
+          ]
+        ]
+      }
     },
     "guillotine": {
       "sheet": "decor",
@@ -2876,7 +3061,16 @@
       "sheet": "dcss:dungeon/chest_2_open.png"
     },
     "crate_large": {
-      "sheet": "dcss:dungeon/large_box.png"
+      "sheet": "dcss:dungeon/large_box.png",
+      "stand": {
+        "mode": "on",
+        "at": [
+          [
+            16,
+            16
+          ]
+        ]
+      }
     },
     "statue_wraith": {
       "sheet": "dcss:dungeon/statues/statue_wraith.png"
