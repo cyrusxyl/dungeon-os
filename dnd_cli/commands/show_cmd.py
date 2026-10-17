@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dnd_cli import world
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
-from stage import actors, beat, crawl, maps, scenes
+from stage import actors, beat, crawl, maps, scenes, state
 from stage.files import read_json, write_json
 
 
@@ -62,6 +62,24 @@ def execute_beat(campaign: str | None, file: str | None) -> int:
     return run_stage(campaign, lambda campaign_dir: _beat(campaign_dir, file))
 
 
+def _cast_report(campaign_dir: Path, events: list[dict]) -> str:
+    """Fold the beat into the stage as it is now. Warn about what the beat does that the stage will not do, and
+    return who is on stage after it, so the DM sees the cast and does not have to remember it."""
+    s = state.replay(beat.log_path(campaign_dir))
+    for e in events:
+        who = e.get("actor")
+        if e["type"] in ("exit", "leave") and who not in s["actors"]:
+            print(f"Warning: @{e['type']} {who}: {who} is not on stage, so nothing happens. A new @scene clears the stage "
+                  "and brings only the party and the companions; leave one of them out with '@scene <loc> -<id>'.", file=sys.stderr)
+        s = state.apply(s, e)
+    if s["explore"] or not s["actors"]:
+        return ""
+    if len(s["actors"]) > beat.MAX_ACTORS:
+        print(f"Warning: {len(s['actors'])} actors are on stage; the stage fits {beat.MAX_ACTORS}. Send @exit for some.", file=sys.stderr)
+    return "On stage: " + ", ".join(f"{a} ({v.get('side', 'neutral')}{', on ' + v['on'] if v.get('on') else ''})"
+                                     for a, v in s["actors"].items())
+
+
 def _beat(campaign_dir: Path, file: str | None) -> int:
     text = Path(file).read_text() if file else sys.stdin.read()
     try:
@@ -104,14 +122,30 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
     found = maps.all_maps(campaign_dir)
     out = []
     members = beat.party(campaign_dir)
+    roster = beat.companions(campaign_dir)
     for e in events:
-        if e["type"] == "scene" and members:
-            e["party"] = members
+        # The roster is kept in state.json; the stage folds events only, so each event carries what it needs.
+        if e["type"] == "join":
+            roster = [c for c in roster if c["id"] != e["actor"]] + [{"id": e["actor"], "side": e["side"]}]
+        elif e["type"] == "leave":
+            roster = [c for c in roster if c["id"] != e["actor"]]
+        elif e["type"] == "side":
+            roster = [{**c, "side": e["side"]} if c["id"] == e["actor"] else c for c in roster]
+        elif e["type"] in ("enter", "say") and (c := next((c for c in roster if c["id"] == e["actor"]), None)):
+            e.setdefault("side", c["side"])
+        elif e["type"] == "scene":
+            if members:
+                e["party"] = members
+            if roster:
+                e["companions"] = roster
         out.append(e)
         place = e.get("location") if e["type"] == "scene" else e.get("site") if e["type"] == "explore" else None
         map_id = maps.visit(campaign_dir, found, place) if place else None
         if map_id:
             out.append({"type": "at", "map": map_id, "place": place})
+    if roster != beat.companions(campaign_dir):
+        beat.set_companions(campaign_dir, roster)
+    cast = _cast_report(campaign_dir, out)
     if out == beat.last_beat(beat.log_path(campaign_dir)):
         # A resent beat (often after setting a look): the players must not read it twice.
         print("This beat is already on the stage (same as the last one); not shown again. "
@@ -148,4 +182,6 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
               "(see: uv run dnd-cli site options). The stage updates by itself.", file=sys.stderr)
 
     print(f"Shown: {len(events)} event(s): " + ", ".join(e["type"] for e in events))
+    if cast:
+        print(cast)
     return 0

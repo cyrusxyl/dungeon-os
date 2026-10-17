@@ -357,8 +357,8 @@ class Stage:
         scenes_dir = self.campaign_dir / "stage" / "scenes"
         newest = max(scenes_dir.glob("*.json"), key=lambda f: f.stat().st_mtime, default=None)
         if newest is not None and self.state.get("scene") is None:
-            beat.append(self.campaign_dir, [{"type": "scene", "location": newest.stem,
-                                             "party": beat.party(self.campaign_dir)}])
+            beat.append(self.campaign_dir, [{"type": "scene", "location": newest.stem, "party": beat.party(self.campaign_dir),
+                                             "companions": beat.companions(self.campaign_dir)}])
 
     def save_label(self) -> str:
         """Where the story stands, for the save list: the last line on the log."""
@@ -1142,7 +1142,7 @@ def create_app(
         def render():
             spec = actors.load(campaign, actor_id)
             return spec and actors.png(spec, "portrait" if emotion else "full", q.get("f"),
-                                       emotion if emotion != "neutral" else None, q.get("d"))
+                                       emotion if emotion != "neutral" else None, q.get("d"), q.get("pose"))
         return await png_response(render)
 
     # -- character creation ---------------------------------------------
@@ -1255,7 +1255,11 @@ def create_app(
             mood = scenes.resolve(spec)["mood"] if spec else "day"
         except ValueError:
             mood = "day"
-        return JSONResponse({"mood": mood, "has_look": spec is not None})
+        try:
+            stand = scenes.stand_points(spec) if spec else []
+        except ValueError:
+            stand = []
+        return JSONResponse({"mood": mood, "has_look": spec is not None, "stand": stand})
 
     async def api_actor(request: Request):
         actor_id = request.path_params["actor_id"]
@@ -1270,7 +1274,9 @@ def create_app(
         """The creatures on the stage that are not in the party: who a player can attack out of a fight."""
         if stage.state.get("arena") or stage.state.get("explore"):
             return []
-        return [a for a in stage.state["actors"] if not character.character_path(stage.campaign_dir, a).exists()]
+        # The party and its allies are not targets: a player attacks the others.
+        return [a for a, v in stage.state["actors"].items()
+                if v.get("side") not in ("party", "ally") and not character.character_path(stage.campaign_dir, a).exists()]
 
     def present_creatures(stage: Stage) -> list[dict]:
         return [{"id": a, "name": ((actors.load(stage.campaign_dir, a) or {}).get("name") or beat.title(a.split("#")[0]))

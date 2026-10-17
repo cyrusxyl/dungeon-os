@@ -8,6 +8,8 @@ replay of the whole log.
 
 from __future__ import annotations
 
+from stage.beat import default_side
+
 
 LOG_LIMIT = 60
 ROLL_LIMIT = 12
@@ -86,8 +88,13 @@ def apply(state: dict, event: dict) -> dict:
         # same room) keeps who is there.
         if event["location"] != s["scene"] or s["explore"]:
             s["actors"] = {}
-            for member in event.get("party", []):
-                s["actors"][member] = {"position": _free_position(s["actors"]), "emotion": "neutral"}
+            # The party and the companions come with the scene, minus whoever the DM left out (`@scene <loc> -<id>`).
+            who = [(m, "party") for m in event.get("party", [])] + [(c["id"], c["side"]) for c in event.get("companions", [])]
+            for member, side in who:
+                if member not in event.get("without", []):
+                    s["actors"][member] = {"position": _free_position(s["actors"]), "emotion": "neutral", "side": side}
+        for w in event.get("without", []):
+            s["actors"].pop(w, None)  # the same room keeps its actors, but the DM sent someone out of it
         s["scene"] = event["location"]
         s["choices"] = None
         s["roll_request"] = None
@@ -113,8 +120,20 @@ def apply(state: dict, event: dict) -> dict:
         prefix, field = UPDATED[kind]
         s["versions"][prefix + event[field]] = s["seq"]
     elif kind == "enter":
-        position = event.get("position") or _free_position(s["actors"])
-        s["actors"][event["actor"]] = {"position": position, "emotion": "neutral"}
+        old = s["actors"].get(event["actor"], {})
+        position = event.get("position") or _free_position({k: v for k, v in s["actors"].items() if k != event["actor"]})
+        s["actors"][event["actor"]] = {"position": position, "emotion": "neutral", "side": event.get("side") or old.get("side") or default_side(event["actor"])}
+        if event.get("on"):
+            s["actors"][event["actor"]]["on"] = event["on"]
+    elif kind == "join":
+        # A companion steps on stage now and comes with every later scene (the CLI keeps the roster in state.json).
+        old = s["actors"].get(event["actor"], {})
+        s["actors"][event["actor"]] = {**old, "position": old.get("position") or _free_position(s["actors"]), "emotion": "neutral", "side": event["side"]}
+    elif kind == "side":
+        if event["actor"] in s["actors"]:
+            s["actors"][event["actor"]] = {**s["actors"][event["actor"]], "side": event["side"]}
+    elif kind == "leave":
+        s["actors"].pop(event["actor"], None)
     elif kind == "exit":
         s["actors"].pop(event["actor"], None)
     elif kind == "clear":
@@ -123,7 +142,7 @@ def apply(state: dict, event: dict) -> dict:
         s["await"] = None  # the server sent the answers to the DM
     elif kind in ("narrate", "say"):
         if kind == "say":
-            actor = dict(s["actors"].get(event["actor"]) or {"position": _free_position(s["actors"])})
+            actor = dict(s["actors"].get(event["actor"]) or {"position": _free_position(s["actors"]), "side": event.get("side") or default_side(event["actor"])})
             actor["emotion"] = event.get("emotion", "neutral")
             s["actors"][event["actor"]] = actor
         s["log"] = (s["log"] + [{**event, "seq": s["seq"]}])[-LOG_LIMIT:]

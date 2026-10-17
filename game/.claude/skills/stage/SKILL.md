@@ -30,8 +30,13 @@ EOF
 
 | Line | Effect |
 |---|---|
-| `@scene <location-id>` | Change the room. The same room again keeps its characters, so you need not repeat it in every beat. The player characters join the scene by themselves; do not `@enter` them. |
-| `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. Position is optional. |
+| `@scene <location-id> [-<actor-id> ...]` | Change the room. The same room again keeps its characters, so you need not repeat it in every beat. The player characters and the companions join the scene by themselves: do not `@enter` them. `-<actor-id>` leaves one out of this scene (a companion who sneaks off, a traitor). |
+| `@enter <actor-id> [left\|center\|right\|far-left\|far-right]` | A character steps on stage. The stage picks the place from the character's side; a position is only a hint for the order. |
+| `@enter <actor-id> [hostile\|neutral\|ally]` | Add a side word to set the side as the character enters: `@enter mizzrymth-guard hostile` makes a named enemy red. It goes after a position or after `on <slot>`. |
+| `@enter <actor-id> on <slot>` | The character sits or stands on a prop of the room: a throne, a chair, a bench, a table, a crate. `<slot>` is the slot of that prop (`back_center`, `mid_left`, ...). The stage knows which props take a character and which way: it seats a character on a seat and stands one on a table top. Props with a place: seats `throne`, `chair`, `chair_plain`, `stool`, `stool_round`, `stool_wood`, `bench_long` (2 seats); tops `table_long` (3), `table_desk` (2), `table_plank` (2), `stage_platform` (3), `wagon` (2), `crate_large`, `chest`, `barrel`, `boulder`, `altar_stone`, `altar_holy`. A prop with no place, or with all places taken, gives a normal floor spot. |
+| `@join <actor-id> [ally\|neutral\|hostile]` | A character joins the party as a companion. They come with every later `@scene`, so you never `@enter` them again. The side tells how the stage shows them (see Sides). Joining does not make a character playable, and does not make them fight: the story decides that. |
+| `@leave <actor-id>` | A companion leaves the party for good (they are off stage and do not come with the next scene). |
+| `@side <actor-id> party\|ally\|neutral\|hostile` | Change the side of a character on stage, for example when an ally turns on the party. A companion keeps the new side in later scenes. |
 | `@exit <actor-id>` | A character leaves. Send it in the same beat that says they leave: the stage does not read the story, and the sprite stays until you send it. |
 | `@narrate <text>` | A narration line in the dialogue box, with no portrait. Add a mood tag with `@narrate[mood] <text>` (see Narration mood below). |
 | `@say[emotion] <actor-id> <text>` | A character speaks, with portrait. The `[emotion]` is optional. Emotions: `neutral` `happy` `angry` `sad` `surprised` `fearful` `disgusted`. The face follows the emotion: `surprised` and `fearful` show the shock face, `disgusted` shows the eye-roll face. |
@@ -70,6 +75,13 @@ A line with no `@` continues the line before it.
 - Ids use lower-case letters, digits, `-` and `_` only.
 
 A character speaking with `@say` is put on stage if it is not there yet. A warning "no appearance for ..." is not an error: the stage shows a silhouette.
+
+## Sides, the party and the cast
+
+- Each character on stage has a **side**, shown as a ring under the feet: **green** for the party and allies (they fight with the party), **yellow** for neutral, **red** for hostile. The party stands on the left, hostile characters on the right, neutral ones at the back or beside the party. The stage holds up to 12 characters. A player character is `party`. A kind of monster (`goblin#1`) is `hostile`. A named character is `neutral` until you say `@join` or `@side`.
+- A **companion** is a character who travels with the party. Use `@join` once, when they join. After that they are in every `@scene`. Use `@leave` when they part. A companion in the party list does not become a player character and does not fight by themselves.
+- Do not send `@exit` in the same beat as the `@scene` that moves everyone. A new room already clears the stage. Use `@scene <loc> -<id>` to leave a companion out of one scene.
+- After each beat the command prints `On stage: ...`. Read it. It shows who the players see, with sides. It warns when you `@exit` someone who is not on stage, and when more than 12 are on stage.
 
 ## Characters: how they look
 

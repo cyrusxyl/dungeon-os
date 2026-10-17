@@ -1,20 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { DmTable } from '@/components/DmTable'
-import { type Position, type StageState, titleCase, useIntegerScale, useJson } from '@/lib/stage'
+import { layout, STAGE_W, type Placed, type StandSpot } from '@/lib/layout'
+import { type Side, type StageState, titleCase, useIntegerScale, useJson } from '@/lib/stage'
 
 // Logical stage size in source pixels: a 10 x 6 room of 32 px LPC tiles.
-export const STAGE_W = 320
+export { STAGE_W }
 export const STAGE_H = 192
 const FRAME = 64
-const FLOOR_Y = 100
-const SLOT_X: Record<Position, number> = {
-  'far-left': 8,
-  left: 56,
-  center: 128,
-  right: 200,
-  'far-right': 248,
-}
+// A frame is drawn so its feet row (60) lands on the actor's feet line; a seated frame puts its hip row (48) on the seat.
+const FEET_ROW = 60
+const HIP_ROW = 48
+const RING: Record<Side, string> = { party: '#5fd08a', ally: '#5fd08a', neutral: '#e8c14a', hostile: '#ef6a5a' }
 
 function Img({ src, fallback, className }: { src: string; fallback: React.ReactNode; className?: string }) {
   const [failed, setFailed] = useState(false)
@@ -23,15 +20,15 @@ function Img({ src, fallback, className }: { src: string; fallback: React.ReactN
   return <img src={src} alt="" draggable={false} className={`pixelated ${className ?? ''}`} onError={() => setFailed(true)} />
 }
 
-// A big monster's PNG is bigger than the 64 px frame: draw it at its own size, centered on its slot, feet on the floor line.
-function ActorSprite({ id, src, x, lift, filter }: { id: string; src: string; x: number; lift: number; filter: string }) {
+// A big monster's PNG is bigger than the 64 px frame: draw it at its own size, centered on its spot, feet on the line.
+function ActorSprite({ id, src, x, bottom, filter }: { id: string; src: string; x: number; bottom: number; filter: string }) {
   const [size, setSize] = useState(FRAME)
   const [failed, setFailed] = useState(false)
   useEffect(() => setFailed(false), [src])
   return (
     <div
-      className="absolute transition-[left] duration-300"
-      style={{ left: Math.max(0, Math.min(STAGE_W - size, x - (size - FRAME) / 2)), top: FLOOR_Y + FRAME - size - lift, width: size, height: size, filter }}
+      className="absolute transition-[left,top] duration-300"
+      style={{ left: Math.max(0, Math.min(STAGE_W - size, x - size / 2)), top: bottom - size, width: size, height: size, filter }}
     >
       {failed ? (
         <Silhouette id={id} />
@@ -72,15 +69,17 @@ const MOOD_FILTER: Record<string, string> = {
   snow: 'brightness(1.03) saturate(0.85)',
 }
 
-function useMood(scene: string | null, version: number): string {
-  return useJson<{ mood: string }>(scene ? `/api/scene/${encodeURIComponent(scene)}` : null, version)?.mood ?? 'day'
+function useSceneInfo(scene: string | null, version: number): { mood: string; stand: StandSpot[] } {
+  const data = useJson<{ mood: string; stand?: StandSpot[] }>(scene ? `/api/scene/${encodeURIComponent(scene)}` : null, version)
+  return { mood: data?.mood ?? 'day', stand: data?.stand ?? [] }
 }
 
 export function StageView({ state, speaker }: { state: StageState; speaker?: string }) {
   const box = useRef<HTMLDivElement>(null)
   const scale = useIntegerScale(box, STAGE_W, STAGE_H)
   const scene = state.scene
-  const mood = useMood(scene, state.versions?.[`scene:${scene}`] ?? 0)
+  const { mood, stand } = useSceneInfo(scene, state.versions?.[`scene:${scene}`] ?? 0)
+  const cast = layout(state.actors, stand)
 
   return (
     <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
@@ -101,20 +100,23 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
             }
           />
         )}
-        {Object.entries(state.actors).map(([id, actor]) => {
-          const x = SLOT_X[actor.position] ?? SLOT_X.center
-          const talking = id === speaker
-          return (
-            <ActorSprite
-              key={id}
-              id={id}
-              src={`/asset/actor/${encodeURIComponent(id)}/full.png?f=${actor.position}&v=${state.versions?.[id] ?? 0}`}
-              x={x}
-              lift={talking ? 2 : 0}
-              filter={MOOD_FILTER[mood] ?? 'none'}
-            />
-          )
-        })}
+        {cast.filter((p: Placed) => !p.sit).map((p: Placed) => (
+          <div
+            key={`ring-${p.id}`}
+            className="absolute rounded-[50%] transition-[left,top] duration-300"
+            style={{ left: p.x - 13, top: p.y - 2, width: 26, height: 6, background: RING[p.side], opacity: 0.75, boxShadow: '0 0 0 1px #0008' }}
+          />
+        ))}
+        {cast.map((p: Placed) => (
+          <ActorSprite
+            key={p.id}
+            id={p.id}
+            src={`/asset/actor/${encodeURIComponent(p.id)}/full.png?d=${p.facing}${p.sit ? '&pose=sit' : ''}&v=${state.versions?.[p.id] ?? 0}`}
+            x={p.x}
+            bottom={p.sit ? p.y - HIP_ROW + FRAME : p.y - FEET_ROW + FRAME - (p.id === speaker ? 2 : 0)}
+            filter={MOOD_FILTER[mood] ?? 'none'}
+          />
+        ))}
         {!scene && Object.keys(state.actors).length === 0 &&
           (state.dm.status === 'starting' || state.dm.status === 'busy' ? (
             <DmTable activity={state.activity} />

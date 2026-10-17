@@ -8,6 +8,7 @@ Plain asserts so no test runner is needed.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import time
 import tempfile
@@ -290,6 +291,15 @@ def test_scenes() -> None:
     check(f"every stand point lies on opaque pixels of its prop {off}", not off)
     frame = Image.new("RGBA", (64, 64))
     frame.paste((200, 50, 50, 255), (22, 13, 42, 63))
+    from stage import actors as _actors
+    skill = (Path(__file__).resolve().parent.parent / "game" / ".claude" / "skills" / "stage" / "SKILL.md").read_text()
+    missing = [n for n in stand if f"`{n}`" not in skill]
+    check(f"the DM skill names every prop with a stand point {missing}", not missing)
+    spec = {"body": "male", "skin": "light", "items": []}
+    standing = Image.open(io.BytesIO(_actors.png(spec, "full", None, None, "right"))).convert("RGBA")
+    seated = Image.open(io.BytesIO(_actors.png(spec, "full", None, None, "right", "sit"))).convert("RGBA")
+    check("pose=sit draws a seated person, and a pose it does not know is standing",
+          seated.tobytes() != standing.tobytes() and _actors.png(spec, "full", None, None, "right", "dance") == _actors.png(spec, "full", None, None, "right"))
     for facing in ("down", "up", "left", "right"):
         box = pose.sit(frame, facing).getchannel("A").getbbox()
         check(f"a seated actor facing {facing} is not taller than a standing one", box[3] <= 63 and box[1] == 13)
@@ -561,6 +571,82 @@ def test_maps() -> None:
         prompt = maps.travel_prompt(maps.load(c, "coast"), "city", "ruin")
         check("travel takes the known route and names the arrival scene",
               "Big City → Tower → Ruin" in prompt and "2 days, 1 day" in prompt and "@scene ruin" in prompt)
+
+
+def test_roster() -> None:
+    print("companions, sides and props")
+    import contextlib, io, sys as _sys
+    from dnd_cli.commands import show_cmd
+
+    e = beat.parse("@join ilvuur\n@join qorlia neutral\n@side ilvuur hostile\n@leave qorlia\n@scene hall -ilvuur -qorlia\n@enter ilvuur on back-right")
+    check("@join defaults to ally", e[0] == {"type": "join", "actor": "ilvuur", "side": "ally"})
+    check("@join takes a side", e[1]["side"] == "neutral")
+    check("@side, @leave", e[2] == {"type": "side", "actor": "ilvuur", "side": "hostile"} and e[3] == {"type": "leave", "actor": "qorlia"})
+    check("@scene lists who stays out", e[4] == {"type": "scene", "location": "hall", "without": ["ilvuur", "qorlia"]})
+    check("@enter on a slot", e[5] == {"type": "enter", "actor": "ilvuur", "on": "back_right"})
+    e = beat.parse("@enter guard hostile\n@enter x on back_center ally\n@enter y right neutral")
+    check("@enter takes a side word", e[0]["side"] == "hostile" and e[1] == {"type": "enter", "actor": "x", "on": "back_center", "side": "ally"}
+          and e[2]["position"] == "right" and e[2]["side"] == "neutral")
+    check("a named enemy entered as hostile is red", state.apply(state.empty(), e[0])["actors"]["guard"]["side"] == "hostile")
+    check("a speaker who is not on stage gets the side the event carries",
+          state.apply(state.empty(), {"type": "say", "actor": "ilvuur", "text": "Hi", "side": "ally"})["actors"]["ilvuur"]["side"] == "ally")
+    for bad, label in [("@join ilvuur party", "a companion is not party"), ("@side ilvuur", "@side needs a side"), ("@join", "@join needs an id"),
+                       ("@enter x on nowhere", "unknown slot"), ("@enter x on", "on needs a slot"), ("@scene hall ilvuur", "scene word without a dash"),
+                       ("@leave", "@leave needs an id")]:
+        check(f"bad line: {label}", raises(lambda b=bad: beat.parse(b)))
+
+    s = state.apply(state.empty(), {"type": "scene", "location": "hall", "party": ["sireth"],
+                                    "companions": [{"id": "ilvuur", "side": "ally"}, {"id": "qorlia", "side": "neutral"}], "without": ["qorlia"]})
+    check("a scene brings the party and the companions, minus those left out",
+          {k: v["side"] for k, v in s["actors"].items()} == {"sireth": "party", "ilvuur": "ally"})
+    check("a scene of the same room still sends out who the DM names",
+          "ilvuur" not in state.apply(s, {"type": "scene", "location": "hall", "without": ["ilvuur"]})["actors"])
+    s = state.apply(s, {"type": "enter", "actor": "goblin#1"})
+    check("a kind of monster is hostile and a named one neutral", s["actors"]["goblin#1"]["side"] == "hostile"
+          and state.apply(s, {"type": "enter", "actor": "gareth"})["actors"]["gareth"]["side"] == "neutral")
+    s = state.apply(s, {"type": "side", "actor": "ilvuur", "side": "hostile"})
+    check("@side changes the ring", s["actors"]["ilvuur"]["side"] == "hostile")
+    check("entering again keeps the side", state.apply(s, {"type": "enter", "actor": "ilvuur", "position": "left"})["actors"]["ilvuur"]["side"] == "hostile")
+    check("@leave takes a companion off the stage", "ilvuur" not in state.apply(s, {"type": "leave", "actor": "ilvuur"})["actors"])
+    s = state.apply(s, {"type": "enter", "actor": "arbiter", "on": "back_center"})
+    check("@enter on keeps the slot", s["actors"]["arbiter"]["on"] == "back_center")
+
+    def run(c: Path, text: str) -> tuple[str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        _sys.stdin = io.StringIO(text)
+        try:
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                show_cmd.execute_beat(str(c), None)
+        finally:
+            _sys.stdin = _sys.__stdin__
+        return out.getvalue(), err.getvalue()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp)
+        (c / "state.json").write_text('{"party_members": ["sireth"]}')
+        out, _ = run(c, "@join ilvuur\n@scene road\n@enter goblin#1")
+        check("@join saves the roster in state.json", beat.companions(c) == [{"id": "ilvuur", "side": "ally"}])
+        check("the beat prints who is on stage", "On stage: sireth (party), ilvuur (ally), goblin#1 (hostile)" in out)
+        scene = next(json.loads(l) for l in beat.log_path(c).read_text().splitlines() if '"scene"' in l)
+        check("the scene event carries the companions", scene["companions"] == [{"id": "ilvuur", "side": "ally"}] and scene["party"] == ["sireth"])
+        out, _ = run(c, "@scene hall")
+        check("the next scene brings the companion by itself", "sireth (party), ilvuur (ally)" in out and "goblin" not in out)
+        out, err = run(c, "@scene cellar -ilvuur\n@exit goblin#1")
+        check("@scene -<id> leaves a companion out", "ilvuur" not in out and beat.companions(c) == [{"id": "ilvuur", "side": "ally"}])
+        check("an exit of someone who is not on stage warns", "goblin#1 is not on stage" in err)
+        out, _ = run(c, "@scene cellar -ilvuur\n@say ilvuur Wait for me.")
+        check("a companion left out who then speaks has the companion's ring", "ilvuur (ally)" in out)
+        run(c, "@side ilvuur neutral\n@enter ilvuur on back_right")
+        check("@side changes the roster", beat.companions(c) == [{"id": "ilvuur", "side": "neutral"}])
+        from dnd_cli import combat
+
+        combat.save_state(c, combat.load_state(c))
+        check("the roster survives another command that saves state.json", beat.companions(c) == [{"id": "ilvuur", "side": "neutral"}])
+        out, _ = run(c, "@leave ilvuur")
+        check("@leave drops the companion for good", beat.companions(c) == [] and "ilvuur" not in out)
+        run(c, "@scene attic")
+        _, err = run(c, "@enter a#1\n@enter a#2\n@enter a#3\n@enter a#4\n@enter a#5\n@enter a#6\n@enter a#7\n@enter a#8\n@enter a#9\n@enter a#10\n@enter a#11\n@enter a#12")
+        check("more than 12 actors warns", "13 actors are on stage" in err)
 
 
 def test_explore_beat() -> None:
@@ -1715,6 +1801,7 @@ if __name__ == "__main__":
     test_crawl()
     test_maps()
     test_explore_beat()
+    test_roster()
     test_session_brief()
     test_cli_defaults_and_races()
     test_creator()

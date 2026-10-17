@@ -1,4 +1,4 @@
-"""The web dice and the throw sim (stage/web/check/dice.check.ts), run with Node.
+"""The web checks (stage/web/check/*.check.ts: the dice, the throw sim, the actor layout), run with Node.
 
 Run from the repo root:  .venv/bin/python tests/test_web_dice.py
 Needs Node 22.6 or newer (it runs the TypeScript file as it is). It skips (exit 0) without Node or with an older one.
@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-CHECK = Path(__file__).resolve().parents[1] / "stage" / "web" / "check" / "dice.check.ts"
+CHECKS = sorted((Path(__file__).resolve().parents[1] / "stage" / "web" / "check").glob("*.check.ts"))
 
 
 def main() -> int:
@@ -25,9 +25,12 @@ def main() -> int:
         print(f"skipped: Node {'.'.join(version)} cannot run TypeScript files (22.6 or newer can)")
         return 0
     flags = ["--experimental-strip-types"] if (major, minor) < (22, 18) else []  # 22.18 and newer strip types by default
-    run = subprocess.run([node, *flags, str(CHECK)], capture_output=True, text=True)
-    print(run.stdout + run.stderr)
-    return run.returncode
+    code = 0
+    for check in CHECKS:
+        run = subprocess.run([node, *flags, str(check)], capture_output=True, text=True)
+        print(run.stdout + run.stderr)
+        code = code or run.returncode
+    return code
 
 
 if __name__ == "__main__":

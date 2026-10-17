@@ -19,7 +19,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from stage import beat, creatures, lpc
+from stage import beat, creatures, lpc, pose
 from stage.assets import ensure_dcss
 from stage.files import read_json, write_json
 
@@ -328,7 +328,7 @@ FACING = {"left": "right", "far-left": "right", "right": "left", "far-right": "l
 
 
 @lru_cache(maxsize=256)
-def _png(spec_json: str, kind: str, facing: str, emotion: str | None) -> bytes:
+def _png(spec_json: str, kind: str, facing: str, emotion: str | None, pose_name: str | None = None) -> bytes:
     spec = json.loads(spec_json)
     if "tile" in spec:
         if spec["tile"].startswith(creatures.PREFIX) and facing not in ("left", "right"):
@@ -340,17 +340,21 @@ def _png(spec_json: str, kind: str, facing: str, emotion: str | None) -> bytes:
             img = _tile_frame(spec, facing)
     else:
         img = lpc.portrait(spec, emotion) if kind == "portrait" else lpc.render(spec, facing, emotion)
+        if pose_name == "sit" and kind == "full":
+            img = pose.sit(img, facing)
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()
 
 
 def png(spec: dict, kind: str, position: str | None = None, emotion: str | None = None,
-        facing: str | None = None) -> bytes:
-    """Rendered PNG bytes, cached by spec. Stage actors turn toward the center, unless `facing` is given."""
+        facing: str | None = None, pose_name: str | None = None) -> bytes:
+    """Rendered PNG bytes, cached by spec. Stage actors turn toward the center, unless `facing` is given.
+
+    `pose_name="sit"` draws a person seated (see stage/pose.py); a monster tile stays standing."""
     if facing not in lpc.ROWS:
         facing = FACING.get(position or "", "down")
-    return _png(json.dumps(spec, sort_keys=True), kind, facing, emotion)
+    return _png(json.dumps(spec, sort_keys=True), kind, facing, emotion, pose_name if pose_name == "sit" else None)
 
 
 def preview(spec: dict, out: Path, emotion: str | None = None) -> Path:
