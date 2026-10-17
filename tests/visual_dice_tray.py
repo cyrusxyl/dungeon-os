@@ -36,6 +36,17 @@ DAMAGE = [
     {"type": "slashing", "expr": "1d8+3", "faces": [6], "groups": [{"die": "1d8", "faces": [6]}], "total": 9},
     {"type": "fire", "expr": "2d6", "faces": [4, 5], "groups": [{"die": "2d6", "faces": [4, 5]}], "total": 9},
 ]
+ORDER = """(() => { const rect = (e) => e.getBoundingClientRect(); const dlg = [...document.querySelectorAll('p')].find((p) => p.textContent.includes('Decide, Lady')).closest('[class*="border-4"]');
+    const first = [...document.querySelectorAll('button')].find((b) => b.textContent.trim().startsWith('Burn the page')), input = document.querySelector('#player-input');
+    return rect(first).top >= rect(dlg).bottom - 1 && rect(input).top >= rect(first).bottom - 1 })()"""
+# The blocks of the page body, two levels deep: none may overflow its own box (a squeezed block spills onto the next one; 12 px lets the buttons' pixel borders stick out), and no two siblings may intersect.
+NO_OVERLAP = """(() => { const kids = [...document.querySelector('main').children], bad = [];
+    const visit = (e) => { if (!['auto', 'scroll', 'hidden'].includes(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 12) bad.push('overflow ' + e.tagName + ' ' + String(e.className).slice(0, 50)) };
+    kids.forEach((k) => { visit(k); [...k.children].forEach(visit) });
+    for (const g of [kids, ...kids.map((k) => [...k.children])]) for (let i = 0; i < g.length; i++) for (let j = i + 1; j < g.length; j++) {
+      const a = g[i].getBoundingClientRect(), b = g[j].getBoundingClientRect();
+      if (a.width && a.height && b.width && b.height && a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1) bad.push('overlap ' + String(g[i].className).slice(0, 30) + ' / ' + String(g[j].className).slice(0, 30)) }
+    return bad })()"""
 STATUS = "document.querySelector('[role=status]')"
 CANVASES = "document.querySelectorAll('[role=status] canvas').length"
 HAS_THROW = "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Throw')"
@@ -247,6 +258,26 @@ async def settings(page: v.Page, url: str) -> None:
     await reload_with(page, url, None)
 
 
+async def phone_story(page: v.Page, c: Path, url: str) -> None:
+    """A phone is shorter than the page. The story, the choices and the cards must stack and scroll, not overlap."""
+    print("a phone: the dialogue, the choices and the cards do not overlap")
+    await page.call("Emulation.setDeviceMetricsOverride", width=448, height=1000, deviceScaleFactor=1, mobile=True)
+    for scene in ("false", "true"):
+        await page.eval(f"localStorage.setItem('dungeon-hand', JSON.stringify({{scene: {scene}, layout: 'portrait'}}))")
+        await page.call("Page.navigate", url=url + "?view=player")
+        await asyncio.sleep(2.5)
+        beat.append(c, [{"type": "say", "actor": "ilvuur", "emotion": "neutral", "text": "Decide, Lady. Every hour we stand here, someone in your house wonders why you have not come home."},
+                        {"type": "choices", "options": ["Burn the page and say nothing", "Confront the Matron with the ledger", "Warn House Mizzrym'th", "Agree and take Ilvuur as a witness"]},
+                        {"type": "dm_status", "status": "idle"}])
+        await wait_for(page, "[...document.querySelectorAll('button')].some((b) => b.textContent.trim().startsWith('Burn the page'))", 8)
+        await asyncio.sleep(3)
+        await page.shot(f"phone-story-scene-{scene}")
+        check(f"the choices sit under the dialogue, the input under the choices (scene {scene})", await page.eval(ORDER))
+        check(f"no block overflows its box and no two blocks overlap (scene {scene})", await page.eval(NO_OVERLAP) == [], str(await page.eval(NO_OVERLAP)))
+    await page.call("Emulation.setDeviceMetricsOverride", width=1500, height=950, deviceScaleFactor=1, mobile=False)
+    await page.eval("localStorage.removeItem('dungeon-hand')")
+
+
 async def menu_settings(page: v.Page, url: str) -> None:
     print("the Gameplay tab in the main menu (no game running)")
     await page.call("Page.navigate", url=url)
@@ -330,6 +361,7 @@ def main() -> int:
                 await scenarios(page, c, url)
                 await settings(page, url)
                 await crowd(page, c, url)
+                await phone_story(page, c, url)
                 await menu_settings(page, f"http://127.0.0.1:{port2}/")
 
         asyncio.run(run())

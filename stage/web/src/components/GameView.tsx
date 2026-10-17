@@ -522,7 +522,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       : hand.layout === 'landscape'
         ? 'grid grid-cols-[1.3fr_1fr]'
         : 'flex flex-col landscape:grid landscape:grid-cols-[1.3fr_1fr]'
-  const mainLayout = lobby || showCreator ? 'flex flex-col' : wide ? (showParty ? 'grid grid-cols-[1fr_22rem]' : 'grid') : `${narrow} overflow-y-auto`
+  // On a small window `main` scrolls. Its children keep their own height (`*:shrink-0`); if they could shrink, the story would overflow its box and the input would sit on top of it.
+  const mainLayout = lobby || showCreator ? 'flex flex-col' : wide ? (showParty ? 'grid grid-cols-[1fr_22rem]' : 'grid') : `${narrow} overflow-y-auto *:shrink-0`
   const input = mode === 'table' ? tableChoices : inputBlock
   const cards = (party?.characters ?? []).filter((c) => mine.includes(c.id))
   const story = (
