@@ -13,6 +13,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from dnd_cli import combat, dice, sheet as sheets  # noqa: E402
 from dnd_cli import item as items  # noqa: E402
 from dnd_cli.errors import RulesError  # noqa: E402
 from dnd_cli.item import Item  # noqa: E402
@@ -100,11 +101,13 @@ def test_inventory() -> None:
     items.add(sh, "+1 Sword", 1, type="weapon", base="Longsword", effects=["magic-weapon-1"])
     sword = items.get(sh, "+1 sword")
     check("needs_base", sword.needs_base and not Item({"name": "x", "type": "ring", "base": "y"}).needs_base)
-    sh["weapons"].append({"name": "+1 Sword", "attack_bonus": 4, "damage": "1d8", "equipped": False})
-    sword.equip(sh)
-    check("equip without base data sets the flag and the attack", sword.equipped and sh["weapons"][0]["equipped"])
-    sword.unequip(sh)
+    sh["weapons"].append({"name": "+1 Sword", "item": "+1 Sword", "attack_bonus": 4, "damage": "1d8", "equipped": False})
+    sh["weapons"].append({"name": "Longsword", "attack_bonus": 5, "damage": "1d8", "equipped": False})
+    check("equip gives one line", sword.equip(sh) == "Tester: +1 Sword equipped")
+    check("equip without base data sets the flag and the linked attack", sword.equipped and sh["weapons"][0]["equipped"] and not sh["weapons"][1]["equipped"])
+    check("unequip gives one line", sword.unequip(sh) == "Tester: +1 Sword put away")
     check("unequip puts both away", not sword.equipped and not sh["weapons"][0]["equipped"])
+    sh["weapons"].pop()
     longsword = {"name": "Longsword", "equipment_category": {"index": "weapon"}, "damage": {"damage_dice": "1d8", "damage_type": {"index": "slashing"}}, "properties": []}
     sword.equip(sh, longsword)
     check("equip with base data makes the attack under the item's name",
@@ -112,8 +115,68 @@ def test_inventory() -> None:
     check("profile is checked", raises(lambda: sword.set_profile({"kind": "heal"})) and raises(lambda: sword.set_profile({"kind": "x"})))
 
 
+def test_link() -> None:
+    print("gear is joined to its row by the item field")
+    sh = sheet()
+    sh.update(proficiency_bonus=2, ability_scores={"strength": 14, "dexterity": 14, "constitution": 10})
+    rapier = {"name": "Rapier", "equipment_category": {"index": "weapon"}, "weapon_range": "Melee", "properties": [{"index": "finesse"}],
+              "damage": {"damage_dice": "1d8", "damage_type": {"index": "piercing"}}}
+    items.add(sh, "Flame Rapier", 1, type="weapon", base="Rapier", effects=["flame-edge"])
+    line = items.get(sh, "Flame Rapier").equip(sh, rapier)
+    check("equip_base gives one line and links the attack to its row", isinstance(line, str) and sh["weapons"][0]["item"] == "Flame Rapier")
+    sh["weapons"][0]["name"] = "Ember"
+    atk = items.attacks(sh)
+    check("a renamed attack is still the attack of its row", [a["name"] for a in atk] == ["Ember", "Unarmed Strike"] and atk[0]["equipped"])
+    items.get(sh, "Flame Rapier").unequip(sh)
+    check("unequip finds the attack by the link, not the name", not sh["weapons"][0]["equipped"] and not items.attacks(sh)[0]["equipped"])
+    check("wielded: the equipped one, else the first, else none", combat.wielded([{"name": "a"}, {"name": "b", "equipped": True}])["name"] == "b"
+          and combat.wielded([{"name": "a"}, {"name": "b"}])["name"] == "a" and combat.wielded([]) is None)
+
+    sh["inventory"][0]["equipped"] = True
+    sh["weapons"][0]["equipped"] = True
+    sh.update(hp={"current": 9, "max": 9, "temp": 0}, ability_scores={"strength": 14, "dexterity": 14, "constitution": 10})
+    sheets.level_up(sh, {"level": 2, "prof_bonus": 2, "features": []}, 8, "avg", {"dexterity": 2})
+    w = sh["weapons"][0]
+    check("level_up keeps the link and sets the bonuses", w["item"] == "Flame Rapier" and w["name"] == "Ember" and w["damage"] == "1d8+3" and w["attack_bonus"] == 5)
+    view, _ = items.gear_view(sh)
+    check("the UI view takes equipped from the row", view[0]["equipped"] is True)
+    sh["inventory"][0]["equipped"] = False
+    check("...and the row wins when they differ", items.gear_view(sh)[0][0]["equipped"] is False and sh["weapons"][0]["equipped"] is True)
+
+    old = {"weapons": [{"name": "Flame Rapier", "damage": "1d8"}, {"name": "Stick"}], "armor": {"name": "Flame Rapier"},
+           "inventory": [{"name": "Flame Rapier"}]}
+    items.link_gear(old)
+    check("an old sheet gets links where the names are the same row", old["weapons"][0]["item"] == "Flame Rapier" and "item" not in old["weapons"][1]
+          and old["armor"]["item"] == "Flame Rapier")
+
+
+def test_armor() -> None:
+    print("armor")
+    sh = sheet()
+    sh["ability_scores"]["constitution"] = 10
+    leather = {"name": "Leather Armor", "equipment_category": {"index": "armor"}, "armor_category": "Light", "armor_class": {"base": 11, "dex_bonus": True}}
+    plate = {"name": "Plate Armor", "equipment_category": {"index": "armor"}, "armor_category": "Heavy", "armor_class": {"base": 18, "dex_bonus": False}}
+    shield = {"name": "Shield", "equipment_category": {"index": "armor"}, "armor_category": "Shield"}
+    items.add(sh, "Dragon Plate", 1, type="armor", base="Plate Armor", effects=["magic-armor-2"])
+    items.equip_base(sh, leather)
+    items.equip_base(sh, shield)
+    items.get(sh, "Dragon Plate").equip(sh, plate)
+    leather_row, plate_row = items.get(sh, "Leather Armor"), items.get(sh, "Dragon Plate")
+    check("new armor un-equips the old row and links itself", not leather_row.equipped and plate_row.equipped
+          and sh["armor"]["item"] == "Dragon Plate" and sh["armor_class"] == 20)
+    plate_row.unequip(sh)
+    check("putting the armor away clears its flag on the armor entry too", sh["armor"]["equipped"] is False and not plate_row.equipped)
+    check("the shield stays", items.shield_equipped(sh))
+
+
+def test_dice() -> None:
+    print("dice helpers")
+    check("mods: six abilities, 10 by default", dice.mods({"strength": 16}) == {"strength": 3, "dexterity": 0, "constitution": 0, "intelligence": 0, "wisdom": 0, "charisma": 0})
+    check("with_bonus", dice.with_bonus("1d8 + 2", 3) == "1d8+3" and dice.with_bonus("1d8-1", 0) == "1d8" and dice.with_bonus("2d6", -1) == "2d6-1")
+
+
 if __name__ == "__main__":
-    for t in (test_round_trip, test_hand_edit_survives, test_ability_and_effects, test_inventory):
+    for t in (test_round_trip, test_hand_edit_survives, test_ability_and_effects, test_inventory, test_link, test_armor, test_dice):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

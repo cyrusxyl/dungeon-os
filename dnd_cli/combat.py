@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from dnd_cli import abilities, character, dice, effects
+from dnd_cli.item import attacks as pc_attacks, geometry
 from dnd_cli.api import api_get
 from dnd_cli.errors import RulesError  # noqa: F401 (also reached as combat.RulesError)
 from stage.files import read_json, write_json
@@ -264,48 +265,23 @@ def _feet(text: str | None, default: int = 30) -> int:
     return int(m.group(1)) if m else default
 
 
-def geometry(text: str, ranged_only: bool = False) -> dict:
-    """How far an attack reaches, from its text: `reach 5 ft.` (melee) and `range 80/320 ft.` or `(range 150/600)` (ranged), in feet.
-
-    A weapon with neither word is a melee weapon with reach 5. `ranged_only` is for ammunition weapons.
-    """
-    out = {}
-    if m := re.search(r"reach (\d+) ft", text):
-        out["reach_ft"] = int(m.group(1))
-    if m := re.search(r"range (\d+)(?:/\d+)?", text):
-        out["range_ft"] = int(m.group(1))
-    if not out and not ranged_only:
-        out["reach_ft"] = 5
-    return out
-
-
 def pc_record(sheet: dict, cid: str) -> dict:
     scores = sheet.get("ability_scores", {})
     mods = dice.mods(scores)
-    attacks = []
-    for w in sheet.get("weapons", []):
-        props = " ".join(w.get("properties", []))
-        reach = geometry(props, ranged_only="ammunition" in props)
-        if "ammunition" not in props:
-            reach["reach_ft"] = 10 if "reach" in props.split() else 5  # a thrown weapon is also a melee weapon
-        attacks.append({"name": w["name"], "bonus": w.get("attack_bonus", 0), "equipped": bool(w.get("equipped")), **reach,
-                        **({"thrown": True} if "thrown" in props.split() else {}),
-                        "damage": [[w["damage"], w.get("damage_type", "")]] if w.get("damage") else []})
-    # Bare fists, as in Baldur's Gate 3: 1 + Strength modifier, bludgeoning.
-    attacks.append({"name": "Unarmed Strike", "bonus": mods["strength"] + sheet.get("proficiency_bonus", 2), "reach_ft": 5,
-                    "damage": [[f"1{dice.signed(mods['strength'])}", "bludgeoning"]], "plain": True})
-    spell = sheet.get("spellcasting") or {}
-    if "spell_attack_bonus" in spell:
-        attacks.append({"name": "spell", "bonus": spell["spell_attack_bonus"], "damage": [], "plain": True})
     return {
         "id": cid, "kind": "pc", "name": sheet.get("name", cid), "ac": sheet.get("armor_class", 10),
         "hp": sheet["hp"], "mods": mods,
         "saves": {a: sheet.get("saving_throws", {}).get(a, mods[a]) for a in ABILITIES},
         "skills": {s: sheet.get("skills", {}).get(s, mods[a]) for s, a in SKILLS.items()},
-        "attacks": attacks, "init": sheet.get("initiative", mods["dexterity"]), "speed_ft": sheet.get("speed", 30),
-        "spell_dc": spell.get("spell_save_dc"), "resist": [], "immune": [], "vuln": [],
+        "attacks": pc_attacks(sheet), "init": sheet.get("initiative", mods["dexterity"]), "speed_ft": sheet.get("speed", 30),
+        "spell_dc": (sheet.get("spellcasting") or {}).get("spell_save_dc"), "resist": [], "immune": [], "vuln": [],
         "prof": sheet.get("proficiency_bonus"),
     }
+
+
+def wielded(attacks: list[dict]) -> dict | None:
+    """The attack in hand: the first equipped one, else the first."""
+    return next((x for x in attacks if x.get("equipped")), attacks[0] if attacks else None)
 
 
 def damage_parts(damage: list[dict]) -> list[list[str]]:

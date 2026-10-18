@@ -24,13 +24,13 @@ file, and the stage writes effects while the DM is idle.
 Worn gear adds effects too. An inventory item with `equipped: true` and an `effects` list
 gives those presets while it is equipped. Nothing is stored for them, so unequip removes them.
 Two equipped items with the same perk both count. A `weapon` part of an item applies only to
-the attack whose name words are all in the item name ("Longsword" in "+1 Longsword of Flame").
+the attack whose `item` field (in `weapons` of the sheet) is the name of that item. An attack with
+no `item` has no gear perks.
 """
 
 from __future__ import annotations
 
 import random
-import re
 from pathlib import Path
 
 from dnd_cli import character, dice, item
@@ -100,14 +100,17 @@ def stored(campaign_dir: Path, cid: str) -> list[str]:
     return load(campaign_dir).get(cid, [])
 
 
-def _words(name: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", name.lower()))
+def _sheet(campaign_dir: Path, cid: str) -> dict:
+    return read_json(character.character_path(campaign_dir, cid)) or {}
+
+
+def _worn(sheet: dict) -> list[tuple[str, str]]:
+    return [(e, it.name) for it in item.items(sheet) for e in it.effects() if e in PRESETS]
 
 
 def worn(campaign_dir: Path, cid: str) -> list[tuple[str, str]]:
     """(preset id, item name) for each effect of an equipped item. A sheet that is missing gives none."""
-    sheet = read_json(character.character_path(campaign_dir, cid)) or {}
-    return [(e, it.name) for it in item.items(sheet) for e in it.effects() if e in PRESETS]
+    return _worn(_sheet(campaign_dir, cid))
 
 
 def active(campaign_dir: Path, cid: str) -> list[str]:
@@ -173,14 +176,16 @@ def weapon(campaign_dir: Path, cid: str, target_type: str = "", attack: str = ""
     """What the character's effects add to the weapon attack `attack` against a target of `target_type`:
     to-hit tiles, flat damage, the lowest d20 that is a critical hit, and extra [dice, type] damage."""
     out = {"hit": [], "dmg": 0, "crit": 20, "extra": []}
-    # A stored effect is for every weapon. A worn item's effect is for the weapon it names.
-    held = [(e, "") for e in stored(campaign_dir, cid)] + worn(campaign_dir, cid)
-    for eid, item in held:
+    sheet = _sheet(campaign_dir, cid)
+    link = next((w.get("item") for w in sheet.get("weapons", []) if w.get("name") == attack), None)
+    # A stored effect is for every weapon. A worn item's effect is for the weapon that is linked to the item.
+    held = [(e, "") for e in stored(campaign_dir, cid)] + _worn(sheet)
+    for eid, source in held:
         spec = PRESETS[eid]
         part = spec.get("weapon")
         if not part or (part.get("vs") and not any(t in target_type.lower() for t in part["vs"])):
             continue
-        if item and not _words(attack) <= _words(item):  # "Crossbow, hand" is in "+1 Hand Crossbow of Frost"
+        if source and source != link:
             continue
         if part.get("hit"):
             out["hit"].append({"label": spec["label"], "value": part["hit"]})

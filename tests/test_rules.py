@@ -650,7 +650,7 @@ def test_sheet(c: Path) -> None:
     check("heavy armor sets AC without DEX", data["armor_class"] == 16)
     shield = {"name": "Shield", "equipment_category": {"index": "armor"}, "armor_category": "Shield"}
     inv.equip_base(data, shield)
-    check("a shield adds 2 once", data["armor_class"] == 18 and "already" in inv.equip_base(data, shield)[0])
+    check("a shield adds 2 once", data["armor_class"] == 18 and "already" in inv.equip_base(data, shield))
     rapier = {"name": "Rapier", "equipment_category": {"index": "weapon"}, "weapon_range": "Melee",
               "properties": [{"index": "finesse"}], "damage": {"damage_dice": "1d8", "damage_type": {"index": "piercing"}}}
     inv.equip_base(data, rapier)
@@ -711,9 +711,10 @@ def test_session_end(c: Path) -> None:
 def _bow_match(c: Path) -> bool:
     d = character.load(c, "aragorn")
     inv.add(d, "+1 Hand Crossbow of Frost", 1, effects=["magic-weapon-1"])
+    d["weapons"].append({"name": "Crossbow, hand", "attack_bonus": 4, "damage": "1d6+2", "equipped": True})
     wear(d, "+1 Hand Crossbow of Frost", True)
     character.save(c, "aragorn", d)
-    ok = effects.weapon(c, "aragorn", "", "Crossbow, hand")["dmg"] == 1
+    ok = effects.weapon(c, "aragorn", "", "Crossbow, hand")["dmg"] == 0
     d["inventory"] = [i for i in d["inventory"] if "Crossbow" not in i["name"]]
     character.save(c, "aragorn", d)
     return ok
@@ -856,22 +857,33 @@ def test_gear(c: Path) -> None:
     character.save(c, "aragorn", d)
     check("the bonus ends when the item is put away", effects.active(c, "aragorn") == [] and combat.combatant(c, state, "aragorn")["ac"] == sheet_ac)
 
-    give("+1 Longsword of Flame", ["magic-weapon-1", "flame-edge"])
+    give("+1 Longsword of Flame", ["magic-weapon-1", "flame-edge"], on=False)
+    d = character.load(c, "aragorn")
+    row = inv.get(d, "+1 Longsword of Flame")
+    row.row.update(type="weapon", base="Longsword")
+    row.equip(d, {"name": "Longsword", "equipment_category": {"index": "weapon"}, "damage": {"damage_dice": "1d8", "damage_type": {"index": "slashing"}}})
+    character.save(c, "aragorn", d)
+    flame = effects.weapon(c, "aragorn", "", "+1 Longsword of Flame")
     sword = effects.weapon(c, "aragorn", "", "Longsword")
     bow = effects.weapon(c, "aragorn", "", "Longbow")
-    check("a worn sword's perks apply to the sword and not to the bow", sword["dmg"] == 1 and sword["extra"] == [["1d4", "fire"]]
+    check("a worn sword's perks apply to its attack and not to the bow or to a sword with no link",
+          flame["dmg"] == 1 and flame["extra"] == [["1d4", "fire"]] and sword["dmg"] == 0 and not sword["extra"]
           and bow["dmg"] == 0 and not bow["extra"] and not bow["hit"])
+    d = character.load(c, "aragorn")
+    next(w for w in d["weapons"] if w.get("item") == "+1 Longsword of Flame")["name"] = "Ember"
+    character.save(c, "aragorn", d)
+    check("a renamed attack keeps the perks of its item", effects.weapon(c, "aragorn", "", "Ember")["dmg"] == 1
+          and effects.weapon(c, "aragorn", "", "+1 Longsword of Flame")["dmg"] == 0)
     effects.add(c, "aragorn", "magic-weapon-2")
     check("a stored weapon effect still applies to every weapon", effects.weapon(c, "aragorn", "", "Longbow")["dmg"] == 2)
     effects.remove(c, "aragorn", "magic-weapon-2")
-    check("an API-style weapon name matches the loot item name", effects.weapon(c, "aragorn", "", "Crossbow, hand")["dmg"] == 0
-          and _bow_match(c))
+    check("a weapon with no item link has no gear perks, even if its name has the words of an item", _bow_match(c))
 
     old = {"name": "Leather", "quantity": 1, "equipped": True, "effects": ["magic-armor-1"]}
     d = {"name": "T", "level": 1, "ability_scores": {a: 10 for a in combat.ABILITIES}, "armor_class": 11, "inventory": [old],
-         "armor": {"name": "Leather", "type": "light", "ac_bonus": 11, "equipped": True}}
+         "armor": {"name": "Leather", "item": "Leather", "type": "light", "ac_bonus": 11, "equipped": True}}
     inv.equip_base(d, {"name": "Plate", "equipment_category": {"index": "armor"}, "armor_class": {"base": 18, "dex_bonus": False}})
-    check("new armor takes the old armor off, and its perks end", old["equipped"] is False)
+    check("new armor takes the old armor off, and its perks end", old["equipped"] is False and d["armor"]["item"] == "Plate")
     d = character.load(c, "aragorn")
     wear(d, "+1 Longsword of Flame", False)
     character.save(c, "aragorn", d)

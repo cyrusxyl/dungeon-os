@@ -30,6 +30,7 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict, present: lis
     prof = sheet.get("proficiency_bonus", 2)
     saves = sheet.get("saving_throws", {})
     inventory = [i.view() for i in items.items(sheet)]
+    weapons, armor = items.gear_view(sheet)
     spell = sheet.get("spellcasting") or {}
     return {
         "id": cid,
@@ -46,8 +47,8 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict, present: lis
         "abilities": {a: {"score": scores.get(a, 10), "mod": mods[a], "save": saves.get(a, mods[a]),
                           "save_prof": saves.get(a, mods[a]) != mods[a]} for a in combat.ABILITIES},
         "skills": _skills(sheet, mods, prof),
-        "weapons": sheet.get("weapons", []),
-        "armor": sheet.get("armor"),
+        "weapons": weapons,
+        "armor": armor,
         "inventory": inventory,
         "capacity": scores.get("strength", 10) * 15,
         "spell": {"ability": spell.get("ability"), "dc": spell.get("spell_save_dc"), "attack": spell.get("spell_attack_bonus"),

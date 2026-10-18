@@ -129,7 +129,7 @@ def open_fight(campaign_dir: Path, state: dict, stage: dict, who: str, target: s
     foe = target if target in enc["monsters"] else next(iter(enc["monsters"]))
     rec = combat.combatant(campaign_dir, state, who)
     pool = attack_rolls(rec)
-    entry = combat._find_attack(rec, weapon) if weapon else next((x for x in pool if x.get("equipped")), pool[0])
+    entry = combat._find_attack(rec, weapon) if weapon else combat.wielded(pool)
     _place_foe(campaign_dir, state, a, who, foe, entry)
     refresh_sight(campaign_dir, state, a)
     refresh_intents(campaign_dir, state, a)
@@ -368,7 +368,7 @@ def attack_rolls(rec: dict) -> list[dict]:
 def melee_attack(rec: dict) -> dict | None:
     """The attack a creature makes with a reaction: its equipped melee weapon, else any melee attack."""
     melee = [x for x in attack_rolls(rec) if x.get("reach_ft")]
-    return next((x for x in melee if x.get("equipped")), melee[0] if melee else None)
+    return combat.wielded(melee)
 
 
 def provokers(campaign_dir: Path, state: dict, a: dict, cid: str, to: tuple[int, int]) -> list[str]:
@@ -587,7 +587,7 @@ def default_weapon(campaign_dir: Path, state: dict, a: dict, attacker: str, targ
     armed = attack_rolls(rec)
     reaching = [x for x in armed if dist <= max(x.get("reach_ft", 0), x.get("range_ft", 0)) // TILE_FT]
     pool = reaching or armed
-    return next((x for x in pool if x.get("equipped")), pool[0])["name"]
+    return combat.wielded(pool)["name"]
 
 
 # -- the stage plays the creatures ------------------------------------------------

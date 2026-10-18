@@ -128,17 +128,6 @@ def add_xp(sheet: dict, xp: int) -> str:
     return line
 
 
-def _stored_ability(weapon: dict, old_mods: dict) -> str:
-    """The ability a stored weapon uses: the one whose modifier is its damage bonus (DEX on a tie)."""
-    flat = dice.flat_bonus(weapon.get("damage", ""))
-    for abil in ("dexterity", "strength"):
-        if old_mods[abil] == flat:
-            return abil
-    props = [p.lower() for p in weapon.get("properties", [])]
-    ranged = "ammunition" in props or any(k in weapon.get("name", "").lower() for k in ("bow", "sling", "dart"))
-    return "dexterity" if ranged or "finesse" in props else "strength"
-
-
 def retotal(sheet: dict, old_prof: int, prof: int) -> None:
     """Set skill and save totals for a new proficiency bonus.
 
@@ -200,11 +189,8 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
     if new_level != old_level + 1:
         raise RulesError(f"{sheet['name']} is level {old_level}; the next level is {old_level + 1}, not {new_level}.")
     old_mods, old_prof = dice.mods(sheet["ability_scores"]), sheet.get("proficiency_bonus", prof_for_level(old_level))
-    weapon_abil = {w["name"]: _stored_ability(w, old_mods) for w in sheet.get("weapons", [])}
     skill_mult = {s: dice.multiple(v, old_mods[SKILLS[s]], old_prof) for s, v in sheet.get("skills", {}).items() if s in SKILLS}
     save_mult = {a: dice.multiple(v, old_mods[a], old_prof) for a, v in sheet.get("saving_throws", {}).items() if a in ABILITIES}
-    weapon_mult = {w["name"]: dice.multiple(w.get("attack_bonus", 0), old_mods[weapon_abil[w["name"]]], old_prof)
-                   for w in sheet.get("weapons", [])}
 
     lines = []
     for abil, n in (asi or {}).items():
@@ -231,11 +217,7 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
         sheet["skills"][s] = new_mods[SKILLS[s]] + mult * prof
     for a, mult in save_mult.items():
         sheet["saving_throws"][a] = new_mods[a] + mult * prof
-    for w in sheet.get("weapons", []):
-        abil = weapon_abil[w["name"]]
-        w["attack_bonus"] = new_mods[abil] + weapon_mult[w["name"]] * prof
-        if w.get("damage"):
-            w["damage"] = dice.with_bonus(w["damage"], new_mods[abil])
+    item.retotal_weapons(sheet, old_mods, old_prof, new_mods, prof)
     if ensure_spellcasting(sheet, level_data, class_data):
         lines.append(f"{sheet['class']} now casts spells ({sheet['spellcasting']['ability'][:3].upper()}): "
                      "ask the player which spells to prepare or learn")

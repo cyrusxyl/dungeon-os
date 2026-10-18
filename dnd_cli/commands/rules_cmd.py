@@ -216,8 +216,8 @@ def _wear(data: dict, name: str, on: bool) -> list[str]:
     (under the item's name, so its perks find it), armor sets the AC and takes off the armor it replaces."""
     it = items.get(data, name)
     if not on:
-        return it.unequip(data)
-    lines = it.equip(data, _api(f"equipment/{loot.api_index(it.base)}") if it.needs_base else None)
+        return [it.unequip(data)]
+    lines = [it.equip(data, _api(f"equipment/{loot.api_index(it.base)}") if it.needs_base else None)]
     if not it.base and any("weapon" in effects.PRESETS.get(e, {}) for e in it.perks):
         lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
                      "`loot force \"<item>\" --to <who> --base <Longsword>`.")
@@ -291,7 +291,7 @@ def _api(endpoint: str) -> dict:
 
 
 def execute_equip(campaign, name: str, index: str, proficient: bool) -> int:
-    return _edit_sheet(campaign, name, lambda c, data: items.equip_base(data, _api(f"equipment/{index}"), proficient))
+    return _edit_sheet(campaign, name, lambda c, data: [items.equip_base(data, _api(f"equipment/{index}"), proficient)])
 
 
 def execute_xp(campaign, names: list[str], amount: int) -> int:

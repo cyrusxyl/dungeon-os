@@ -17,7 +17,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from dnd_cli import character, combat, dice, effects, resources
+from dnd_cli import character, combat, dice, effects, item, resources
 
 ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
 
@@ -216,7 +216,7 @@ def listing(campaign_dir: Path, state: dict, cid: str, sheet: dict, present: tup
 def attacks(sheet: dict) -> list[dict]:
     """The weapons the Attack action can use, for the card's weapon step."""
     out = []
-    for a in combat.pc_record(sheet, "x")["attacks"]:
+    for a in item.attacks(sheet):
         if a["damage"]:
             out.append({"name": a["name"], "bonus": a["bonus"], "damage": " + ".join(f"{e} {t}".strip() for e, t in a["damage"])})
     return out

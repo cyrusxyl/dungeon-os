@@ -152,6 +152,7 @@
         "type": "object",
         "properties": {
           "name": {"type": "string"},
+          "item": {"type": "string", "description": "The name of the inventory row this weapon comes from. Gear perks reach the attack through it"},
           "attack_bonus": {"type": "integer"},
           "damage": {"type": "string"},
           "damage_type": {"type": "string"},
@@ -164,6 +165,7 @@
       "type": "object",
       "properties": {
         "name": {"type": "string"},
+        "item": {"type": "string", "description": "The name of the inventory row this armor comes from"},
         "ac_bonus": {"type": "integer"},
         "type": {"type": "string", "enum": ["unarmored", "light", "medium", "heavy", "shield"]},
         "equipped": {"type": "boolean"}
