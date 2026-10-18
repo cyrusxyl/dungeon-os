@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 from dnd_cli import API_BASE
 from dnd_cli import sources
 from dnd_cli.cache import load_cache, save_cache
+from dnd_cli.errors import RulesError
 
 
 def safe_api_call(endpoint: str) -> Tuple[Optional[dict], Optional[str]]:
@@ -102,3 +103,12 @@ def _api_list(resource: str, use_cache: bool) -> Tuple[Optional[dict], Optional[
         save_cache(endpoint, data)
 
     return data, None, False
+
+
+def fetch(endpoint: str) -> dict:
+    """The 5e API resource, or a RulesError that says how to find the right index."""
+    data, error, _ = api_get(endpoint)
+    if error or not data:
+        raise RulesError(f"no {endpoint} in the 5e API. Find the index with: uv run dnd-cli search "
+                         f"{endpoint.split('/')[0]} --name {endpoint.split('/')[-1].split('-')[0]}")
+    return data

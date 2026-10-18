@@ -30,7 +30,7 @@ GOLD = "Gold Pieces"
 
 
 @cache
-def table() -> dict:
+def profiles() -> dict:
     """The profiles of common items, keyed by the lower-case name."""
     return {k: v for k, v in json.loads(ITEMS_PATH.read_text()).items() if not k.startswith("_")}
 
@@ -75,8 +75,8 @@ class Item:
         return any("weapon" in presets.get(e, {}) for e in self.perks)
 
     def profile(self) -> dict | None:
-        """What it does on the board: the row's own profile, else the table's, else none."""
-        p = self.row.get("profile") or table().get(self.name.lower())
+        """What it does on the board: the row's own profile, else the common-item profiles', else none."""
+        p = self.row.get("profile") or profiles().get(self.name.lower())
         return p if p and p.get("kind") in PROFILE_KINDS else None
 
     # -- what it gives -------------------------------------------------------

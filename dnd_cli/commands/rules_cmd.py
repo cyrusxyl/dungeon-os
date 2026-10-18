@@ -10,7 +10,7 @@ import json
 
 from dnd_cli import audit, character, combat, effects, loot, sheet
 from dnd_cli import item as items
-from dnd_cli.api import api_get
+from dnd_cli.api import fetch as _api
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from dnd_cli.dice import DiceError
 from dnd_cli.errors import RulesError
@@ -283,14 +283,6 @@ def execute_gold(campaign, name: str, delta: str) -> int:
         print("Error: give gold as +N or -N, for example +25.")
         return 1
     return _edit_sheet(campaign, name, lambda c, data: [sheet.gold(data, amount)])
-
-
-def _api(endpoint: str) -> dict:
-    data, error, _ = api_get(endpoint)
-    if error or not data:
-        raise RulesError(f"no {endpoint} in the 5e API. Find the index with: uv run dnd-cli search "
-                                f"{endpoint.split('/')[0]} --name {endpoint.split('/')[-1].split('-')[0]}")
-    return data
 
 
 def execute_xp(campaign, names: list[str], amount: int) -> int:

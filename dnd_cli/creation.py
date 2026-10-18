@@ -48,14 +48,6 @@ def _first_sentence(text: str) -> str:
     return re.split(r"(?<=[.!?])\s", text.strip(), maxsplit=1)[0]
 
 
-def _lookup(fetch, endpoint: str, what: str) -> dict:
-    try:
-        return fetch(endpoint)
-    except RulesError:
-        raise RulesError(f"no {what} {endpoint.split('/')[-1]!r} in the 5e API. "
-                         f"Find the index with: uv run dnd-cli search {endpoint.split('/')[0]} --name <word>") from None
-
-
 def _desc(fetch, endpoint: str) -> str:
     try:
         d = fetch(endpoint).get("desc") or [""]
@@ -110,10 +102,10 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
           alignment: str = "", languages: str | None = None, bonus_abilities: str | None = None,
           background_bonus: str | None = None) -> dict:
     """Return a level 1 sheet. Raises RulesError, with a message that says how to fix the call."""
-    r = _lookup(fetch, f"races/{slug(race)}", "race")
-    sub = _lookup(fetch, f"subraces/{slug(subrace)}", "subrace") if subrace else {}
-    c = _lookup(fetch, f"classes/{slug(cls)}", "class")
-    lvl = _lookup(fetch, f"classes/{c['index']}/levels/1", "class level")
+    r = fetch(f"races/{slug(race)}")
+    sub = fetch(f"subraces/{slug(subrace)}") if subrace else {}
+    c = fetch(f"classes/{slug(cls)}")
+    lvl = fetch(f"classes/{c['index']}/levels/1")
 
     try:
         bg = fetch(f"backgrounds/{slug(background)}")
@@ -174,7 +166,7 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
         del data["alignment"]
 
     for idx, n in Counter(slug(i) for i in _names(equipment)).items():  # a repeated index is a quantity
-        item = _lookup(fetch, f"equipment/{idx}", "equipment")
+        item = fetch(f"equipment/{idx}")
         inv.equip_base(data, item)
         if n > 1:
             inv.add(data, item["name"], n - 1)
