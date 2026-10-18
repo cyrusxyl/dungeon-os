@@ -623,6 +623,14 @@ def test_cli_guards(c: Path) -> None:
         check("item profile refuses bad JSON", rc == 1 and "JSON" in err)
         rc, _, _ = run("remove", "+1 Rapier of Frost")
         check("item remove takes the item away", rc == 0 and not any(i["name"] == "+1 Rapier of Frost" for i in character.load(c, "aragorn")["inventory"]))
+        purse = lambda: next((i["quantity"] for i in character.load(c, "aragorn")["inventory"] if i["name"] == "Gold Pieces"), 0)  # noqa: E731
+        had = purse()
+        rc, _, _ = run("add", "Gold Pieces", "--qty", "7")
+        check("item add of Gold Pieces goes to the purse", rc == 0 and purse() == had + 7)
+        rc, _, err = run("remove", "gold pieces", "--qty", str(had + 8))
+        check("item remove of more gold than the purse holds is refused as gold", rc == 1 and "gp is too much" in err and purse() == had + 7)
+        rc, _, _ = run("remove", "Gold Pieces", "--qty", "7")
+        check("item remove of Gold Pieces spends from the purse", rc == 0 and purse() == had)
         path.write_bytes(before)
     finally:
         rules_cmd._api, sys.argv = orig_api, orig_argv

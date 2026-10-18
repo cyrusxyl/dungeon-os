@@ -229,11 +229,22 @@ def _equip(data: dict, name: str, proficient: bool) -> list[str]:
     return [line, *filter(None, [found.weapon_warning(effects.PRESETS)])]
 
 
+def _purse(data: dict, name: str, qty: int, sign: int) -> list[str] | None:
+    """`item add|remove` of Gold Pieces goes through `sheet.gold`: one purse path, the same checks. None for any other item."""
+    if name.lower() != items.GOLD.lower():
+        return None
+    if qty < 1:
+        raise RulesError("quantity must be 1 or more.")
+    return [sheet.gold(data, sign * qty)]
+
+
 def execute_item_add(args) -> int:
     """`--perk` is what makes the item special, in the DM's words (a catalog perk in it adds a hint). `--effects` is a list of
     gear effect presets (comma-separated) that the item gives while it is equipped. `--base` names the item the gear is made
     from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
     def fn(campaign_dir, data):
+        if purse := _purse(data, args.item, args.qty, 1):
+            return purse
         if args.rarity and args.rarity not in loot.RARITIES:
             raise RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
         ids = effects.gear_presets(args.effects)
@@ -252,7 +263,8 @@ def execute_item_add(args) -> int:
 
 
 def execute_item_remove(args) -> int:
-    return _edit_sheet(args.campaign, args.name, lambda c, data: [items.remove(data, args.item, args.qty)])
+    return _edit_sheet(args.campaign, args.name,
+                       lambda c, data: _purse(data, args.item, args.qty, -1) or [items.remove(data, args.item, args.qty)])
 
 
 def execute_item_equip(args) -> int:
