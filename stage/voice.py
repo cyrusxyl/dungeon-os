@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 
-from stage.files import read_json
+from core.files import read_json
 
 CONNECT = httpx.Timeout(30.0, connect=0.3)  # a dead service must answer "no" fast; a live one may take time to speak
 HEALTH_TTL = 10.0

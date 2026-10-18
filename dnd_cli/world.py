@@ -13,8 +13,8 @@ from pathlib import Path
 
 from dnd_cli import canon
 from stage import maps
-from stage.beat import ID_RE, ID_RULE
-from stage.files import read_json, write_json
+from core.ids import ID_RE, ID_RULE
+from core.files import read_json, write_json
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NPC_SCHEMA = REPO_ROOT / "game" / "schemas" / "npc.schema.json"

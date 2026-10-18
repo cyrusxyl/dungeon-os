@@ -8,7 +8,7 @@ from dnd_cli import world
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
 from dnd_cli.errors import RulesError
 from stage import actors, beat, cast, crawl, maps, scenes, state
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 
 def _stage_campaign_dir(campaign: str | None) -> Path:

@@ -18,7 +18,7 @@ from dnd_cli import audit, character, dice, sheet
 from dnd_cli import item as items
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, load_state, save_state
 from dnd_cli.errors import RulesError
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 
 def slug(text: str) -> str:

@@ -31,4 +31,4 @@ dungeon-voice = "view.voicecmd:main"
 package = true
 
 [tool.setuptools.packages.find]
-include = ["dnd_cli", "dnd_cli.*", "view", "view.*", "stage", "stage.*"]
+include = ["dnd_cli", "dnd_cli.*", "view", "view.*", "stage", "stage.*", "core", "core.*"]

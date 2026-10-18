@@ -1,6 +1,6 @@
 """Treasure for `dnd-cli loot roll`: coins and items from the challenge rating, the kind of treasure and a seed.
 
-The table is stage/data/loot.json and the perks are in stage/data/perks.json. The same seed gives the same list. The engine rolls; the DM decides: it gives
+The table is core/data/loot.json and the perks are in core/data/perks.json. The same seed gives the same list. The engine rolls; the DM decides: it gives
 coins with `character gold`, items with `character item add`, and rerolls with another seed.
 """
 
@@ -15,7 +15,7 @@ from pathlib import Path
 from dnd_cli import dice
 from dnd_cli.errors import RulesError
 
-LOOT_PATH = Path(__file__).resolve().parents[1] / "stage" / "data" / "loot.json"
+LOOT_PATH = Path(__file__).resolve().parents[1] / "core" / "data" / "loot.json"
 PERKS_PATH = LOOT_PATH.with_name("perks.json")
 KINDS = ("individual", "hoard")
 RARITIES = ("common", "uncommon", "rare", "very rare", "legendary")

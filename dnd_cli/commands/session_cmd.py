@@ -6,7 +6,7 @@ from pathlib import Path
 from dnd_cli import audit, world
 from dnd_cli.commands.show_cmd import run_stage
 from dnd_cli.errors import RulesError
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 LOG_TAIL_WORDS = 1200
 

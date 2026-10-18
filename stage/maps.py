@@ -14,8 +14,9 @@ from collections import deque
 from pathlib import Path
 
 from stage import crawl
-from stage.beat import ID_RULE, SLUG_RE, title
-from stage.files import read_json, write_json
+from core.ids import ID_RULE
+from stage.beat import SLUG_RE, title
+from core.files import read_json, write_json
 
 DIRS = {"n": (0, -1), "ne": (1, -1), "e": (1, 0), "se": (1, 1), "s": (0, 1), "sw": (-1, 1), "w": (-1, 0), "nw": (-1, -1)}
 STEP = 2

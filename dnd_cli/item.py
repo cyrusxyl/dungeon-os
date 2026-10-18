@@ -5,7 +5,7 @@ is a change to the sheet, and a field this module does not know stays in the row
 Nothing here loads or saves a file: the caller does, through dnd_cli.character.
 
 A row is an *instance*: name, quantity, equipped, rarity, and a reference to what it is (`type`, `base`).
-The *definition* comes from the 5e API data (`equip_base`), from stage/data/items.json (a profile), or from the row
+The *definition* comes from the 5e API data (`equip_base`), from core/data/items.json (a profile), or from the row
 itself (a field of the row wins: a `profile` is a DM ruling). See combat-board.md, section 6.
 
 A weapon or armor that comes from a row has an `item` field in `weapons[]` or `armor`: the name of its row. That
@@ -24,7 +24,7 @@ from pathlib import Path
 from dnd_cli import dice
 from dnd_cli.errors import RulesError
 
-ITEMS_PATH = Path(__file__).resolve().parents[1] / "stage" / "data" / "items.json"
+ITEMS_PATH = Path(__file__).resolve().parents[1] / "core" / "data" / "items.json"
 PROFILE_KINDS = ("heal", "throw")
 GOLD = "Gold Pieces"
 
@@ -133,7 +133,7 @@ class Item:
         return f"{sheet['name']}: {self.name} {'equipped' if on else 'put away'}"
 
     def set_profile(self, profile: dict) -> str:
-        """Keep a profile on the row (a ruling the DM approved) and return its kind. The shape is in stage/data/items.json."""
+        """Keep a profile on the row (a ruling the DM approved) and return its kind. The shape is in core/data/items.json."""
         kind = profile.get("kind")
         if kind == "heal":
             need = {"heal": str}

@@ -15,7 +15,7 @@ A preset has one or more of these parts:
   `vs` limits the preset to targets whose creature type contains one of these words.
 - `ac`, `resist` and `reduce`: Armor Class, damage resistances, and flat damage reduction ({damage type or "all": n})
   of a player character.
-Loot perks (stage/data/perks.json) name presets with these parts.
+Loot perks (core/data/perks.json) name presets with these parts.
 
 Effects live in `{campaign}/stage/effects.json` as `{character id: [preset id]}`.
 They are not in `state.json`: the rules commands load and save the whole state
@@ -35,7 +35,7 @@ from pathlib import Path
 
 from dnd_cli import character, dice, item as items
 from dnd_cli.errors import RulesError
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 ROLLS = ("check", "save", "attack")
 

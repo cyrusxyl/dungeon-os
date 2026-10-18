@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dnd_cli import world
 from dnd_cli.commands.show_cmd import run_stage
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 
 def _with_state(campaign, fn) -> int:

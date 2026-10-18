@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 from stage import rooms
 from stage.assets import ASSETS_DIR, ensure_dcss, ensure_tiles
 from stage.creatures import recolor
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 T = 32
 ROWS = 6  # the rows of floor tiles the templates' `rows` count; a wall is WALL_ROWS of them high

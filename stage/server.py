@@ -54,13 +54,14 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
+from core.ids import ID_RE
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli import item as items
 from dnd_cli.item import GOLD
 from dnd_cli.errors import RulesError
 from stage import actors, arena, beat, board, cast, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, ttsctl, voice, walk
 from stage.assets import AssetError
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
 
 RULES_LOCK = threading.Lock()  # the rules code writes state.json and the arena file: one writer at a time in this process
@@ -1471,7 +1472,7 @@ def create_app(
 
     def pc_or_404(stage: Stage, who: object) -> str:
         who = str(who)
-        if not beat.ID_RE.match(who) or not character.character_path(stage.campaign_dir, who).exists():
+        if not ID_RE.match(who) or not character.character_path(stage.campaign_dir, who).exists():
             raise HTTPException(404, "No such character.")
         return who
 

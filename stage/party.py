@@ -10,7 +10,7 @@ from pathlib import Path
 
 from dnd_cli import actions, combat, dice, effects, item as items, resources
 from stage import beat
-from stage.files import read_json
+from core.files import read_json
 
 
 def _skills(sheet: dict, mods: dict, prof: int) -> list[dict]:

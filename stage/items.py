@@ -1,6 +1,6 @@
 """Items on the board: the abilities a character gets from its inventory, and the objects that lie on a tile.
 
-An inventory row has a profile when it is in stage/data/items.json or carries a `profile` of its own (a DM ruling that was
+An inventory row has a profile when it is in core/data/items.json or carries a `profile` of its own (a DM ruling that was
 saved). A profile gives the row an ability in the format of dnd_cli/abilities.py. Using it removes one from the sheet.
 Other rows have no card: the player uses them with Improvise. See combat-board.md, section 6.
 """

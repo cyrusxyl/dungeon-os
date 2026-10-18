@@ -21,9 +21,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from PIL import Image
 
+from core.ids import ID_RE, ID_RULE
 from stage import beat, creatures, lpc, pose
 from stage.assets import ensure_dcss
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
 MONSTERS_PATH = Path(__file__).resolve().parent / "data" / "monsters.json"
@@ -268,8 +269,8 @@ def set_look(campaign_dir: Path, actor_id: str, tokens: list[str], change: bool 
     """
     if not tokens:
         raise lpc.ActorError("give at least one setting, for example name=Sireth body=female.")
-    if not beat.ID_RE.match(actor_id):
-        raise lpc.ActorError(f"actor id {actor_id!r}: {beat.ID_RULE}.")
+    if not ID_RE.match(actor_id):
+        raise lpc.ActorError(f"actor id {actor_id!r}: {ID_RULE}.")
     current = read_json(actors_dir(campaign_dir) / f"{actor_id}.json")
     if current is not None and not change:
         raise LookExists(actor_id, current)
