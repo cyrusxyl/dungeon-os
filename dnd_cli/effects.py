@@ -33,7 +33,7 @@ import random
 import re
 from pathlib import Path
 
-from dnd_cli import character, dice
+from dnd_cli import character, dice, item
 from stage.files import read_json, write_json
 
 ROLLS = ("check", "save", "attack")
@@ -107,8 +107,7 @@ def _words(name: str) -> set[str]:
 def worn(campaign_dir: Path, cid: str) -> list[tuple[str, str]]:
     """(preset id, item name) for each effect of an equipped item. A sheet that is missing gives none."""
     sheet = read_json(character.character_path(campaign_dir, cid)) or {}
-    return [(e, i.get("name", "")) for i in sheet.get("inventory", []) if i.get("equipped")
-            for e in i.get("effects", []) if e in PRESETS]
+    return [(e, it.name) for it in item.items(sheet) for e in it.effects() if e in PRESETS]
 
 
 def active(campaign_dir: Path, cid: str) -> list[str]:
