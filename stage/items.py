@@ -7,26 +7,10 @@ Other rows have no card: the player uses them with Improvise. See combat-board.m
 
 from __future__ import annotations
 
-import json
-from functools import cache
 from pathlib import Path
 
-from dnd_cli import abilities, character, combat, dice, sheet as sheets
+from dnd_cli import character, combat, dice, item as inv
 from stage import arena, board
-
-ITEMS_PATH = Path(__file__).resolve().parent / "data" / "items.json"
-PROFILE_KINDS = ("heal", "throw")
-
-
-@cache
-def table() -> dict:
-    return {k: v for k, v in json.loads(ITEMS_PATH.read_text()).items() if not k.startswith("_")}
-
-
-def profile_of(row: dict) -> dict | None:
-    """The profile of an inventory row: its own, else the table's, else none."""
-    p = row.get("profile") or table().get(row.get("name", "").lower())
-    return p if p and p.get("kind") in PROFILE_KINDS else None
 
 
 def object_free(state: dict, cid: str) -> bool:
@@ -36,20 +20,7 @@ def object_free(state: dict, cid: str) -> bool:
 
 def listing(sheet: dict, rec: dict) -> list[dict]:
     """One ability for each inventory row that has a profile."""
-    out = []
-    for row in sheet.get("inventory", []):
-        p = profile_of(row)
-        if p is None:
-            continue
-        base = {"id": f"item:{row['name']}", "name": row["name"], "cost": p.get("cost", "action"), "source": "item", "qty": row.get("quantity", 1)}
-        if p["kind"] == "heal":
-            out.append({**base, "kind": "heal", "heal": p["heal"], "text": f"x{base['qty']} · yourself or a creature next to you", "stat": f"heals {p['heal']}"})
-        else:
-            bonus = rec["mods"]["dexterity"]  # an improvised weapon: no proficiency
-            expr, dtype = p["damage"]
-            out.append({**base, "kind": "spell_attack", "spell_level": 0, "weapon": "improvised", "to_hit": bonus, "attack": {"bonus": bonus, "range_ft": p["range_ft"]}, "damage": [[expr, dtype]],
-                        "text": f"x{base['qty']} · Range {p['range_ft']} ft", "stat": f"{bonus:+d} · {expr} {dtype}"})
-    return out
+    return [ab for it in inv.items(sheet) if (ab := it.ability(rec))]
 
 
 def ally_targets(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
@@ -74,7 +45,7 @@ def pickups(state: dict, a: dict, cid: str) -> list[dict]:
 
 def consume(campaign_dir: Path, cid: str, name: str) -> None:
     sh = character.load(campaign_dir, cid)
-    sheets.remove_item(sh, name, 1)
+    inv.remove(sh, name, 1)
     character.save(campaign_dir, cid, sh)
 
 
@@ -99,7 +70,7 @@ def pick_up(campaign_dir: Path, state: dict, a: dict, cid: str, pick_id: str) ->
     if not object_free(state, cid):
         raise board.BoardError("The free object interaction of this turn is used.")
     sh = character.load(campaign_dir, cid)
-    sheets.add_item(sh, item["name"], 1)
+    inv.add(sh, item["name"], 1)
     character.save(campaign_dir, cid, sh)
     a["items"].remove(item)
     state["active_encounter"].setdefault("resources", {}).setdefault(cid, {})["object"] = True
