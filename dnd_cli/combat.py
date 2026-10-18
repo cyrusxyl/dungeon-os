@@ -1047,6 +1047,8 @@ def check(campaign_dir: Path, state: dict, who: list[str], what: str, dc: int | 
           hide_dc: bool = False, skip=()) -> list[str]:
     """Skill or ability checks (or death saves). Several characters: a group check, half must pass."""
     rng = rng or random
+    if not who:
+        raise RulesError("no one to roll for. This campaign has no characters; name a creature in the fight, or add a character first.")
     what = what.lower().replace("-", "_").replace(" ", "_")
     if what == "death":
         return [death_save(campaign_dir, state, c, rng, secret) for c in who]

@@ -632,6 +632,16 @@ def test_cli_guards(c: Path) -> None:
         rc, _, _ = run("remove", "Gold Pieces", "--qty", "7")
         check("item remove of Gold Pieces spends from the purse", rc == 0 and purse() == had)
         path.write_bytes(before)
+        empty = Path(tempfile.mkdtemp()) / "empty"
+        shutil.copytree(c, empty)
+        for f in (empty / "characters").glob("*.json"):
+            f.unlink()
+        sys.argv = ["dnd-cli", "check", "all", "stealth", "--campaign", str(empty)]
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = main()
+        check("check all in a campaign with no characters says so", rc == 1 and "no characters" in err.getvalue() + out.getvalue())
+        shutil.rmtree(empty.parent)
     finally:
         rules_cmd._api, sys.argv = orig_api, orig_argv
 
