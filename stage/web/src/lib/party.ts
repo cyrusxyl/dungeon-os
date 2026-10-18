@@ -85,6 +85,8 @@ export interface Entrant {
   name: string
   initiative: number
   pc: boolean
+  /** Its side in this fight: green party, yellow neutral faction, red hostile. */
+  team: 'party' | 'neutral' | 'hostile'
   health: Health
   conditions: { name: string; stance: boolean }[]
 }
@@ -110,9 +112,14 @@ export function useParty(dmStatus: string): { party: Party | null; refresh: () =
 
 /** A change the player makes to their own character (stage/server.py). Resolves to false when the server refuses. */
 export async function act(path: string, body: Record<string, unknown>, refresh: () => void): Promise<boolean> {
-  const ok = (await postJson(path, body)).ok
+  let res = await postJson(path, body)
+  if (res.status === 409) {
+    // An attack that starts a fight with someone at peace comes back as a question (`confirm`): ask, then send it again.
+    const asked = (await res.clone().json().catch(() => null)) as { error?: string; confirm?: boolean } | null
+    if (asked?.confirm && window.confirm(`${asked.error ?? 'This starts a fight.'}\n\nAttack anyway?`)) res = await postJson(path, { ...body, confirm: true })
+  }
   refresh()
-  return ok
+  return res.ok
 }
 
 /** How full a health bar is for a creature the players only see as a band, not as numbers. */

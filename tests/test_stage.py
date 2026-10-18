@@ -599,6 +599,9 @@ def test_placement() -> None:
     walking = state.apply(state.apply(s, {"type": "enter", "actor": "gareth"}), {"type": "walk", "actor": "gareth", "walk": "wander"})
     check("a walk event sets the pattern and an actor not on stage is ignored", walking["actors"]["gareth"]["walk"] == "wander"
           and "nobody" not in state.apply(s, {"type": "walk", "actor": "nobody", "walk": "still"})["actors"])
+    fallen = {**walking, "actors": {**walking["actors"], "gareth": {**walking["actors"]["gareth"], "down": True, "cell": [3, 3]}}}
+    check("@enter stands a fallen actor up where it lay", "down" not in state.apply(fallen, {"type": "enter", "actor": "gareth"})["actors"]["gareth"]
+          and state.apply(fallen, {"type": "enter", "actor": "gareth"})["actors"]["gareth"]["cell"] == [3, 3])
     check("entering again keeps the pattern", state.apply(walking, {"type": "enter", "actor": "gareth", "side": "hostile"})["actors"]["gareth"]["walk"] == "wander")
     placed = state.apply(s, {"type": "place", "scene": "hall", "cells": {"sireth": {"cell": [3, 4], "facing": "right"}, "gone": {"cell": [1, 1], "facing": "down"}}})
     check("a place event sets the cell and the facing, for actors on stage only",
@@ -671,8 +674,8 @@ def test_roster() -> None:
     check("a scene of the same room still sends out who the DM names",
           "ilvuur" not in state.apply(s, {"type": "scene", "location": "hall", "without": ["ilvuur"]})["actors"])
     s = state.apply(s, {"type": "enter", "actor": "goblin#1"})
-    check("a kind of monster is hostile and a named one neutral", s["actors"]["goblin#1"]["side"] == "hostile"
-          and state.apply(s, {"type": "enter", "actor": "gareth"})["actors"]["gareth"]["side"] == "neutral")
+    check("a kind of monster is hostile and a named one a bystander", s["actors"]["goblin#1"]["side"] == "hostile"
+          and state.apply(s, {"type": "enter", "actor": "gareth"})["actors"]["gareth"]["side"] == "bystander")
     s = state.apply(s, {"type": "side", "actor": "ilvuur", "side": "hostile"})
     check("@side changes the ring", s["actors"]["ilvuur"]["side"] == "hostile")
     check("entering again keeps the side", state.apply(s, {"type": "enter", "actor": "ilvuur", "position": "left"})["actors"]["ilvuur"]["side"] == "hostile")
@@ -1670,7 +1673,7 @@ def test_player_actions() -> None:
         aragorn = next(x for x in view["characters"] if x["id"] == "aragorn")
         check("combat: the order, the turn and what is used", view["combat"]["current"] == "aragorn"
               and view["combat"]["order"][1] == {"id": "goblin#1", "name": "Goblin 1", "initiative": 9, "pc": False,
-                                                   "health": "unhurt", "conditions": []}
+                                                   "team": "hostile", "health": "unhurt", "conditions": []}
               and aragorn["turn"] == {"action": False, "bonus": True, "reaction": False} and aragorn["in_combat"]
               and aragorn["conditions"] == [{"name": "poisoned", "stance": False}])
         check("a monster's HP and AC never reach the view", "7" not in json.dumps(view["combat"]) and "\"ac\"" not in json.dumps(view["combat"])
@@ -1830,11 +1833,15 @@ def test_attack_opens_a_fight() -> None:
             status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "legolas", "weapon": "Longsword"})
             check("a party member is no target", status == 400 and not combat.load_state(c).get("active_encounter"))
             status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "orlo-tin", "weapon": "Longsword"})
+            check("an attack on a bystander asks for confirmation and starts nothing yet", status == 409 and r.get("confirm") and "bystander" in r["error"]
+                  and not combat.load_state(c).get("active_encounter") and not sent)
+            status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "orlo-tin", "weapon": "Longsword", "confirm": True})
             enc = combat.load_state(c)["active_encounter"]
             a = stage_arena.load(c, enc["arena"])
             check("the server starts the fight with the party in the order and the target as the foe",
                   status == 200 and {"aragorn", "legolas"} <= set(enc["participants"]) and list(enc["monsters"]) == ["orlo-tin"]
                   and all(o["initiative"] for o in enc["initiative_order"]))
+            check("the bystander is drawn in as a faction of its own, at war with the party", enc["teams"] == {"orlo-tin": "neutral"} and combat.enemies(combat.load_state(c), "aragorn", "orlo-tin"))
             check("a melee weapon starts the target next to the attacker",
                   stage_arena.cheb(board.pos(a, "aragorn"), board.pos(a, "orlo-tin")) == 1)
             check("the DM is told, with the stat block assumption", sent and "[Aragorn attacked Orlo Tin and combat started]" in sent[-1]

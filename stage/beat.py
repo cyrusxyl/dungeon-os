@@ -51,7 +51,8 @@ EMOTIONS = ("neutral", "happy", "angry", "sad", "surprised", "fearful", "disgust
 MOODS = ("neutral", "ominous", "warm", "wry", "tense", "intense", "urgent", "action", "bright", "somber")  # narrator styles
 POSITIONS = ("left", "center", "right", "far-left", "far-right")
 WALKS = ("still", "wander", "patrol")  # how an actor moves in a room before a fight (stage/walk.py)
-SIDES = ("party", "ally", "neutral", "hostile")  # a ring under the feet: green, green, yellow, red
+SIDES = ("party", "ally", "neutral", "bystander", "hostile")  # a ring under the feet: green, green, yellow, yellow, red
+BYSTANDER = "bystander"  # drawn in a fight, takes no turn, and is not at war with anyone, until something provokes it (stage/board.py)
 JOIN_SIDES = ("ally", "neutral", "hostile")  # a companion is not a player character
 MAX_ACTORS = 12  # more than this does not fit the stage
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # a file id: sites, maps, places
@@ -60,8 +61,8 @@ ID_RULE = "use lower-case letters, digits, '-' or '_'"
 
 
 def default_side(actor_id: str) -> str:
-    """A kind of monster (`goblin#2`) is hostile, a named character is neutral, until the DM says otherwise."""
-    return "hostile" if "#" in actor_id else "neutral"
+    """A kind of monster (`goblin#2`) is hostile, a named character is a bystander, until the DM says otherwise."""
+    return "hostile" if "#" in actor_id else BYSTANDER
 
 
 def title(slug: str) -> str:

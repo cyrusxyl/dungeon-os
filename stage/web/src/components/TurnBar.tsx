@@ -2,6 +2,9 @@ import { useState } from 'react'
 
 import { BAND_FILL, type Entrant, type Party } from '@/lib/party'
 
+const TEAM_BORDER = { party: 'border-[var(--good)]', neutral: 'border-[var(--gold)]', hostile: 'border-[var(--bad)]' } as const
+const TEAM_COLOR = { party: 'var(--good)', neutral: 'var(--gold)', hostile: 'var(--bad)' } as const
+
 /** One place in the turn order: a portrait, its initiative, and how hurt it is (a band for a creature, the real bar for a player character). */
 function Slot({ o, party, current }: { o: Entrant; party: Party; current: boolean }) {
   const [portraitOk, setPortraitOk] = useState(true)
@@ -20,17 +23,17 @@ function Slot({ o, party, current }: { o: Entrant; party: Party; current: boolea
           <img
             src={`/asset/actor/${encodeURIComponent(o.id)}/portrait/neutral.png`}
             alt=""
-            className={`pixelated size-10 border-2 bg-black ${o.pc ? 'border-[var(--good)]' : 'border-[var(--bad)]'}`}
+            className={`pixelated size-10 border-2 bg-black ${TEAM_BORDER[o.team]}`}
             onError={() => setPortraitOk(false)}
           />
         ) : (
-          <div className={`pixel-font grid size-10 place-items-center border-2 bg-black text-xs ${o.pc ? 'border-[var(--good)]' : 'border-[var(--bad)]'}`}>{o.name.charAt(0)}</div>
+          <div className={`pixel-font grid size-10 place-items-center border-2 bg-black text-xs ${TEAM_BORDER[o.team]}`}>{o.name.charAt(0)}</div>
         )}
         <span className="pixel-font absolute -right-1 -bottom-1 bg-[var(--ink)] px-0.5 text-[8px] text-[var(--gold)]">{o.initiative}</span>
       </div>
       <span className="w-full truncate text-center text-xs leading-none">{o.name}</span>
       <div className="h-1.5 w-full border border-[var(--border)] bg-black" role="img" aria-label={hurt}>
-        <div className="h-full" style={{ width: `${fill}%`, background: o.pc ? 'var(--good)' : 'var(--bad)' }} />
+        <div className="h-full" style={{ width: `${fill}%`, background: TEAM_COLOR[o.team] }} />
       </div>
       <span className={`w-full truncate text-center text-[10px] leading-none ${conditions.length ? 'text-[var(--ember)]' : 'text-[var(--dim)]'}`}>
         {conditions.length ? conditions.join(', ') : pc ? ' ' : o.health}

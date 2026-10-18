@@ -23,6 +23,8 @@ uv run dnd-cli encounter start bandit:2 cassara-whitmore --pcs sireth
 
 ## A fight on a board
 
+**Who fights.** Every character on the stage joins the fight by its side, with its stage id, whatever you name in `encounter start`: **green** (the party and its companions: the stage plays the companions), **yellow `neutral`** (a faction of its own: at peace with the party, against the red side, taking turns), and **red** (the enemies). A **`bystander`** (yellow too, the default for a named character with no side) takes no part: it stands on its cell, blocks it, and takes no turn. A character with no stat block fights as an SRD stand-in (the commoner, or a guard, a priest... from its role). Set a side with `@side <id> ally|neutral|hostile|bystander` before you start. A creature that is down stays on the stage after the fight: `@exit <id>` clears it.
+
 Every `encounter start` builds a board: the players walk their characters, and the stage plays the creatures. Add `--no-arena` only for a very short fight you run in words (one creature, a brawl of one round). When unsure, keep the board. `--arena` is the same as the default; it carries the options below.
 
 ```bash
@@ -33,6 +35,7 @@ uv run dnd-cli encounter start wolf:3 --arena ambush=yes feature=barrels@party h
 - `layout=` is `open`, `chokepoint`, `pillars` or `chasm`; `shape=` is the shape of the room: `rect` `hall` `l` `t` `cross` `nave` `u` `h` `octagon` `diamond` `ellipse` `ring` `twin` `zigzag` `dogleg` `blob` or `cave` (leave it out: the theme picks a shape); `size=` is `small`, `medium` or `large` (leave it out: the stage picks one); `light=` is `lit`, `dim` or `dark`; `ambush=yes` puts creatures on the flanks; `theme=` takes the tiles of a site theme; `seed=` repeats a room and its layout. The stage turns the room at random. The party starts at one end of the room and the foes at the other.
 - `feature=<thing>@<where>` adds an object: `cover`, `pillar`, `barrels`, or any prop of the scene catalog. `hazard=lava@center` or `hazard=water@foes` adds a pool. `where` is `party`, `center` or `foes`. **Never give coordinates**: the stage places everything, and a layout never changes after the start.
 - The arena is built from where the party is: the room of the site they explore, the scene on the stage (the same room, with every character on the cell where the scene shows them; `shape=`, `size=`, `orient=` and `layout=` do not apply there, and the command says so), or an empty field. You do not need `@scene` for it. `@scene` or `@explore` after the fight shows the story again.
+- A player attack on a bystander, or on a neutral at peace with the party, asks the player to confirm first. Then the bystander joins the fight as a neutral faction against the attacker's side, rolls initiative, and the stage plays it. An area attack that catches a bystander draws it in the same way.
 - The command prints who you play: a creature with its own id (`boss=bugbear`) or an NPC file. **The stage plays every other creature.** Do not run their turns, and do not call `encounter next` for them.
 - When a creature you play is up, you get `[combat] Round 1: Grukk (boss) acts, and you play it. ...`. Then: `uv run dnd-cli encounter move boss --toward aragorn` (or `--to 7,4`), `uv run dnd-cli attack boss morningstar aragorn`, narrate one beat, `uv run dnd-cli encounter next`. The board checks speed, blocked cells, reach, sight and cover, and prints why it refuses. A player gets a reaction question when a creature leaves their reach: the walk waits for the answer.
 - `uv run dnd-cli arena show` lists the props, items and who stands where. `uv run dnd-cli arena preview` makes a picture for you (not for the players). Describe positions in words (the pillar on the left, the pool in the middle).
@@ -88,6 +91,8 @@ uv run dnd-cli loot roll --cr 1 --kind hoard --seed 7        # coins and items b
 uv run dnd-cli loot roll --cr 2 --type beast                 # a beast, an ooze or a plant carries nothing
 uv run dnd-cli loot force "Longsword" --to aragorn --perk "keen: it hums near orcs" --rarity uncommon   # give an item you chose, with a perk in your own words
 ```
+
+XP comes only from enemies of the party: a dead companion gives none. When the fight ends every character stays on the cell where the fight left it, the fallen lie there, and a bystander who fought is `hostile` (red) if it is still at war with the party when the fight ends, else `neutral`. A player character who went down is not a corpse. `@enter <id>` stands a fallen character back up where it lay (a revived companion).
 
 It prints "LEVEL UP READY" for a character who reached the next level (see the `character-advancement` skill). Then offer a search, loot, or a rest (`uv run dnd-cli rest short` / `rest long`).
 

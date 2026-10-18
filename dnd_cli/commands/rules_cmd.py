@@ -40,10 +40,11 @@ def execute_encounter(campaign, action: str, args) -> int:
     def fn(campaign_dir, state):
         if action == "start":
             pcs = None if args.pcs in (None, "all") else [p for p in args.pcs.split(",") if p]
-            lines = combat.start(campaign_dir, state, args.specs, pcs)
+            on_stage = stage_state.replay(log_path(campaign_dir))
+            lines = combat.start(campaign_dir, state, args.specs, pcs, stage=on_stage["actors"])
             if args.no_arena:
                 return lines
-            lines += board.start(campaign_dir, state, args.arena or [], stage_state.replay(log_path(campaign_dir)))
+            lines += board.start(campaign_dir, state, args.arena or [], on_stage)
             notify_stage(campaign_dir, {"type": "arena", "arena": state["active_encounter"]["arena"]})
             return lines
         if action == "add":
@@ -75,9 +76,10 @@ def execute_encounter(campaign, action: str, args) -> int:
             return [f"{args.target}: {args.kind} {'free' if args.free else 'used'}."]
         if action == "end":
             on_board = board.arena_id_of(state)
+            left = board.outcome(campaign_dir, state, arena.load(campaign_dir, on_board)) if on_board else {}  # before the encounter is cleared
             lines = combat.end(campaign_dir, state, award_xp=not args.no_xp, resolved=args.resolved)
             if on_board:
-                notify_stage(campaign_dir, {"type": "arena_end"})
+                notify_stage(campaign_dir, {"type": "arena_end", **left})
             return lines
         raise combat.RulesError("encounter start|add|next|status|damage|heal|condition|use|end")
     return _with_state(campaign, fn)

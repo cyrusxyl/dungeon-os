@@ -37,6 +37,11 @@ def centre(cells: list[Cell]) -> tuple[float, float] | None:
     return (sum(x for x, _ in cells) / len(cells), sum(y for _, y in cells) / len(cells)) if cells else None
 
 
+def nearest_free(floor: list[Cell], held, cell: Cell) -> Cell:
+    """The free floor cell nearest `cell` (ties: the lowest cell); `cell` itself when there is none."""
+    return min((c for c in floor if c not in held), key=lambda c: (dist(c, cell), c), default=cell)
+
+
 def blank_room(w: int = 10, h: int = 8) -> dict:
     """A room with nothing in it, for a place that has no look yet."""
     return {"w": w, "h": h, "grid": ["." * w for _ in range(h)], "props": [], "stand": []}

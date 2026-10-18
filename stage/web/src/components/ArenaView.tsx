@@ -51,6 +51,33 @@ function unitFace(seen: Map<string, Seen>, u: ArenaUnit): Seen {
   return { ...was, x: u.x, y: u.y, face: facing(u.x - was.x, u.y - was.y) }
 }
 
+/** The ring under the feet: green for the party's side, yellow for a faction at peace with it (and for a bystander), red for an enemy. */
+const RING = { party: '#5fd08a', neutral: '#e8c14a', hostile: '#ef6a5a' } as const
+
+function ring(ctx: CanvasRenderingContext2D, cx: number, cy: number, color: string) {
+  ctx.fillStyle = color
+  ctx.globalAlpha = 0.75
+  ctx.strokeStyle = '#0008'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.ellipse(cx, cy, 15, 6, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  ctx.globalAlpha = 1
+}
+
+/** An actor of the scene that takes no part in the fight. */
+function drawBystander(ctx: CanvasRenderingContext2D, g: Geometry, b: { id: string; x: number; y: number }, image: ImageLoader) {
+  const [cx, cy] = groundCentre(g, b.x, b.y)
+  ctx.setTransform(S, 0, 0, S, 0, 0)
+  ring(ctx, cx, cy, RING.neutral)
+  const img = image(`/asset/actor/${encodeURIComponent(b.id)}/full.png?d=down`)
+  if (img) {
+    const [fx, fy] = frameAt(g, b.x, b.y, img.width, img.height)
+    ctx.drawImage(img, fx, fy)
+  }
+}
+
 function drawUnit(ctx: CanvasRenderingContext2D, g: Geometry, u: ArenaUnit, image: ImageLoader, seen: Map<string, Seen>) {
   const now = unitFace(seen, u)
   const url = (f: Facing) => `/asset/actor/${encodeURIComponent(u.id)}/full.png?d=${f}`
@@ -58,6 +85,7 @@ function drawUnit(ctx: CanvasRenderingContext2D, g: Geometry, u: ArenaUnit, imag
   seen.set(u.id, { ...now, img: img ?? now.img })
   const [cx, cy] = groundCentre(g, u.x, u.y)
   ctx.setTransform(S, 0, 0, S, 0, 0)
+  if (!u.down) ring(ctx, cx, cy, RING[u.team])
   ctx.globalAlpha = u.down ? 0.35 : 1
   if (img) {
     const [fx, fy] = frameAt(g, u.x, u.y, img.width, img.height)
@@ -93,7 +121,7 @@ function drawMarks(ctx: CanvasRenderingContext2D, g: Geometry, u: ArenaUnit, see
   const fill = u.hp ? (u.hp.current / (u.hp.max || 1)) * 100 : BAND_FILL[u.health]
   ctx.fillStyle = '#000'
   ctx.fillRect(cx - 13, cy + 7, 26, 4)
-  ctx.fillStyle = u.pc ? '#6fcf6f' : '#e05050'
+  ctx.fillStyle = RING[u.team]
   ctx.fillRect(cx - 12, cy + 8, Math.round((24 * fill) / 100), 2)
 }
 
@@ -139,6 +167,7 @@ function draw(
     }
   }
   for (const u of view.units) things.push({ depth: unitDepth(u.x, u.y), draw: () => drawUnit(ctx, g, u, image, seen) })
+  for (const b of view.bystanders ?? []) things.push({ depth: unitDepth(b.x, b.y), draw: () => drawBystander(ctx, g, b, image) })
   for (const t of byDepth(things)) t.draw()
   for (const u of view.units) drawMarks(ctx, g, u, seen)
 }
@@ -198,6 +227,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   const hand = useHand(canWalk ? actingAs : null, version)
   const [skin, flipSkin] = useSkin()
   const [picked, setPicked] = useState<string | null>(null)
+  const [ask, setAsk] = useState<{ path: string; body: Record<string, unknown>; why: string } | null>(null)
   const [aim, setAim] = useState<Preview | null>(null)
   // The ability is read from the fresh hand, so its targets and reasons never go stale.
   const selected: Ability | null = hand?.abilities.find((ab) => ab.id === picked && !ab.why) ?? null
@@ -242,11 +272,17 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
     const [x, y] = pickCell(g, ((e.clientX - rect.left) / rect.width) * g.width, ((e.clientY - rect.top) / rect.height) * g.height)
     return inside(view, x, y) ? [x, y] : null
   }
+  /** A request to the board. An attack that starts a fight with a bystander, or breaks a peace, comes back as a question (409, `confirm`):
+   *  it is asked, and sent again with `confirm` when the player agrees. */
   const call = async (path: string, body: Record<string, unknown>) => {
     if (busy.current) return
     busy.current = true
     try {
       const res = await postJson(path, body)
+      if (res.status === 409) {
+        const asked = (await res.clone().json().catch(() => null)) as { error?: string; confirm?: boolean } | null
+        if (asked?.confirm) return setAsk({ path, body, why: asked.error ?? 'This starts a fight.' })
+      }
       if (!res.ok) setNote(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? 'The board refused that.')
     } finally {
       busy.current = false
@@ -278,7 +314,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
       setHover([x, y])
       return setNote(aim?.at?.[0] === x && aim.at[1] === y ? (aim.why ?? 'You cannot aim there.') : 'Tap the same cell again to cast.')
     }
-    const foe = view.units.find((u) => !u.pc && !u.down && u.x === x && u.y === y)
+    const foe = view.units.find((u) => u.team !== 'party' && !u.down && u.x === x && u.y === y) ?? view.bystanders?.find((b) => b.x === x && b.y === y)
     if (foe && selected?.needs === 'target') act(selected, foe.id)
     else if (foe) call('/api/arena/attack', { who: actingAs, target: foe.id })
     else if (view.walk.some(([wx, wy]) => wx === x && wy === y)) call('/api/arena/move', { who: actingAs, to: [x, y] })
@@ -296,6 +332,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
           width={g.width * S}
           height={g.height * S}
           onClick={click}
+          data-geom={`${g.ox},${g.oy},${g.width},${g.height}`}
           onMouseMove={(e) => {
             const cell = cellAt(e)
             setHover((prev) => (prev?.[0] === cell?.[0] && prev?.[1] === cell?.[1] ? prev : cell)) // one redraw per cell crossed
@@ -313,6 +350,17 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
           {note && <span className="pixel-font bg-black/70 px-2 py-1 text-[8px] text-[var(--bad)]">{note}</span>}
         </div>
         {isHost && <CombatSettings settings={state.combat_settings ?? view.settings} />}
+        {ask && (
+          <div role="alertdialog" className="absolute inset-x-2 bottom-2 flex flex-wrap items-center justify-center gap-2 border-2 border-[var(--border)] bg-black/90 p-2">
+            <span className="text-sm">{ask.why}</span>
+            <Button size="sm" onClick={() => { const { path, body } = ask; setAsk(null); void call(path, { ...body, confirm: true }) }} className="text-[10px]">
+              Attack anyway
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setAsk(null)} className="text-[10px]">
+              Cancel
+            </Button>
+          </div>
+        )}
         {view.pending && (
           <div className="absolute inset-x-2 bottom-2 flex flex-wrap items-center justify-center gap-2 border-2 border-[var(--border)] bg-black/80 p-2">
             {asked ? (

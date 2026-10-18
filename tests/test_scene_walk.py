@@ -82,6 +82,7 @@ async def main() -> None:
     stage.event_clients.add(client)
     seq, log_size = stage.state["seq"], stage.log_path.stat().st_size
     await api(app, "POST", "/api/scene/walk", {"who": "aragorn", "to": list(goal)})
+    client.got.clear()  # the order itself sends a snapshot (a character that stood up must lose its seat in every browser); the steps do not
     now = time.time()
     for _ in range(80):
         moves = stage.walk_tick(now)
@@ -147,6 +148,24 @@ async def main() -> None:
         t += 0.15
         bad |= any(tuple(a["cell"]) in new_ground.blocked for a in st.state["actors"].values())
     check("after the look changes, no step lands in a wall of the new room", not bad)
+
+    # A character seated on a prop stands up when its player sends it walking, and stays up through a restart.
+    scenes.save(c, "court", {"template": "throne_room", "slots": {}, "add": [], "mood": "day", "shape": "fixed"})
+    beat.append(c, [{"type": "scene", "location": "court", "party": ["aragorn", "legolas"]}, {"type": "enter", "actor": "aragorn", "on": "back_center"}])
+    st.fold(st.read_new_events())
+    st.settle()
+    seat = tuple(st.state["actors"]["aragorn"]["cell"])
+    check("a character is seated on the throne", st.state["actors"]["aragorn"].get("on") == "back_center")
+    g2 = st.ground_of("court")
+    goal2 = next(cell for cell in reversed(g2.floor) if cell not in {tuple(a["cell"]) for a in st.state["actors"].values()})
+    st.seats.claim(HOST_DEVICE, "aragorn", "Alex")  # a restarted stage has no seats of its own
+    st.seats.ensure_host(HOST_DEVICE)
+    status, r = await api(app, "POST", "/api/scene/walk", {"who": "aragorn", "to": list(goal2)})
+    stood = st.state["actors"]["aragorn"]
+    check("the order stands them up: no seat, a floor cell beside it, and the walk begins", status == 200 and "on" not in stood and tuple(stood["cell"]) in g2.floor
+          and max(abs(stood["cell"][0] - seat[0]), abs(stood["cell"][1] - seat[1])) <= 2, str(stood))
+    st2 = await app.state.table.start(c, ["cat"])
+    check("a restart keeps them standing", "on" not in st2.state["actors"]["aragorn"] and tuple(st2.state["actors"]["aragorn"]["cell"]) in g2.floor)
 
     await app.state.table.stop()
     print(f"\n{PASS} passed, {FAIL} failed")

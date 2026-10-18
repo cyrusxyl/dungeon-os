@@ -10,6 +10,8 @@ export interface ActorState {
   emotion?: string
   cell?: [number, number]
   facing?: 'down' | 'left' | 'right' | 'up'
+  /** Fallen in a fight: it lies where it fell. */
+  down?: boolean
 }
 export interface Placed {
   id: string
@@ -19,6 +21,8 @@ export interface Placed {
   sit: boolean
   /** True when the actor is on a prop: no depth row, and no ring when seated. */
   onProp: boolean
+  /** Fallen: drawn lying down, with no ring. */
+  down?: boolean
   /** The prop and the point of its picture the actor is on. */
   spot?: { stand: Stand; point: [number, number] }
 }
@@ -36,7 +40,7 @@ export function layout(actors: Record<string, ActorState>, stand: Stand[] = [], 
       placed.push({ id, side: a.side ?? 'neutral', cell: [spot.x, spot.y], facing: 'down', sit: spot.mode === 'sit', onProp: true, spot: { stand: spot, point: spot.points[n] } })
     } else if (a.cell) {
       held.add(`${a.cell[0]},${a.cell[1]}`)
-      placed.push({ id, side: a.side ?? 'neutral', cell: a.cell, facing: a.facing ?? 'down', sit: false, onProp: false })
+      placed.push({ id, side: a.side ?? 'neutral', cell: a.cell, facing: a.facing ?? 'down', sit: false, onProp: false, down: a.down })
     } else {
       waiting.push([id, a])
     }
@@ -49,7 +53,7 @@ export function layout(actors: Record<string, ActorState>, stand: Stand[] = [], 
   room.grid.forEach((row, y) => [...row].forEach((c, x) => c === '.' && !solid.has(`${x},${y}`) && !held.has(`${x},${y}`) && floor.push([x, y])))
   for (const [id, a] of waiting) {
     const cell = floor.shift()
-    if (cell) placed.push({ id, side: a.side ?? 'neutral', cell, facing: a.facing ?? 'down', sit: false, onProp: false })
+    if (cell) placed.push({ id, side: a.side ?? 'neutral', cell, facing: a.facing ?? 'down', sit: false, onProp: false, down: a.down })
   }
   return back()
 }

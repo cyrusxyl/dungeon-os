@@ -108,7 +108,7 @@ class Walkers:
         party_at = cast.centre(pcs)
         moves: dict[str, dict] = {}
         for aid, a in actors.items():
-            if aid not in cells or a.get("on"):
+            if aid not in cells or a.get("on") or a.get("down"):
                 self.w.pop(aid, None)
                 continue
             w = self._slot(aid, cells[aid], now)

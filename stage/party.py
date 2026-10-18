@@ -109,7 +109,7 @@ def view(campaign_dir: Path, hidden: frozenset[str] = frozenset(), present: list
 
 
 def _unseen(entry: dict, n: int) -> dict:
-    return {"id": f"unseen-{n}", "name": "Unseen", "initiative": entry["initiative"], "pc": False, "health": "unhurt", "conditions": []}
+    return {"id": f"unseen-{n}", "name": "Unseen", "initiative": entry["initiative"], "pc": False, "team": "hostile", "health": "unhurt", "conditions": []}
 
 
 def _entrant(campaign_dir: Path, st: dict, entry: dict, pcs: dict[str, str], n: int = 0) -> dict:
@@ -117,5 +117,5 @@ def _entrant(campaign_dir: Path, st: dict, entry: dict, pcs: dict[str, str], n: 
     cid = entry["name"]
     rec = combat.combatant(campaign_dir, st, cid)
     name = pcs.get(cid) or rec["name"] + (f" {cid.split('#')[1]}" if "#" in cid else "")
-    return {"id": cid, "name": name, "initiative": entry["initiative"], "pc": cid in pcs,
+    return {"id": cid, "name": name, "initiative": entry["initiative"], "pc": cid in pcs, "team": combat.team_of(st, cid),
             "health": combat.health_band(rec), "conditions": _conditions(st, cid)}

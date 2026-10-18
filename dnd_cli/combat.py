@@ -21,6 +21,7 @@ import json
 import os
 import random
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 from dnd_cli import abilities, character, dice, effects
@@ -205,6 +206,52 @@ def encounter(state: dict) -> dict:
     if not enc or enc.get("type") != "combat":
         raise RulesError("no combat is running. Start one with: uv run dnd-cli encounter start goblin:3")
     return enc
+
+
+# -- teams: who fights whom ------------------------------------------------------
+# Every combatant is on a team. The player characters are `party`; the creatures the DM names are `hostile` unless the encounter says
+# otherwise (`enc["teams"]`: id -> team). `party` and `hostile` are at war, and so are `neutral` and `hostile`; `party` and `neutral`
+# are at peace until a feud (`enc["feuds"]`: pairs of ids or teams) is made, as when a player attacks a neutral.
+
+PARTY, HOSTILE, NEUTRAL = "party", "hostile", "neutral"
+WAR = {frozenset((PARTY, HOSTILE)), frozenset((NEUTRAL, HOSTILE))}
+
+
+def team_of(state: dict, cid: str) -> str:
+    enc = state.get("active_encounter") or {}
+    return (enc.get("teams") or {}).get(cid) or (HOSTILE if cid in (enc.get("monsters") or {}) else PARTY)
+
+
+def _war(state: dict, a: str, b: str, labels_a: set[str], labels_b: set[str]) -> bool:
+    """Are two teams (`a`, `b`) at war, or is there a feud between a label of one side (its id or its team) and a label of the other?"""
+    if a == b:
+        return False
+    if frozenset((a, b)) in WAR:
+        return True
+    feuds = (state.get("active_encounter") or {}).get("feuds") or []
+    return any((x in labels_a and y in labels_b) or (x in labels_b and y in labels_a) for x, y in feuds)
+
+
+def enemies(state: dict, a: str, b: str) -> bool:
+    """Are combatants `a` and `b` enemies?"""
+    ta, tb = team_of(state, a), team_of(state, b)
+    return _war(state, ta, tb, {a, ta}, {b, tb})
+
+
+def feud(state: dict, attacker: str, target: str) -> bool:
+    """`attacker` strikes `target`. When they are on different teams that are at peace, `target` is an enemy of the attacker's whole
+    team from now on (one pair in `enc["feuds"]`; other members of the target's team are not drawn in). True when a feud was made."""
+    enc = state.get("active_encounter") or {}
+    if enc.get("type") != "combat" or team_of(state, attacker) == team_of(state, target) or enemies(state, attacker, target):
+        return False
+    enc.setdefault("feuds", []).append([target, team_of(state, attacker)])
+    return True
+
+
+def hostile_to_party(state: dict, cid: str) -> bool:
+    """Is `cid` an enemy of the player characters' team?"""
+    t = team_of(state, cid)
+    return _war(state, t, PARTY, {cid, t}, {PARTY})
 
 
 def party(campaign_dir: Path, state: dict) -> list[str]:
@@ -423,6 +470,46 @@ def heal(campaign_dir: Path, state: dict, cid: str, amount: int) -> str:
 
 # -- encounter ---------------------------------------------------------------
 
+# What an NPC with no stat block fights as: a whole word in its role or type picks an SRD monster, longest phrase first;
+# only if those name none, the same words are looked for in the rest of its file. The default is a commoner.
+ROLE_MONSTERS = (("high priest", "priest"), ("priest", "acolyte"), ("cleric", "acolyte"), ("acolyte", "acolyte"),
+                 ("guard", "guard"), ("soldier", "guard"), ("captain", "veteran"), ("noble", "noble"),
+                 ("bandit", "bandit"), ("thief", "bandit"), ("smuggler", "bandit"), ("assassin", "assassin"),
+                 ("mage", "mage"), ("wizard", "mage"), ("cultist", "cultist"), ("scout", "scout"), ("spy", "spy"))
+
+
+def _monster_in(text: str) -> str | None:
+    """The SRD monster for the whole word or phrase of the table found in `text`; the longest phrase wins, then table order."""
+    text = text.lower()
+    found = [(word, m) for word, m in ROLE_MONSTERS if re.search(rf"\b{re.escape(word)}\b", text)]
+    return max(found, key=lambda wm: len(wm[0]))[1] if found else None
+
+
+def foe_index(campaign_dir: Path, actor_id: str) -> str:
+    """The NPC file or the SRD monster index a stage actor fights as."""
+    return _parse_spec(foe_spec(campaign_dir, actor_id)[0])[1]
+
+
+def stage_record(campaign_dir: Path, actor_id: str) -> dict:
+    """The combat record of a stage actor, under its own id."""
+    return _record(campaign_dir, foe_index(campaign_dir, actor_id), actor_id)
+
+
+def foe_spec(campaign_dir: Path, actor_id: str) -> tuple[str, str | None]:
+    """The `encounter start` spec for a creature on the stage, and a note when the stat block is a guess.
+
+    An NPC file with hp and armor_class is used as it is. Else the id is a monster name (`goblin#2` is a goblin),
+    or an NPC whose role picks an SRD monster (`orlo-tin=acolyte`).
+    """
+    base = actor_id.split("#")[0]
+    npc = read_json(npc_path(campaign_dir, base))
+    if not npc or ("hp" in npc and "armor_class" in npc):
+        return base, None
+    said = lambda keys: " ".join(str(npc.get(k, "")) for k in keys)  # noqa: E731
+    index = _monster_in(said(("role", "type"))) or _monster_in(said(("name", "personality", "motivation"))) or "commoner"
+    return f"{base}={index}", f"{npc.get('name', base)} has no stat block here, so the stage used the SRD {index.replace('-', ' ')}."
+
+
 
 def _parse_spec(spec: str) -> tuple[str, str, int]:
     """`goblin:3`, `boss=bugbear`, `cassara-whitmore` -> (id base, source index, count)."""
@@ -433,32 +520,66 @@ def _parse_spec(spec: str) -> tuple[str, str, int]:
     return m.group(1) or index, index, int(m.group(3) or 1)
 
 
-def _new_ids(base: str, count: int, taken: set[str]) -> list[str]:
+def _new_ids(base: str, count: int, taken: set[str], prefer: Sequence[str] = ()) -> list[str]:
+    """Ids for `count` new creatures of a kind. `prefer`: ids of creatures of that kind already on the stage; they are taken first, so a
+    `goblin#3` on the stage is the goblin the fight uses."""
+    out = [p for p in prefer if p.startswith(base + "#") and p not in taken][:count]
+    if len(out) == count:
+        return out
     if count == 1 and base not in taken and not any(t.startswith(base + "#") for t in taken):
         return [base]
-    n, out = 1, []
+    n = 1
     while len(out) < count:
-        if f"{base}#{n}" not in taken:
+        if f"{base}#{n}" not in taken and f"{base}#{n}" not in out:
             out.append(f"{base}#{n}")
         n += 1
     return out
 
 
-def _creatures(campaign_dir: Path, specs: list[str], taken: set[str]) -> list[dict]:
+def _record(campaign_dir: Path, index: str, cid: str) -> dict:
+    """The combat record of an NPC with a stat block, or of an SRD monster, under the id `cid`."""
+    npc = read_json(npc_path(campaign_dir, index))
+    if npc and "hp" in npc and "armor_class" in npc:
+        return npc_record(npc, cid)
+    data, error, _ = api_get(f"monsters/{index}")
+    if error or not data or "hit_points" not in data:
+        raise RulesError(f"no monster {index!r} in the 5e API, and no NPC file with stats. "
+                         f"Find the index with: uv run dnd-cli search monsters --name {index.split('-')[0]}")
+    return monster_record(data, cid)
+
+
+def _creatures(campaign_dir: Path, specs: list[str], taken: set[str], prefer: Sequence[str] = ()) -> list[dict]:
     out = []
     for spec in specs:
         base, index, count = _parse_spec(spec)
         npc = read_json(npc_path(campaign_dir, index))
         if npc and "hp" in npc and "armor_class" in npc:
-            out.append(npc_record(npc, index))
+            out.append(_record(campaign_dir, index, index))
             continue
-        data, error, _ = api_get(f"monsters/{index}")
-        if error or not data or "hit_points" not in data:
-            raise RulesError(f"no monster {index!r} in the 5e API, and no NPC file with stats. "
-                             f"Find the index with: uv run dnd-cli search monsters --name {index.split('-')[0]}")
-        for cid in _new_ids(base, count, taken):
-            out.append(monster_record(data, cid))
+        for cid in _new_ids(base, count, taken, prefer):
+            out.append(_record(campaign_dir, index, cid))
             taken.add(cid)
+    return out
+
+
+TEAM_OF_SIDE = {"ally": PARTY, "neutral": NEUTRAL, "hostile": HOSTILE}  # the stage sides that fight; a bystander does not, until provoked
+
+
+def _stage_fighters(campaign_dir: Path, stage: dict | None, taken: set[str], skipped: list[str] | None = None) -> list[tuple[dict, str]]:
+    """The actors of the stage that fight (green companions, yellow neutrals, red creatures), each with its team, as combat records
+    under their stage ids. A player character is not one of them, and neither is an actor that has no stat block the stage can find."""
+    out = []
+    for aid, a in (stage or {}).items():
+        team = TEAM_OF_SIDE.get(a.get("side"))
+        if not team or aid in taken or a.get("down") or character.character_path(campaign_dir, aid).exists():
+            continue
+        try:
+            rec = stage_record(campaign_dir, aid)
+        except RulesError as err:
+            if skipped is not None:
+                skipped.append(f"{aid} is not in the fight: {err}")
+            continue
+        out.append((rec, team))
     return out
 
 
@@ -466,8 +587,9 @@ def _order_lines(enc: dict) -> str:
     return "Order: " + ", ".join(f"{o['name']} {o['initiative']}" for o in enc["initiative_order"])
 
 
-def start(campaign_dir: Path, state: dict, specs: list[str], pcs: list[str] | None, rng=None) -> list[str]:
-    """Roll initiative for the party and the creatures; write active_encounter."""
+def start(campaign_dir: Path, state: dict, specs: list[str], pcs: list[str] | None, rng=None, stage: dict | None = None) -> list[str]:
+    """Roll initiative for the party and the creatures; write active_encounter. `stage`: the actors on the stage (id -> {"side"}); those
+    that fight (see `_stage_fighters`) join too, whatever the specs say."""
     rng = rng or random
     if (state.get("active_encounter") or {}).get("type") == "combat":
         raise RulesError("a combat is already running. Add creatures with `encounter add`, or end it first.")
@@ -475,7 +597,7 @@ def start(campaign_dir: Path, state: dict, specs: list[str], pcs: list[str] | No
     enc = {"type": "combat", "round": 1, "participants": [], "initiative_order": [],
            "current_turn": None, "conditions": {}, "monsters": {}}
     state["active_encounter"] = enc
-    lines = _join(campaign_dir, state, pcs, specs, rng)
+    lines = _join(campaign_dir, state, pcs, specs, rng, stage)
     enc["current_turn"] = enc["initiative_order"][0]["name"] if enc["initiative_order"] else None
     _initiative_feed(campaign_dir, state, enc)
     return lines + [_order_lines(enc), f"Round 1: {enc['current_turn']}'s turn."]
@@ -490,14 +612,25 @@ def _initiative_feed(campaign_dir: Path, state: dict, enc: dict) -> None:
     stage_feed("Initiative: " + ", ".join(names))
 
 
-def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng) -> list[str]:
+def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng, stage: dict | None = None) -> list[str]:
     enc = state["active_encounter"]
-    entrants = [combatant(campaign_dir, state, p) for p in pcs]
-    entrants += _creatures(campaign_dir, specs, set(enc["participants"]))
+    entrants = [(combatant(campaign_dir, state, p), None) for p in pcs]
+    prefer = [a for a, v in (stage or {}).items() if v.get("side") == "hostile"]  # the creatures the DM names take the ids they have on the stage
+    entrants += [(r, None) for r in _creatures(campaign_dir, specs, set(enc["participants"]), prefer)]
+    skipped: list[str] = []
+    entrants += _stage_fighters(campaign_dir, stage, set(enc["participants"]) | {r["id"] for r, _ in entrants}, skipped)
+    return _enroll(state, entrants, rng) + skipped
+
+
+def _enroll(state: dict, entrants: list[tuple[dict, str | None]], rng) -> list[str]:
+    """Put combatants in the encounter: initiative, team, and a line about each creature. `entrants`: (record, team or None)."""
+    enc = state["active_encounter"]
     lines = []
-    for rec in entrants:
+    for rec, team in entrants:
         if rec["id"] in enc["participants"]:
             continue
+        if team:
+            enc.setdefault("teams", {})[rec["id"]] = team
         if rec["kind"] != "pc":
             enc["monsters"][rec["id"]] = rec
         kept, _ = dice.d20(rng)
@@ -511,6 +644,19 @@ def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng
                                                                          ("vulnerable", rec["vuln"])) if v))
     enc["initiative_order"].sort(key=lambda o: (o["initiative"], o["bonus"]), reverse=True)
     return lines
+
+
+def provoke(campaign_dir: Path, state: dict, target: str, attacker: str, rng=None) -> list[str]:
+    """A bystander is attacked: it joins the fight on a team of its own (`neutral`) against the attacker's team, and rolls initiative.
+    Result: the lines for the DM. Raises RulesError when it has no stat block the stage can use."""
+    enc = encounter(state)
+    lines: list[str] = []
+    if target not in enc["participants"]:
+        rec = stage_record(campaign_dir, target)
+        lines = _enroll(state, [(rec, NEUTRAL)], rng or random)
+        _initiative_feed(campaign_dir, state, enc)
+    feud(state, attacker, target)
+    return lines + [f"{target} is drawn into the fight against {attacker}'s side."]
 
 
 def add(campaign_dir: Path, state: dict, specs: list[str], rng=None) -> list[str]:
@@ -679,7 +825,8 @@ def end(campaign_dir: Path, state: dict, award_xp: bool = True, resolved: list[s
             if npc is not None:
                 npc["hp"] = {**npc.get("hp", {}), "current": rec["hp"]["current"]}
                 write_json(path, npc, indent=2)
-    xp = sum(r.get("xp", 0) for cid, r in enc["monsters"].items() if r["hp"]["current"] == 0 or cid in (resolved or []))
+    xp = sum(r.get("xp", 0) for cid, r in enc["monsters"].items()
+             if hostile_to_party(state, cid) and (r["hp"]["current"] == 0 or cid in (resolved or [])))  # only the party's enemies give XP
     if award_xp and xp and pcs:
         lines += award(campaign_dir, pcs, xp // len(pcs))
         lines.insert(0, f"Defeated foes give {xp} XP: {xp // len(pcs)} each.")
@@ -731,6 +878,7 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     rng = rng or random
     a_rec = combatant(campaign_dir, state, attacker)
     t_rec = combatant(campaign_dir, state, target)
+    feud(state, attacker, target)
     if weapon.lower() == "improvised" and damage_expr:
         act = {"name": "improvised", "bonus": 0, "damage": [], "plain": True}  # a thrown item or an improvised weapon: the to-hit is all in `bonus`
     else:

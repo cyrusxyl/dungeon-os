@@ -123,7 +123,7 @@ function Actions({ c, party, canAct, refresh }: { c: PartyChar; party: Party; ca
   const [picked, setPicked] = useState<string | null>(null)
   // In a fight the enemies are the turn order's. Outside one, the creatures on the stage: an Attack starts the fight.
   const enemies = party.combat
-    ? party.combat.order.filter((o) => !o.pc && o.health !== 'down')
+    ? party.combat.order.filter((o) => o.team !== 'party' && o.health !== 'down')
     : (party.present ?? []).map((o) => ({ ...o, health: 'unhurt' as const }))
   // Outside a fight a blocked action is only noise (Attack is on when someone is here). In a fight the grey card says why.
   const listed = c.in_combat ? c.actions : c.actions.filter((a) => !a.why)

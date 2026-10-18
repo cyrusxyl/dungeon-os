@@ -114,6 +114,13 @@ def apply(state: dict, event: dict) -> dict:
         s["versions"]["arena:" + event["arena"]] = s["seq"]
     elif kind == "arena_end":
         s["arena"] = None
+        # The fight is over: each unit stays where it stood, the fallen lie there (whoever fought is down or up now: a revived companion stands
+        # again), and a faction that fought on its own has the side it ended with.
+        down, sides = event.get("down") or [], event.get("sides") or {}
+        for aid, v in (event.get("cells") or {}).items():
+            if aid in s["actors"]:
+                s["actors"][aid] = {**{k: x for k, x in s["actors"][aid].items() if k != "down"}, "cell": v["cell"], "facing": v.get("facing", "down"),
+                                    **({"down": True} if aid in down else {}), **({"side": sides[aid]} if aid in sides else {})}
     elif kind == "at":
         s["place"] = {"map": event["map"], "place": event["place"]}
     elif kind in UPDATED:
@@ -137,6 +144,11 @@ def apply(state: dict, event: dict) -> dict:
             for aid, v in event["cells"].items():
                 if aid in s["actors"]:
                     s["actors"][aid] = {**s["actors"][aid], "cell": v["cell"], "facing": v["facing"]}
+    elif kind == "stand":
+        # An actor leaves its seat or its place on a prop (a player sent it walking): it stands on the floor at `cell`.
+        if event.get("scene") == s["scene"] and event["actor"] in s["actors"]:
+            old = {k: v for k, v in s["actors"][event["actor"]].items() if k not in ("on", "near")}
+            s["actors"][event["actor"]] = {**old, "cell": event["cell"], "facing": event.get("facing", "down")}
     elif kind == "walk":
         if event["actor"] in s["actors"]:
             s["actors"][event["actor"]] = {**s["actors"][event["actor"]], "walk": event["walk"]}

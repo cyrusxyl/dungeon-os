@@ -120,7 +120,7 @@ def _blocked(campaign_dir: Path, state: dict, cid: str, cost: str | None, only_c
 def _enemies(state: dict) -> list[str]:
     enc = state.get("active_encounter") or {}
     return [c for c in enc.get("participants", []) if c in (enc.get("monsters") or {})
-            and enc["monsters"][c]["hp"]["current"] > 0]
+            and enc["monsters"][c]["hp"]["current"] > 0 and combat.hostile_to_party(state, c)]  # a companion is not an enemy
 
 
 def card_features(sheet: dict) -> list[str]:

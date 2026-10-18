@@ -121,8 +121,8 @@ def main() -> int:
                 check("the arbiter is seated on a prop", arbiter["sit"] and arbiter["onProp"])
                 standing = [f for f in cast if not f["sit"]]
                 check("every figure but the seated one has a ring (it stands on the floor or on a prop)", len(standing) == 11, str(len(standing)))
-                check("green, yellow and red rings are all there",
-                      {"g" if f["side"] in ("party", "ally") else f["side"] for f in standing} == {"g", "neutral", "hostile"}, str({f["side"] for f in standing}))
+                check("green, yellow (a bystander) and red rings are all there",
+                      {"g" if f["side"] in ("party", "ally") else f["side"] for f in standing} == {"g", "bystander", "hostile"}, str({f["side"] for f in standing}))
 
                 print("a companion sneaks out of the next scene")
                 out = show(c, "@scene court -ilvuur")

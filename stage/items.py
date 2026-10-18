@@ -56,7 +56,7 @@ def ally_targets(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dic
     """Who a healing item can go to: the user and each friend next to them."""
     here, out = board.pos(a, cid), []
     for other in a["units"]:
-        if board.is_foe(state, other) != board.is_foe(state, cid):
+        if combat.team_of(state, other) != combat.team_of(state, cid):
             continue
         dist = arena.cheb(here, board.pos(a, other)) * board.TILE_FT
         out.append({"id": other, "name": combat.combatant(campaign_dir, state, other)["name"], "dist_ft": dist, "ok": dist <= board.TILE_FT,

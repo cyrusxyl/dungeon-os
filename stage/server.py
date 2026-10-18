@@ -287,6 +287,25 @@ class Stage:
             self.cells_dirty = True
         return moves
 
+    def stand_up(self, who: str) -> dict:
+        """An actor on a prop (a seat, a table top) gets off it onto the nearest free floor cell. Logged like a placement (a `stand` event
+        with no beat id), so a restart folds the same. Result: the actor as it is now."""
+        s = self.state
+        g = self.ground_of(s["scene"])
+        here = tuple(s["actors"][who]["cell"])
+        others = [tuple(b["cell"]) for i, b in s["actors"].items() if i != who and b.get("cell")]
+        keep = {(x + dx, y + dy) for i, b in s["actors"].items() if i != who and b.get("on") for x, y in [tuple(b["cell"])] for dx, dy in cast.FRONT}
+        cell = cast.nearest_free(g.floor, set(others) | keep, here)
+        if cell == here:
+            cell = cast.nearest_free(g.floor, set(others), here)  # no cell is clear of the seated: take one in front of them
+        if cell in others or cell == here:
+            raise ValueError("there is no room to stand.")
+        with open(self.log_path, "a") as f:
+            f.write(json.dumps({"type": "stand", "scene": s["scene"], "actor": who, "cell": list(cell), "facing": "down"}) + "\n")
+        self.fold(self.read_new_events())
+        self.cells_dirty = True  # written by the next flush, with the walk that follows
+        return self.state["actors"][who]
+
     def order_walk(self, who: str, to) -> int:
         """A player sends their character to a cell. The way is planned by the rules of the combat board; the tick walks it. Result: the
         number of steps. A ValueError says why not."""
@@ -296,8 +315,10 @@ class Stage:
         a = s["actors"].get(who)
         if not a or not a.get("cell"):
             raise ValueError(f"{who} is not on stage.")
+        if a.get("down"):
+            raise ValueError(f"{who} is down.")
         if a.get("on"):
-            raise ValueError(f"{who} is on a prop and does not walk from it yet.")
+            a = self.stand_up(who)
         ground = self.walk_ground_of(s["scene"])
         others = {tuple(b["cell"]) for i, b in s["actors"].items() if i != who and b.get("cell")}
         here = tuple(a["cell"])
@@ -487,6 +508,8 @@ class Stage:
             events += self.inventory_notices()  # a notice is for the owner's snapshot only (see `snapshot`); it is not in the log
             if self.fold(events):
                 events += self.settle()
+                if any(e["type"] == "arena_end" for e in events):
+                    self.save_cells()  # the fight put everyone on new cells
                 voice.warm([voice.item(e, self.campaign_dir) for e in events])
                 self.pump_due = True
                 await self.broadcast()
@@ -1403,7 +1426,7 @@ def create_app(
             return []
         # The party and its allies are not targets: a player attacks the others.
         return [a for a, v in stage.state["actors"].items()
-                if v.get("side") not in ("party", "ally") and not character.character_path(stage.campaign_dir, a).exists()]
+                if v.get("side") not in ("party", "ally") and not v.get("down") and not character.character_path(stage.campaign_dir, a).exists()]
 
     def present_creatures(stage: Stage) -> list[dict]:
         return [{"id": a, "name": ((actors.load(stage.campaign_dir, a) or {}).get("name") or beat.title(a.split("#")[0]))
@@ -1482,6 +1505,9 @@ def create_app(
         if board.arena_id_of(combat.load_state(stage.campaign_dir)):
             return await board_action(stage, who, body)
         if str(body.get("action")) == "attack" and (combat.load_state(stage.campaign_dir).get("active_encounter") or {}).get("type") != "combat":
+            side = stage.state["actors"].get(str(target), {}).get("side")
+            if side in ("bystander", "neutral") and not body.get("confirm"):  # a fight with someone the party is not at war with: ask first
+                return JSONResponse({"error": board.confirm_why(side, beat.title(str(target))), "confirm": True}, status_code=409)
             return await open_fight_action(stage, who, target, weapon)
         try:
             done = await run_in_threadpool(with_rules, stage, lambda st: actions.perform(
@@ -1516,6 +1542,8 @@ def create_app(
             return out
         try:
             arena_id, out = await run_in_threadpool(with_board, stage, go)
+        except board.NeedsConfirm as e:
+            return JSONResponse({"error": str(e), "confirm": True}, status_code=409)  # the browser asks the player, then sends it again with `confirm`
         except (combat.RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         await stage._local_event({"type": "arena_updated", "arena": arena_id})
@@ -1553,7 +1581,7 @@ def create_app(
         def go(st, a):
             board.require_turn(st, who)
             if action == "attack":
-                return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"))}
+                return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"), bool(body.get("confirm")))}
             done = actions.perform(stage.campaign_dir, st, who, action, body.get("target"), body.get("weapon"),
                                    amount=as_amount(body.get("amount")))
             if done.get("roll"):
@@ -1788,7 +1816,11 @@ def create_app(
         who = pc_or_404(stage, body.get("who"))
         own(request, stage, who)
         try:
-            return JSONResponse({"ok": True, "steps": stage.order_walk(who, body["to"])})
+            stood = bool(stage.state["actors"].get(who, {}).get("on"))
+            steps = stage.order_walk(who, body["to"])
+            if stood:
+                await stage.broadcast()  # a character that stood up left its seat: browsers need the whole actor
+            return JSONResponse({"ok": True, "steps": steps})
         except (KeyError, TypeError, IndexError):
             return error("give to as [x, y].", 400)
         except ValueError as e:
@@ -1796,13 +1828,13 @@ def create_app(
 
     async def api_arena_attack(request: Request):
         def go(stage, st, a, who, body):
-            return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"))}
+            return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"), bool(body.get("confirm")))}
         return await board_call(request, go)
 
     async def api_arena_act(request: Request):
         def go(stage, st, a, who, body):
             return {"lines": hand.act(stage.campaign_dir, st, a, who, str(body.get("ability")), body.get("target"), body.get("aim"),
-                                      amount=as_amount(body.get("amount")))}
+                                      amount=as_amount(body.get("amount")), confirm=bool(body.get("confirm")))}
         return await board_call(request, go)
 
     async def api_arena_improvise(request: Request):

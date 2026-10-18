@@ -139,11 +139,11 @@ def preview(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str,
 
 
 def is_known(state: dict, a: dict, cid: str, vis: set | None) -> bool:
-    return not board.is_foe(state, cid) or vis is None or board.pos(a, cid) in vis
+    return combat.team_of(state, cid) == combat.PARTY or vis is None or board.pos(a, cid) in vis
 
 
 def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, target: str | None = None, aim=None, rng=None,
-        amount: int | None = None) -> list[str]:
+        amount: int | None = None, confirm: bool = False) -> list[str]:
     """Run an ability of a character's hand on the board. Raises BoardError with the reason when it cannot be done."""
     board.require_turn(state, cid)
     ab = next((x for x in listing(campaign_dir, state, a, cid) if x["id"] == ability_id), None)
@@ -155,7 +155,7 @@ def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, tar
     if kind == "improvise":
         raise board.BoardError("an improvised action goes to the DM: send what you try.")
     if kind == "attack":
-        return board.player_attack(campaign_dir, state, a, cid, target, ab["entry"]["name"])
+        return board.player_attack(campaign_dir, state, a, cid, target, ab["entry"]["name"], confirm)
     if kind == "pickup":
         return items.pick_up(campaign_dir, state, a, cid, ab["id"])
     if kind == "heal":

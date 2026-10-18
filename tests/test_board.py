@@ -410,7 +410,12 @@ def test_open_fight() -> None:
 
         # A stat-less creature on the stage is a monster by its name.
         st, done = go(target="goblin#2")
-        check("goblin#2 is a goblin", list(st["active_encounter"]["monsters"]) == ["goblin"])
+        check("with no one on the stage, goblin#2 is made as a goblin", list(st["active_encounter"]["monsters"]) == ["goblin"])
+        stage["actors"] = {"goblin#2": {"side": "hostile"}}
+        st, done = go(target="goblin#2")
+        check("a goblin on the stage fights under its stage id", list(st["active_encounter"]["monsters"]) == ["goblin#2"] and done["foe"] == "goblin#2"
+              and st["active_encounter"]["teams"] == {"goblin#2": "hostile"})
+        stage["actors"] = {}
 
         # Invalid targets start nothing.
         for target in ("aragorn", "nobody"):
@@ -435,7 +440,7 @@ def test_open_fight() -> None:
         # The stand-in is chosen by whole words, and the role beats free text.
         def spec_of(**npc):
             (npcs / "t-npc.json").write_text(json.dumps({"name": "T", **npc}))
-            return board.foe_spec(c, "t-npc")[0]
+            return combat.foe_spec(c, "t-npc")[0]
         check("'damage' and 'image' are not a mage", spec_of(personality="Fears damage to her image") == "t-npc=commoner")
         check("'bodyguard' is not a guard", spec_of(role="bodyguard") == "t-npc=commoner")
         check("'spying' is not a spy", spec_of(motivation="spying on the docks") == "t-npc=commoner")

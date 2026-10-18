@@ -20,7 +20,7 @@ const MOOD_FILTER: Record<string, string> = {
   snow: 'brightness(1.03) saturate(0.85)',
 }
 
-const RING: Record<Side, string> = { party: '#5fd08a', ally: '#5fd08a', neutral: '#e8c14a', hostile: '#ef6a5a' }
+const RING: Record<Side, string> = { party: '#5fd08a', ally: '#5fd08a', neutral: '#e8c14a', bystander: '#e8c14a', hostile: '#ef6a5a' }
 const HIP_ROW = 48 // a seated frame puts its hip row on the seat
 const MOVE_MS = 300
 
@@ -46,7 +46,7 @@ function drawActor(ctx: CanvasRenderingContext2D, p: SceneActor, at: Pos, speake
   const [ax, ay0] = at
   const ay = ay0 - (speaker ? 2 : 0)
   ctx.setTransform(S, 0, 0, S, 0, 0)
-  if (!p.sit && !p.bare) {
+  if (!p.sit && !p.bare && !p.down) {
     ctx.fillStyle = RING[p.side]
     ctx.globalAlpha = 0.75
     ctx.strokeStyle = '#0008'
@@ -58,7 +58,15 @@ function drawActor(ctx: CanvasRenderingContext2D, p: SceneActor, at: Pos, speake
     ctx.globalAlpha = 1
   }
   const img = image(p.src)
-  if (img) {
+  if (img && p.down) {
+    // A fallen figure lies on its side on the floor: the sprite turned a quarter, its feet on the spot.
+    ctx.save()
+    ctx.translate(ax, ay)
+    ctx.rotate(-Math.PI / 2)
+    ctx.globalAlpha = 0.85
+    ctx.drawImage(img, Math.round(-img.width / 2), Math.round(-(img.height - 4) / 2) - 2)
+    ctx.restore()
+  } else if (img) {
     ctx.drawImage(img, Math.round(ax - img.width / 2), Math.round(p.sit ? ay - HIP_ROW : ay - (img.height - 4)))
   } else {
     // Until the picture arrives: a plain figure, never a guess.
@@ -163,7 +171,7 @@ export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', 
 
   const filter = MOOD_FILTER[mood] ?? 'none'
   // The cast and the geometry as data on the canvas: the picture has no text, and the tests read it from here (the geometry: ox, oy, width, height).
-  const shot = useMemo(() => JSON.stringify(cast.map((p) => ({ id: p.id, side: p.side, cell: p.cell, sit: p.sit, onProp: p.onProp }))), [cast])
+  const shot = useMemo(() => JSON.stringify(cast.map((p) => ({ id: p.id, side: p.side, cell: p.cell, sit: p.sit, onProp: p.onProp, down: Boolean(p.down) }))), [cast])
   const picture = (
     <canvas
       ref={canvas}

@@ -10,6 +10,8 @@ export interface ArenaUnit {
   x: number
   y: number
   pc: boolean
+  /** Whose side it is on: the party (green), a faction at peace with it (yellow), or hostile (red). */
+  team: 'party' | 'neutral' | 'hostile'
   down: boolean
   health: Health
   conditions: string[]
@@ -37,6 +39,8 @@ export interface ArenaView {
   props: { id: string; kind: string; x: number; y: number }[]
   items: { id: string; name: string; x: number; y: number }[]
   units: ArenaUnit[]
+  /** Actors of the scene that take no part in the fight: drawn, they block their cell; an attack draws them in. */
+  bystanders: { id: string; name: string; x: number; y: number }[]
   current: string | null
   round: number
   /** Where the character whose turn it is can walk now. */

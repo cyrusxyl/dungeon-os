@@ -42,7 +42,8 @@ class Ctx:
         self.recs = {c: combat.combatant(campaign_dir, state, c) for c in a["units"]}
         self.rec = self.recs[cid]
         self.pos = {c: board.pos(a, c) for c in a["units"]}
-        self.pcs = [c for c in a["units"] if not board.is_foe(state, c) and board.standing(self.recs[c])]
+        self.targets = [c for c in a["units"] if combat.enemies(state, cid, c) and board.standing(self.recs[c])]  # the units this one may attack
+        self.bystanders = {(b["x"], b["y"]) for b in (a.get("bystanders") or {}).values()}
         self.opaque, self.cover = arena.opaque_cells(a), arena.cover_cells(a)
         self.size = (a["w"], a["h"])
 
@@ -55,7 +56,7 @@ class Ctx:
             return {"ranged": False, "cover": "none", "dis": False}
         if not rng or dist > rng or not arena.clear_line(p, there, self.opaque):
             return None
-        near = any(arena.cheb(p, self.pos[c]) <= 1 for c in self.pcs)
+        near = any(arena.cheb(p, self.pos[c]) <= 1 for c in self.targets)
         return {"ranged": True, "cover": arena.cover_between(p, there, self.cover), "dis": near}
 
     def hit_chance(self, bonus: int, target: str, info: dict, adv: bool = False) -> float:
@@ -70,7 +71,7 @@ class Ctx:
 
     def threat(self, p) -> int:
         """How many heroes can walk to a cell next to p and strike."""
-        return sum(1 for c in self.pcs if arena.cheb(p, self.pos[c]) <= self.recs[c].get("speed_ft", 30) // board.TILE_FT + 1)
+        return sum(1 for c in self.targets if arena.cheb(p, self.pos[c]) <= self.recs[c].get("speed_ft", 30) // board.TILE_FT + 1)
 
     def fail_chance(self, target: str, save: dict) -> float:
         return clamp((save["dc"] - combat.save_bonus(self.recs[target], combat.ability(save["ability"])) - 1) / 20, 0.05, 0.95)
@@ -89,7 +90,7 @@ def attack_options(ctx: Ctx, p, weights: dict, ally_next: dict):
     """(gain, option) for each attack roll, Multiattack and spell attack that works from cell p."""
     rec = ctx.rec
     attacks = {x["name"]: x for x in board.attack_rolls(rec)}
-    for target in ctx.pcs:
+    for target in ctx.targets:
         adv = "Pack Tactics" in rec.get("traits", []) and ally_next.get(target, False)
         for entry in attacks.values():
             if info := ctx.attack_at(entry, p, target):
@@ -137,7 +138,7 @@ def aims(ctx: Ctx, p, ab: dict):
 def zone_options(ctx: Ctx, p, weights: dict):
     """(gain, option) for each area ability aimed from cell p. Heroes in it count; allies in it cost."""
     rec = ctx.rec
-    unit_at = {pos: c for c, pos in ctx.pos.items() if c != ctx.cid and (c in ctx.pcs or board.is_foe(ctx.state, c) and board.standing(ctx.recs[c]))}
+    unit_at = {pos: c for c, pos in ctx.pos.items() if c != ctx.cid and board.standing(ctx.recs[c])}
     for ab in rec.get("abilities", []):
         if ab["kind"] != "zone" or not abilities.available(rec, ab):
             continue
@@ -149,9 +150,10 @@ def zone_options(ctx: Ctx, p, weights: dict):
             hit = [(c, ctx.fail_chance(c, ab["save"])) for pos, c in unit_at.items() if pos in cells]
             if tuple(p) in cells and ab["shape"]["type"] not in ("cone", "line"):
                 hit.append((ctx.cid, ctx.fail_chance(ctx.cid, ab["save"])))  # the caster is in its own sphere
+            gain -= sum(dmg * 1.2 for cell in ctx.bystanders if cell in cells)  # a bystander in the area would be drawn into the fight: a cost
             for c, fail in hit:
                 exp = fail * dmg + (1 - fail) * (dmg / 2 if ab["save"]["success"] == "half" else 0)
-                if c in ctx.pcs:
+                if c in ctx.targets:
                     gain += exp * weights["dmg"]
                     heroes += 1
                     kill += _kill(ctx, c, exp, weights)
@@ -164,21 +166,21 @@ def zone_options(ctx: Ctx, p, weights: dict):
 def plan(campaign_dir: Path, state: dict, a: dict, cid: str, style: str | None = None) -> dict | None:
     """The best play for a creature, as {"p", "steps", "kind", ...}: walk to p, then do the option. None: nothing worth doing."""
     ctx = Ctx(campaign_dir, state, a, cid)
-    if not ctx.pcs:
+    if not ctx.targets:
         return None
     weights = arena.arena_data()["styles"][style or style_of(a, ctx.rec)]
     dist, _ = board.reachable(campaign_dir, state, a, cid)
     if combat.turn_used(state, cid)["action"]:
         return None
-    allies_of = {t: any(c != cid and c in ctx.pos and board.is_foe(state, c) and board.standing(ctx.recs[c]) and arena.cheb(ctx.pos[c], ctx.pos[t]) <= 1
-                        for c in ctx.pos) for t in ctx.pcs}
+    allies_of = {t: any(c != cid and c in ctx.pos and combat.team_of(state, c) == combat.team_of(state, cid) and board.standing(ctx.recs[c]) and arena.cheb(ctx.pos[c], ctx.pos[t]) <= 1
+                        for c in ctx.pos) for t in ctx.targets}
     best = None
     tiles = list(dist.items())
-    area_tiles = {ctx.pos[cid]} | {c for c, _ in sorted(tiles, key=lambda t: min(arena.cheb(t[0], ctx.pos[h]) for h in ctx.pcs))[:12]}
+    area_tiles = {ctx.pos[cid]} | {c for c, _ in sorted(tiles, key=lambda t: min(arena.cheb(t[0], ctx.pos[h]) for h in ctx.targets))[:12]}
     for p, steps in tiles:
         base = -weights["danger"] * THREAT_COST * ctx.threat(p) - STEP_COST * steps
         base += weights["cover"] if any(ctx.cover.get((p[0] + dx, p[1] + dy)) for dx in (-1, 0, 1) for dy in (-1, 0, 1)) else 0
-        base += weights["kite"] * min(arena.cheb(p, ctx.pos[h]) for h in ctx.pcs)
+        base += weights["kite"] * min(arena.cheb(p, ctx.pos[h]) for h in ctx.targets)
         options = list(attack_options(ctx, p, weights, allies_of))
         if p in area_tiles:
             options += list(zone_options(ctx, p, weights))
@@ -209,7 +211,7 @@ def describe(campaign_dir: Path, state: dict, a: dict, cid: str) -> dict:
 
 def approach_plan(campaign_dir: Path, state: dict, a: dict, cid: str) -> dict | None:
     """No play works from where it can reach: walk toward the nearest hero."""
-    pcs = board.standing_pcs(campaign_dir, state, a)
+    pcs = board.standing_enemies(campaign_dir, state, a, cid)
     if not pcs:
         return None
     here = board.pos(a, cid)
@@ -223,7 +225,7 @@ def _flee(campaign_dir: Path, state: dict, a: dict, cid: str, rng) -> dict:
     combat.condition(state, cid, "add", "dashing", rounds=1)
     combat.spend_turn(state, cid, "action", quiet=True)
     dist, prev = board.reachable(campaign_dir, state, a, cid)
-    pcs = board.standing_pcs(campaign_dir, state, a)
+    pcs = board.standing_enemies(campaign_dir, state, a, cid) or board.standing_pcs(campaign_dir, state, a)
     best = max(dist, key=lambda c: (min(arena.cheb(c, board.pos(a, p)) for p in pcs), -dist[c]))
     lines = [f"{cid} is hurt and flees."]
     if best != board.pos(a, cid):
@@ -268,7 +270,7 @@ def _disengage_first(campaign_dir: Path, state: dict, a: dict, cid: str) -> list
     ab = next((x for x in rec.get("abilities", []) if x.get("effect") == "disengage"), None)
     here = board.pos(a, cid)
     if ab is None or combat.turn_used(state, cid)["bonus"] or combat.has_condition(state, cid, "disengaged") \
-            or not any(arena.cheb(here, board.pos(a, p)) <= 1 for p in board.standing_pcs(campaign_dir, state, a)):
+            or not any(arena.cheb(here, board.pos(a, p)) <= 1 for p in board.standing_enemies(campaign_dir, state, a, cid)):
         return []
     combat.spend_turn(state, cid, "bonus", quiet=True)
     combat.condition(state, cid, "add", "disengaged", rounds=1)

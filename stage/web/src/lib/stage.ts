@@ -80,7 +80,7 @@ export function useActorName(id: string | undefined, version = 0): string {
 export type Position = 'left' | 'center' | 'right' | 'far-left' | 'far-right'
 
 /** The ring under an actor's feet: party and ally green, neutral yellow, hostile red. */
-export type Side = 'party' | 'ally' | 'neutral' | 'hostile'
+export type Side = 'party' | 'ally' | 'neutral' | 'bystander' | 'hostile'
 
 export interface StoryLine {
   seq: number
@@ -108,7 +108,7 @@ export interface Seat {
 export interface StageState {
   seq: number
   scene: string | null
-  actors: Record<string, { position?: Position; emotion?: string; side?: Side; on?: string; cell?: [number, number]; facing?: 'down' | 'left' | 'right' | 'up'; walk?: string }>
+  actors: Record<string, { position?: Position; emotion?: string; side?: Side; on?: string; cell?: [number, number]; facing?: 'down' | 'left' | 'right' | 'up'; walk?: string; down?: boolean }>
   log: StoryLine[]
   /** `who` set: the choices are for one player character (the server sends them to that player only). */
   choices: { options: string[]; seq: number; who?: string } | null
