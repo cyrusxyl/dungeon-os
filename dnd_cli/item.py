@@ -14,7 +14,6 @@ New item kinds are added here and nowhere else. This module imports no other rul
 from __future__ import annotations
 
 import json
-import re
 from functools import cache
 from pathlib import Path
 
@@ -204,19 +203,10 @@ def shield_equipped(sheet: dict) -> bool:
 # -- gear from the 5e data ---------------------------------------------------
 
 
-def _mod(sheet: dict, ability: str) -> int:
-    return dice.mod(sheet["ability_scores"].get(ability, 10))
-
-
-def _weapon_ability(sheet: dict, props: list[str], ranged: bool) -> str:
+def _weapon_ability(m: dict, props: list[str], ranged: bool) -> str:
     if "finesse" in props or "martial arts" in props:
-        return "dexterity" if _mod(sheet, "dexterity") >= _mod(sheet, "strength") else "strength"
+        return "dexterity" if m["dexterity"] >= m["strength"] else "strength"
     return "dexterity" if ranged else "strength"
-
-
-def with_bonus(expr: str, bonus: int) -> str:
-    base = re.sub(r"[+-]\d+$", "", expr.replace(" ", ""))
-    return base + (dice.signed(bonus) if bonus else "")
 
 
 def equip_base(sheet: dict, base: dict, proficient: bool = True, as_name: str | None = None) -> list[str]:
@@ -238,15 +228,16 @@ def equip_base(sheet: dict, base: dict, proficient: bool = True, as_name: str | 
         if old:
             old.row["equipped"] = False
     find(sheet, name).row["equipped"] = True
+    m = dice.mods(sheet["ability_scores"])
     prof = sheet.get("proficiency_bonus", dice.prof_for_level(sheet["level"]))
     if category == "weapon":
         props = [p["index"] for p in base.get("properties", [])]
-        abil = _weapon_ability(sheet, props, base.get("weapon_range") == "Ranged")
+        abil = _weapon_ability(m, props, base.get("weapon_range") == "Ranged")
         dmg = base.get("damage") or {}
-        bonus = _mod(sheet, abil) + (prof if proficient else 0)
+        bonus = m[abil] + (prof if proficient else 0)
         entry = {
             "name": name, "attack_bonus": bonus,
-            "damage": with_bonus(dmg.get("damage_dice", "1"), _mod(sheet, abil)),
+            "damage": dice.with_bonus(dmg.get("damage_dice", "1"), m[abil]),
             "damage_type": dmg.get("damage_type", {}).get("index", ""),
             "properties": props, "equipped": True,
         }
@@ -258,7 +249,7 @@ def equip_base(sheet: dict, base: dict, proficient: bool = True, as_name: str | 
     if category == "armor":
         ac = base.get("armor_class", {})
         cap = ac.get("max_bonus") if ac.get("dex_bonus") else 0  # None: no cap
-        dex = _mod(sheet, "dexterity") if cap is None else min(_mod(sheet, "dexterity"), cap)
+        dex = m["dexterity"] if cap is None else min(m["dexterity"], cap)
         sheet["armor"] = {"name": name, "type": armor_cat, "ac_bonus": ac.get("base", 10), "equipped": True}
         sheet["armor_class"] = ac.get("base", 10) + dex + (2 if shield else 0)
         line = f"{sheet['name']} wears {name}: AC {sheet['armor_class']}"

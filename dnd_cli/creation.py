@@ -130,7 +130,7 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
                              f"with {opt['choose']} of {','.join(a[:3] for a in ABILITIES if a in allowed)}.")
         bonuses += [(a, 1) for a in picked]
     scores_final = _scores(scores, assign, bonuses)
-    m = {a: dice.mod(v) for a, v in scores_final.items()}
+    m = dice.mods(scores_final)
 
     # skills
     need, options = _class_skill_options(c)

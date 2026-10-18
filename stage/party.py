@@ -26,7 +26,7 @@ def _skills(sheet: dict, mods: dict, prof: int) -> list[dict]:
 
 def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict, present: list[dict]) -> dict:
     scores = sheet.get("ability_scores", {})
-    mods = {a: dice.mod(scores.get(a, 10)) for a in combat.ABILITIES}
+    mods = dice.mods(scores)
     prof = sheet.get("proficiency_bonus", 2)
     saves = sheet.get("saving_throws", {})
     inventory = [i.view() for i in items.items(sheet)]

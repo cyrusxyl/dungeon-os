@@ -29,7 +29,7 @@ from dnd_cli.api import api_get
 from dnd_cli.errors import RulesError  # noqa: F401 (also reached as combat.RulesError)
 from stage.files import read_json, write_json
 
-ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
+ABILITIES = dice.ABILITIES
 SHORT = {a[:3]: a for a in ABILITIES}
 SKILLS = {
     "acrobatics": "dexterity", "animal_handling": "wisdom", "arcana": "intelligence", "athletics": "strength",
@@ -279,13 +279,9 @@ def geometry(text: str, ranged_only: bool = False) -> dict:
     return out
 
 
-def _mods(scores: dict) -> dict:
-    return {a: dice.mod(scores.get(a, 10)) for a in ABILITIES}
-
-
 def pc_record(sheet: dict, cid: str) -> dict:
     scores = sheet.get("ability_scores", {})
-    mods = _mods(scores)
+    mods = dice.mods(scores)
     attacks = []
     for w in sheet.get("weapons", []):
         props = " ".join(w.get("properties", []))
@@ -326,7 +322,7 @@ def damage_parts(damage: list[dict]) -> list[list[str]]:
 
 def monster_record(data: dict, cid: str) -> dict:
     """A compact copy of an API monster: only what play needs (no description text)."""
-    mods = _mods(data)
+    mods = dice.mods(data)
     profs = {p["proficiency"]["index"]: p["value"] for p in data.get("proficiencies", [])}
     attacks = []
     for act in data.get("actions", []):
@@ -360,7 +356,7 @@ def monster_record(data: dict, cid: str) -> dict:
 
 
 def npc_record(data: dict, cid: str) -> dict:
-    mods = _mods(data.get("ability_scores", {}))
+    mods = dice.mods(data.get("ability_scores", {}))
     attacks = []
     for act in data.get("actions", []):
         if "attack_bonus" in act:
