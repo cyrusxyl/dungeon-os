@@ -56,6 +56,23 @@ def test_round_trip() -> None:
         "name": None, "quantity": 1, "weight": 0, "equipped": False, "description": "", "rarity": None, "effects": []})
 
 
+def test_hand_edit_survives() -> None:
+    print("a hand edit survives the changes")
+    sh = sheet()
+    row = {"zeta": 1, "name": "+1 Sword", "dm_note": "x", "type": "weapon", "base": "Longsword"}
+    sh["inventory"].append(copy.deepcopy(row))
+    longsword = {"name": "Longsword", "equipment_category": {"index": "weapon"}, "damage": {"damage_dice": "1d8", "damage_type": {"index": "slashing"}}, "properties": []}
+    items.add(sh, "+1 Sword", 1, "hums")
+    it = items.get(sh, "+1 Sword")
+    it.equip(sh, longsword)
+    it.unequip(sh)
+    it.set_profile({"kind": "heal", "heal": "1d4"})
+    after = sh["inventory"][0]
+    check("unknown keys are still there", after["zeta"] == 1 and after["dm_note"] == "x")
+    check("old keys keep their order, new keys come last", list(after)[:5] == list(row) and list(after)[5:] == ["quantity", "description", "equipped", "profile"],
+          str(list(after)))
+
+
 def test_kinds() -> None:
     print("kinds")
     kind = lambda **r: Item.from_row({"name": r.pop("name", "Thing"), **r}).kind  # noqa: E731
@@ -108,7 +125,7 @@ def test_inventory() -> None:
 
 
 if __name__ == "__main__":
-    for t in (test_round_trip, test_kinds, test_ability_and_effects, test_inventory):
+    for t in (test_round_trip, test_hand_edit_survives, test_kinds, test_ability_and_effects, test_inventory):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)
