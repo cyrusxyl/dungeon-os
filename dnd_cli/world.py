@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import json
 import re
+from collections import deque
 from pathlib import Path
 
 from dnd_cli import canon
-from stage import maps
 from core.ids import ID_RE, ID_RULE
 from core.files import read_json, write_json
 
@@ -112,17 +112,42 @@ def set_time(state: dict, text: str) -> str:
     return "Time: " + put_clock(state, clock_from_text(text))
 
 
+def shortest(m: dict, a: str, b: str) -> list[str] | None:
+    """Fewest legs over known routes."""
+    prev: dict = {a: None}
+    queue = deque([a])
+    while queue:
+        cur = queue.popleft()
+        if cur == b:
+            out = []
+            while cur is not None:
+                out.append(cur)
+                cur = prev[cur]
+            return out[::-1]
+        for r in m["routes"]:
+            if cur in (r["a"], r["b"]):
+                nxt = r["b"] if cur == r["a"] else r["a"]
+                if nxt not in prev and m["places"][nxt]["known"]:
+                    prev[nxt] = cur
+                    queue.append(nxt)
+    return None
+
+
+def route_between(m: dict, a: str, b: str) -> dict | None:
+    return next((r for r in m["routes"] if {r["a"], r["b"]} == {a, b}), None)
+
+
 def travel(state: dict, m: dict, place: str) -> str | None:
     """Record the party's place; if it moved along known routes on this map, spend the travel time."""
     old = state.get("place")
     state["place"] = place
     if not old or old == place or old not in m["places"]:
         return None
-    path = maps.shortest(m, old, place)
+    path = shortest(m, old, place)
     minutes = 0
     for a, b in zip(path or [], (path or [])[1:]):
         try:
-            minutes += parse_duration((maps._route(m, a, b) or {}).get("travel") or "")
+            minutes += parse_duration((route_between(m, a, b) or {}).get("travel") or "")
         except WorldError:
             pass  # a route without a clear time costs none
     if not minutes:

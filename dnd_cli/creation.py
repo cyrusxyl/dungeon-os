@@ -340,8 +340,6 @@ def _class_options(fetch, index: str) -> dict:
 
 
 def _race_options(fetch, index: str) -> dict:
-    from stage import actors
-
     r = fetch(f"races/{index}")
     opt = r.get("ability_bonus_options")
     return {
@@ -350,7 +348,6 @@ def _race_options(fetch, index: str) -> dict:
                                  "options": [ability(o["ability_score"]["index"]) for o in opt["from"]["options"]]},
         "subraces": [{"index": s["index"], "name": sub["name"], "ability_bonuses": _bonuses(sub)}
                      for s in r.get("subraces", []) for sub in [fetch(f"subraces/{s['index']}")]],
-        "look_race": actors.race_of(r["name"]) or "human",
     }
 
 
@@ -360,21 +357,8 @@ def _background_options(fetch, index: str) -> dict:
             "skills": [_skill(p["index"]) for p in b.get("starting_proficiencies", []) if p["index"].startswith("skill-")]}
 
 
-def _look_options() -> dict:
-    from stage import actors, lpc
-
-    colors = lpc.catalog()["hair_long"].colors()
-    return {
-        "bodies": ["male", "female", "muscular"],
-        "eyes": lpc.palette_names("eye"),
-        "races": {k: {"skins": v["skins"], "default_skin": v.get("skin", v["skins"][0])} for k, v in actors.races().items()},
-        "hair": [{"id": h, "name": h.removeprefix("hair_").replace("_", " ").title()} for h in HAIR_STYLES],
-        "hair_colors": [c for c in HAIR_COLORS if c in colors],
-    }
-
-
 def options(fetch) -> dict:
-    """The document behind the web creator: every choice `build` accepts at level 1. Raises RulesError."""
+    """The document behind the web creator: every choice `build` accepts at level 1, without how it looks. Raises RulesError."""
     def indexes(resource: str) -> list[str]:
         return [x["index"] for x in fetch(resource)["results"]]
 
@@ -383,4 +367,4 @@ def options(fetch) -> dict:
         classes = pool.map(lambda i: _class_options(fetch, i), indexes("classes"))
         backgrounds = pool.map(lambda i: _background_options(fetch, i), indexes("backgrounds"))
         return {"races": list(races), "classes": list(classes), "backgrounds": list(backgrounds),
-                "skills": list(SKILLS), "abilities": list(ABILITIES), "look": _look_options()}
+                "skills": list(SKILLS), "abilities": list(ABILITIES)}

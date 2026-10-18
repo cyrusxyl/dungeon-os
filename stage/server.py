@@ -1301,7 +1301,7 @@ def create_app(
 
         with rules["lock"]:
             if rules["doc"] is None:
-                rules["doc"] = creation.options(rules_cmd._api)
+                rules["doc"] = actors.creator_options(creation.options(rules_cmd._api))
             return rules["doc"]
 
     def prefetch() -> None:

@@ -11,7 +11,7 @@ from stage import actors, beat, cast, crawl, maps, scenes, state
 from core.files import read_json, write_json
 
 
-def _stage_campaign_dir(campaign: str | None) -> Path:
+def stage_campaign_dir(campaign: str | None) -> Path:
     """The campaign the running stage shows, else the one given, else the active one.
 
     The stage server sets DUNGEON_STAGE_LOG for the DM process. Following it
@@ -27,7 +27,7 @@ def _stage_campaign_dir(campaign: str | None) -> Path:
 def run_stage(campaign: str | None, fn, *errors: type[Exception]) -> int:
     """Run fn(campaign_dir) for a stage command; print a known error and return 1."""
     try:
-        return fn(_stage_campaign_dir(campaign))
+        return fn(stage_campaign_dir(campaign))
     except (CampaignError, OSError, KeyError, *errors) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

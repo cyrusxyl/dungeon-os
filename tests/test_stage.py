@@ -784,7 +784,7 @@ def test_cli_defaults_and_races() -> None:
         (c / "canon.json").write_text('{"last_session_written": 4}')
         os.environ["DUNGEON_STAGE_LOG"] = str(c / "stage" / "events.ndjson")
         try:
-            check("a command without --campaign gets the stage campaign", show_cmd._stage_campaign_dir(None) == c)
+            check("a command without --campaign gets the stage campaign", show_cmd.stage_campaign_dir(None) == c)
             check("a canon session command without --session gets the current session",
                   canon_cmd._session({"last_session_written": 4}, None) == 5 and canon_cmd._session({}, None) == 1
                   and canon_cmd._session({"last_session_written": 4}, 2) == 2)

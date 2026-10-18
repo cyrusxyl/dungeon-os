@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from PIL import Image
 
 from core.ids import ID_RE, ID_RULE
+from dnd_cli.creation import HAIR_COLORS, HAIR_STYLES
 from stage import beat, creatures, lpc, pose
 from stage.assets import ensure_dcss
 from core.files import read_json, write_json
@@ -134,6 +135,19 @@ def race_of(text: str) -> str | None:
     """The race key named in free text, e.g. 'Drow (High Elf)' -> 'drow', 'Half-Elf' -> 'half-elf'."""
     t = text.lower().replace(" ", "-")
     return next((r for r in sorted(races(), key=len, reverse=True) if r in t), None)
+
+
+def creator_options(doc: dict) -> dict:
+    """The creator's options (`creation.options`) with how each race and the hair look: the web creator shows both."""
+    colors = lpc.catalog()["hair_long"].colors()
+    look = {
+        "bodies": ["male", "female", "muscular"],
+        "eyes": lpc.palette_names("eye"),
+        "races": {k: {"skins": v["skins"], "default_skin": v.get("skin", v["skins"][0])} for k, v in races().items()},
+        "hair": [{"id": h, "name": h.removeprefix("hair_").replace("_", " ").title()} for h in HAIR_STYLES],
+        "hair_colors": [c for c in HAIR_COLORS if c in colors],
+    }
+    return {**doc, "look": look, "races": [{**r, "look_race": race_of(r["name"]) or "human"} for r in doc["races"]]}
 
 
 def creator_tokens(look: dict, cls: str = "", name: str = "") -> list[str]:

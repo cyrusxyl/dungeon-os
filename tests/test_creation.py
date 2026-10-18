@@ -14,6 +14,7 @@ from pathlib import Path
 
 from dnd_cli import character, combat, creation
 from dnd_cli.errors import RulesError
+from stage import actors
 from test_rules import campaign  # the committed example campaign, copied to a temp dir
 
 PASS = FAIL = 0
@@ -205,7 +206,7 @@ def test_equipment_quantity() -> None:
 
 
 def test_options() -> None:
-    o = creation.options(fetch)
+    o = actors.creator_options(creation.options(fetch))
     check("lists come from the index endpoints", [r["index"] for r in o["races"]] == ["elf", "half-elf", "dwarf"]
           and [c["index"] for c in o["classes"]] == ["fighter", "wizard"])
     elf, half = o["races"][0], o["races"][1]
