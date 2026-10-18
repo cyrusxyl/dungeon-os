@@ -220,38 +220,47 @@ def _equip(data: dict, name: str, proficient: bool) -> list[str]:
                        proficient, effects.PRESETS)
 
 
-def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool, profile: str | None = None,
-                 proficient: bool = True, perk: str = "", rarity: str | None = None, base: str | None = None,
-                 fx: str = "") -> int:
-    """`perk` is what makes an added item special, in the DM's words (a catalog perk in it adds a hint). `fx` is a list of
-    gear effect presets (comma-separated) that the item gives while it is equipped. `base` names the item the gear is made
+def execute_item_add(args) -> int:
+    """`--perk` is what makes the item special, in the DM's words (a catalog perk in it adds a hint). `--effects` is a list of
+    gear effect presets (comma-separated) that the item gives while it is equipped. `--base` names the item the gear is made
     from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
     def fn(campaign_dir, data):
-        if op == "profile":
-            try:
-                return [items.set_profile(data, item, json.loads(profile or ""))]
-            except json.JSONDecodeError:
-                raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
-        if op == "equip":
-            return _equip(data, item, proficient)
-        if op == "unequip":
-            return items.get(data, item).unequip(data)
-        if op == "remove":
-            return [items.remove(data, item, qty)]
-        if rarity and rarity not in loot.RARITIES:
+        if args.rarity and args.rarity not in loot.RARITIES:
             raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
-        ids = effects.gear_presets(fx)
-        kind = loot.base_of(item, base)
+        ids = effects.gear_presets(args.effects)
+        kind = loot.base_of(args.item, args.base)
         gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
-        lines = [items.add(data, item, qty, perk, rarity, **gear)] + loot.hints(perk, ids)
-        if record_canon:
+        lines = [items.add(data, args.item, args.qty, args.perk, args.rarity, **gear)] + loot.hints(args.perk, ids)
+        if args.canon:
             from dnd_cli import canon
             c = canon.load(campaign_dir)
-            canon.add_item(c, c.get("last_session_written", 0) + 1, data["name"], item if qty == 1 else f"{item} x{qty}")
+            canon.add_item(c, c.get("last_session_written", 0) + 1, data["name"],
+                           args.item if args.qty == 1 else f"{args.item} x{args.qty}")
             canon.save(campaign_dir, c)
             lines.append("recorded in canon (items)")
         return lines
-    return _edit_sheet(campaign, name, fn)
+    return _edit_sheet(args.campaign, args.name, fn)
+
+
+def execute_item_remove(args) -> int:
+    return _edit_sheet(args.campaign, args.name, lambda c, data: [items.remove(data, args.item, args.qty)])
+
+
+def execute_item_equip(args) -> int:
+    return _edit_sheet(args.campaign, args.name, lambda c, data: _equip(data, args.item, not args.not_proficient))
+
+
+def execute_item_unequip(args) -> int:
+    return _edit_sheet(args.campaign, args.name, lambda c, data: items.get(data, args.item).unequip(data))
+
+
+def execute_item_profile(args) -> int:
+    def fn(campaign_dir, data):
+        try:
+            return [items.set_profile(data, args.item, json.loads(args.profile))]
+        except json.JSONDecodeError:
+            raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
+    return _edit_sheet(args.campaign, args.name, fn)
 
 
 def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str) -> int:

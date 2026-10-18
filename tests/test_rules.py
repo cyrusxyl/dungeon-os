@@ -618,6 +618,10 @@ def test_cli_guards(c: Path) -> None:
         check("item add refuses an effect that is not gear", rc == 1 and "no gear effect bless" in err)
         rc, _, err = run("add", "Ring", "--rarity", "shiny")
         check("item add refuses an unknown rarity", rc == 1 and "rarity is one of" in err)
+        rc, _, err = run("profile", "+1 Rapier of Frost", "--profile", "{nope")
+        check("item profile refuses bad JSON", rc == 1 and "JSON" in err)
+        rc, _, _ = run("remove", "+1 Rapier of Frost")
+        check("item remove takes the item away", rc == 0 and not any(i["name"] == "+1 Rapier of Frost" for i in character.load(c, "aragorn")["inventory"]))
         path.write_bytes(before)
     finally:
         rules_cmd._api, sys.argv = orig_api, orig_argv
