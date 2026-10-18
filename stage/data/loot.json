@@ -1,30 +1,214 @@
 {
   "_comment": "Treasure by challenge rating for `dnd-cli loot roll`. A coin is [dice, times]. `rarity` weights add up to 100 (cumulative is not needed). `items` are fixed items by rarity: potions, scrolls, tools. They never roll perks. `gear` is armor, weapons and accessories: `chance` is the chance by rarity that an item is gear, `types` are the roll weights of the gear types, `bases` are the plain names. Gear of uncommon rarity and above rolls perks from stage/data/perks.json. A legendary item is never listed: the DM writes it. See combat-board.md, section 7.",
-  "no_treasure": ["beast", "ooze", "plant", "swarm"],
+  "no_treasure": [
+    "beast",
+    "ooze",
+    "plant",
+    "swarm"
+  ],
   "tiers": [
-    {"max_cr": 4, "individual": {"sp": ["3d6", 1], "gp": ["2d6", 1]}, "hoard": {"sp": ["4d6", 10], "gp": ["4d6", 5]}, "items": "1d3", "rarity": {"common": 70, "uncommon": 30}},
-    {"max_cr": 10, "individual": {"gp": ["4d6", 5]}, "hoard": {"gp": ["6d6", 25], "pp": ["2d6", 1]}, "items": "1d4", "rarity": {"common": 25, "uncommon": 50, "rare": 25}},
-    {"max_cr": 16, "individual": {"gp": ["4d6", 25]}, "hoard": {"gp": ["6d6", 100], "pp": ["4d6", 5]}, "items": "1d4+1", "rarity": {"uncommon": 25, "rare": 50, "very rare": 25}},
-    {"max_cr": 99, "individual": {"gp": ["4d6", 100]}, "hoard": {"gp": ["8d6", 250], "pp": ["6d6", 10]}, "items": "1d4+2", "rarity": {"rare": 30, "very rare": 50, "legendary": 20}}
+    {
+      "max_cr": 4,
+      "individual": {
+        "sp": [
+          "3d6",
+          1
+        ],
+        "gp": [
+          "2d6",
+          1
+        ]
+      },
+      "hoard": {
+        "sp": [
+          "4d6",
+          10
+        ],
+        "gp": [
+          "4d6",
+          5
+        ]
+      },
+      "items": "1d3",
+      "rarity": {
+        "common": 70,
+        "uncommon": 30
+      }
+    },
+    {
+      "max_cr": 10,
+      "individual": {
+        "gp": [
+          "4d6",
+          5
+        ]
+      },
+      "hoard": {
+        "gp": [
+          "6d6",
+          25
+        ],
+        "pp": [
+          "2d6",
+          1
+        ]
+      },
+      "items": "1d4",
+      "rarity": {
+        "common": 25,
+        "uncommon": 50,
+        "rare": 25
+      }
+    },
+    {
+      "max_cr": 16,
+      "individual": {
+        "gp": [
+          "4d6",
+          25
+        ]
+      },
+      "hoard": {
+        "gp": [
+          "6d6",
+          100
+        ],
+        "pp": [
+          "4d6",
+          5
+        ]
+      },
+      "items": "1d4+1",
+      "rarity": {
+        "uncommon": 25,
+        "rare": 50,
+        "very rare": 25
+      }
+    },
+    {
+      "max_cr": 99,
+      "individual": {
+        "gp": [
+          "4d6",
+          100
+        ]
+      },
+      "hoard": {
+        "gp": [
+          "8d6",
+          250
+        ],
+        "pp": [
+          "6d6",
+          10
+        ]
+      },
+      "items": "1d4+2",
+      "rarity": {
+        "rare": 30,
+        "very rare": 50,
+        "legendary": 20
+      }
+    }
   ],
   "items": {
-    "common": ["Potion of healing", "Potion of climbing", "Spell scroll (cantrip)", "Alchemist's fire", "Acid"],
-    "uncommon": ["Potion of greater healing", "Potion of speed", "Bag of holding", "Wand of magic missiles", "Ammunition, +1", "Rope of climbing"],
-    "rare": ["Potion of superior healing", "Potion of invisibility", "Cloak of displacement", "Wand of fireballs"],
-    "very rare": ["Potion of supreme healing", "Potion of cloud giant strength", "Staff of power"]
+    "common": [
+      "Potion of healing",
+      "Potion of climbing",
+      "Spell scroll (cantrip)",
+      "Alchemist's fire",
+      "Acid"
+    ],
+    "uncommon": [
+      "Potion of greater healing",
+      "Potion of speed",
+      "Bag of holding",
+      "Wand of magic missiles",
+      "Ammunition, +1",
+      "Rope of climbing"
+    ],
+    "rare": [
+      "Potion of superior healing",
+      "Potion of invisibility",
+      "Cloak of displacement",
+      "Wand of fireballs"
+    ],
+    "very rare": [
+      "Potion of supreme healing",
+      "Potion of cloud giant strength",
+      "Staff of power"
+    ]
   },
   "gear": {
-    "chance": {"common": 0.25, "uncommon": 0.6, "rare": 0.7, "very rare": 0.7},
-    "types": {"weapon": 4, "armor": 3, "ring": 1, "amulet": 1, "cloak": 1, "boots": 1, "gloves": 1, "helmet": 1},
+    "chance": {
+      "common": 0.25,
+      "uncommon": 0.6,
+      "rare": 0.7,
+      "very rare": 0.7
+    },
+    "types": {
+      "weapon": 4,
+      "armor": 3,
+      "ring": 1,
+      "amulet": 1,
+      "cloak": 1,
+      "boots": 1,
+      "gloves": 1,
+      "helmet": 1
+    },
     "bases": {
-      "weapon": ["Dagger", "Shortsword", "Rapier", "Scimitar", "Longsword", "Battleaxe", "Greatsword", "Warhammer", "Mace", "Spear", "Quarterstaff", "Shortbow", "Longbow", "Light Crossbow", "Hand Crossbow"],
-      "armor": ["Leather Armor", "Studded Leather", "Chain Shirt", "Scale Mail", "Half Plate", "Chain Mail", "Plate Armor", "Shield"],
-      "ring": ["Ring"],
-      "amulet": ["Amulet"],
-      "cloak": ["Cloak"],
-      "boots": ["Boots"],
-      "gloves": ["Gloves"],
-      "helmet": ["Helmet", "Circlet"]
+      "weapon": [
+        "Dagger",
+        "Shortsword",
+        "Rapier",
+        "Scimitar",
+        "Longsword",
+        "Battleaxe",
+        "Greatsword",
+        "Warhammer",
+        "Mace",
+        "Spear",
+        "Quarterstaff",
+        "Shortbow",
+        "Longbow",
+        "Light Crossbow",
+        "Hand Crossbow"
+      ],
+      "armor": [
+        "Leather Armor",
+        "Studded Leather",
+        "Chain Shirt",
+        "Scale Mail",
+        "Half Plate",
+        "Chain Mail",
+        "Plate Armor",
+        "Shield"
+      ],
+      "ring": [
+        "Ring"
+      ],
+      "amulet": [
+        "Amulet"
+      ],
+      "cloak": [
+        "Cloak"
+      ],
+      "boots": [
+        "Boots"
+      ],
+      "gloves": [
+        "Gloves"
+      ],
+      "helmet": [
+        "Helmet",
+        "Circlet"
+      ]
+    },
+    "api": {
+      "Light Crossbow": "crossbow-light",
+      "Hand Crossbow": "crossbow-hand",
+      "Studded Leather": "studded-leather-armor",
+      "Half Plate": "half-plate-armor"
     }
   }
 }

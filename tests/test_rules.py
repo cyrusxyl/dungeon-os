@@ -870,6 +870,39 @@ def test_gear(c: Path) -> None:
     sheet.set_equipped(d, "+1 Longsword of Flame", False)
     character.save(c, "aragorn", d)
 
+    # A loot weapon is made from a base: equipping it makes the attack, under the item's name.
+    from dnd_cli.commands import rules_cmd
+    rapier = {"name": "Rapier", "equipment_category": {"index": "weapon"}, "weapon_range": "Melee", "properties": [{"index": "finesse"}],
+              "damage": {"damage_dice": "1d8", "damage_type": {"index": "piercing"}}}
+    plate = {"name": "Plate", "equipment_category": {"index": "armor"}, "armor_category": "Heavy", "armor_class": {"base": 18, "dex_bonus": False}}
+    asked = []
+    before = character.load(c, "aragorn")
+    orig = rules_cmd._api
+    rules_cmd._api = lambda ep: (asked.append(ep), plate if "plate" in ep else rapier)[1]
+    try:
+        d = character.load(c, "aragorn")
+        sheet.add_item(d, "+1 Rapier of Frost", 1, type="weapon", base="Rapier", effects=["magic-weapon-1", "frost-edge"])
+        sheet.add_item(d, "+1 Plate Armor", 1, type="armor", base="Plate Armor", effects=["magic-armor-1"])
+        _wear = rules_cmd._wear
+        _wear(d, "+1 Rapier of Frost", True)
+        w = next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")
+        check("equipping a loot weapon makes an attack under its name, from the stats of its base", asked == ["equipment/rapier"] and w["equipped"]
+              and w["damage"].startswith("1d8") and w["damage_type"] == "piercing")
+        old = next(i for i in d["inventory"] if i["name"] == "Chain Mail") if any(i["name"] == "Chain Mail" for i in d["inventory"]) else None
+        _wear(d, "+1 Plate Armor", True)
+        check("equipping loot armor sets the AC from its base and names the armor", d["armor"]["name"] == "+1 Plate Armor" and d["armor_class"] >= 18
+              and asked[-1] == "equipment/plate-armor" and (old is None or not old.get("equipped")))
+        character.save(c, "aragorn", d)
+        r = effects.weapon(c, "aragorn", "", "+1 Rapier of Frost")
+        check("the perks of the item reach the attack of the same name", r["dmg"] == 1 and r["extra"] == [["1d4", "cold"]])
+        _wear(d, "+1 Rapier of Frost", False)
+        check("putting the weapon away keeps the attack, not wielded", next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")["equipped"] is False)
+        sheet.add_item(d, "Flame Tongue", 1, type="weapon", effects=["flame-edge"])
+        check("a weapon with effects and no base warns the DM", any("Warning" in line for line in _wear(d, "Flame Tongue", True)))
+    finally:
+        rules_cmd._api = orig
+        character.save(c, "aragorn", before)
+
 
 def test_loot() -> None:
     print("loot")
@@ -895,6 +928,15 @@ def test_loot() -> None:
     sheet.add_item(data, "Ring", 1, effects=["vigor"])
     check("giving an item again adds its effects", data["inventory"][1]["effects"] == ["vigor"] and data["inventory"][1]["quantity"] == 2)
     check("a hint is skipped for an effect that was given", loot.hints("Keen", ["keen-edge"]) == [])
+    check("the base and type of gear are found in its name", loot.base_of("+1 Keen Hand Crossbow of Frost") == ("weapon", "Hand Crossbow")
+          and loot.base_of("Plate Armor of Warding") == ("armor", "Plate Armor") and loot.base_of("Flame Tongue") is None
+          and loot.base_of("Flame Tongue", "longsword") == ("weapon", "Longsword") and raises(lambda: loot.base_of("x", "Lightsaber")))
+    check("a base maps to its 5e API index", loot.api_index("Longsword") == "longsword" and loot.api_index("Hand Crossbow") == "crossbow-hand"
+          and loot.api_index("Half Plate") == "half-plate-armor")
+    check("every base of the loot table has an API index in the cache or a plain slug",
+          all(loot.api_index(b) for names in loot.table()["gear"]["bases"].values() for b in names))
+    check("a rolled gear item names its base", all(i["base"] in loot.table()["gear"]["bases"][i["type"]] for n in range(30)
+                                                   for i in loot.roll(14, "hoard", n)["items"] if i.get("type")))
 
     print("perk catalog")
     book = loot.perks()["perks"]

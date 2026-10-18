@@ -72,8 +72,8 @@ def _find_item(sheet: dict, name: str) -> dict | None:
     return next((i for i in items if i.get("name", "").lower() == name.lower()), None)
 
 
-def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity: str | None = None,
-             effects: list[str] | None = None) -> str:
+def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity: str | None = None, **gear) -> str:
+    """Add an item, or add to its quantity. Giving it again with more detail updates it. `gear`: type, base, effects."""
     if qty < 1:
         raise RulesError("quantity must be 1 or more.")
     item = _find_item(sheet, name)
@@ -82,19 +82,28 @@ def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity
     else:
         item = {"name": name, "quantity": qty}
         sheet["inventory"].append(item)
-    for key, value in (("description", description), ("rarity", rarity), ("effects", effects)):
+    for key, value in {"description": description, "rarity": rarity, **gear}.items():
         if value:
             item[key] = value  # giving an item again with more detail updates it
     return f"{sheet['name']}: {item['name']} x{item['quantity']}"
 
 
-def set_equipped(sheet: dict, name: str, on: bool) -> str:
-    """Wear or take off an inventory item. Its `effects` count only while it is worn."""
+def get_item(sheet: dict, name: str) -> dict:
     item = _find_item(sheet, name)
     if not item:
         have = ", ".join(i["name"] for i in sheet.get("inventory", [])) or "nothing"
         raise RulesError(f"{sheet['name']} has no {name!r}. Inventory: {have}.")
+    return item
+
+
+def set_equipped(sheet: dict, name: str, on: bool) -> str:
+    """Wear or take off an inventory item. Its `effects` count only while it is worn. A weapon that is put away
+    stays an attack that the character can use, like any weapon that is not wielded."""
+    item = get_item(sheet, name)
     item["equipped"] = on
+    for w in sheet.get("weapons", []):
+        if w.get("name") == item["name"]:
+            w["equipped"] = on
     return f"{sheet['name']}: {item['name']} {'equipped' if on else 'put away'}"
 
 
@@ -170,12 +179,13 @@ def _shield_equipped(sheet: dict) -> bool:
     return any(i.get("equipped") and i.get("name", "").lower() == "shield" for i in sheet.get("inventory", []))
 
 
-def equip(sheet: dict, item: dict, proficient: bool = True) -> list[str]:
+def equip(sheet: dict, item: dict, proficient: bool = True, as_name: str | None = None) -> list[str]:
     """Equip a weapon, armor, or shield from the 5e API. Only armor and shields change AC.
+    `as_name`: the inventory row it is (a magic item made from this base): the attack or armor takes that name.
 
     Unarmored AC (a monk's 10 + DEX + WIS) is never recomputed: a shield adds 2 to it.
     """
-    name = item["name"]
+    name = as_name or item["name"]
     category = item.get("equipment_category", {}).get("index", "")
     armor_cat = item.get("armor_category", "").lower()
     if armor_cat == "shield" and _shield_equipped(sheet):

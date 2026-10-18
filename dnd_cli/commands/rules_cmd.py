@@ -210,6 +210,19 @@ def _edit_sheet(campaign, name: str, fn) -> int:
     return run_stage(campaign, go, *ERRORS)
 
 
+def _wear(data: dict, name: str, on: bool) -> list[str]:
+    """Equip or put away an item. A weapon or armor with a base takes the stats of that base: a weapon becomes an attack
+    (under the item's name, so its perks find it), armor sets the AC and takes off the armor it replaces."""
+    row = sheet.get_item(data, name)
+    if on and row.get("base") and row.get("type") in ("weapon", "armor"):
+        return sheet.equip(data, _api(f"equipment/{loot.api_index(row['base'])}"), True, row["name"])
+    lines = [sheet.set_equipped(data, name, on)]
+    if on and any("weapon" in effects.PRESETS[e] for e in row.get("effects", [])) and not row.get("base"):
+        lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
+                     "`loot force \"<item>\" --to <who> --base <Longsword>`.")
+    return lines
+
+
 def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool, profile: str | None = None) -> int:
     def fn(campaign_dir, data):
         if op == "profile":
@@ -218,7 +231,7 @@ def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon
             except json.JSONDecodeError:
                 raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
         if op in ("equip", "unequip"):
-            return [sheet.set_equipped(data, item, op == "equip")]
+            return _wear(data, item, op == "equip")
         if op == "remove":
             return [sheet.remove_item(data, item, qty)]
         lines = [sheet.add_item(data, item, qty)]
@@ -241,9 +254,10 @@ def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str
     return 0
 
 
-def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None, fx: str = "") -> int:
+def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None, fx: str = "", base: str | None = None) -> int:
     """Give an item the DM chose, with a perk written as free text (the lore is the DM's). A catalog perk in the text adds a hint.
-    `fx` is a list of effect presets (comma-separated) that the item gives while it is equipped."""
+    `fx` is a list of effect presets (comma-separated) that the item gives while it is equipped. `base` names the item the gear
+    is made from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
     def fn(campaign_dir, data):
         if rarity and rarity not in loot.RARITIES:
             raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
@@ -252,7 +266,9 @@ def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarit
         bad = [e for e in ids if e not in gear]
         if bad:
             raise combat.RulesError(f"no gear effect {', '.join(bad)}. Gear effects: {', '.join(gear)}.")
-        return [sheet.add_item(data, item, qty, perk, rarity, ids)] + loot.hints(perk, ids)
+        kind = loot.base_of(item, base)
+        gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
+        return [sheet.add_item(data, item, qty, perk, rarity, **gear)] + loot.hints(perk, ids)
     return _edit_sheet(campaign, who, fn)
 
 

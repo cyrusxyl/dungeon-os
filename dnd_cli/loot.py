@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from functools import cache
 from pathlib import Path
 
@@ -73,9 +74,25 @@ def gear(rarity: str, rng: random.Random) -> dict:
     kind = rng.choices(list(g["types"]), weights=list(g["types"].values()))[0]
     chosen = roll_perks(kind, rarity, rng)
     base = rng.choice(g["bases"][kind])
-    return {"name": gear_name(base, chosen), "rarity": rarity, "type": kind, "perks": [p["name"] for p in chosen],
+    return {"name": gear_name(base, chosen), "base": base, "rarity": rarity, "type": kind, "perks": [p["name"] for p in chosen],
             "effects": [p["effect"] for p in chosen if p["effect"]],
             "rulings": [f"{p['name']}: {p['ruling']}" for p in chosen if not p["effect"]]}
+
+
+def base_of(name: str, base: str | None = None) -> tuple[str, str] | None:
+    """(type, base) of a gear item from its name ("+1 Hand Crossbow of Frost" is a weapon on the base Hand Crossbow).
+    `base` names it by hand. Gives the longest base name found in the item name, or None."""
+    bases = table()["gear"]["bases"]
+    want = (base or name).lower()
+    found = [(kind, b) for kind, names in bases.items() for b in names if b.lower() == want or (not base and b.lower() in want)]
+    if base and not found:
+        raise RulesError(f"no base {base!r}. Bases: {', '.join(b for names in bases.values() for b in names)}.")
+    return max(found, key=lambda f: len(f[1])) if found else None
+
+
+def api_index(base: str) -> str:
+    """The 5e API equipment index of a base: the slug of its name, unless the table says otherwise."""
+    return table()["gear"].get("api", {}).get(base) or re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")
 
 
 def hints(perk_text: str, given: list[str] | tuple = ()) -> list[str]:

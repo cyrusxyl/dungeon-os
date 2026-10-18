@@ -138,6 +138,8 @@
           "description": {"type": "string"},
           "rarity": {"type": "string", "enum": ["common", "uncommon", "rare", "very rare", "legendary"]},
           "equipped": {"type": "boolean"},
+          "type": {"type": "string", "description": "For gear: weapon, armor, ring, amulet, cloak, boots, gloves or helmet"},
+          "base": {"type": "string", "description": "For gear: the base item it is made from (Longsword, Plate Armor). Equipping a weapon or armor uses its 5e stats"},
           "effects": {"type": "array", "items": {"type": "string"}, "description": "Effect presets (dnd_cli/effects.py) that the item gives while it is equipped"},
           "profile": {"type": "object", "description": "What the item does in a fight (kind heal or throw): a DM ruling that was saved. See stage/data/items.json"}
         },

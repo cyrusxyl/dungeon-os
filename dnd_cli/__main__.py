@@ -555,6 +555,7 @@ def create_parser():
     p.add_argument("--to", required=True, metavar="WHO")
     p.add_argument("--perk", default="", help="what makes it special, in your words: it goes in the item's description")
     p.add_argument("--rarity", default=None)
+    p.add_argument("--base", default=None, help="the base item it is made from (Longsword, Plate Armor); found in the name when left out")
     p.add_argument("--effects", default="", help="effect presets the item gives while equipped, comma-separated (loot roll names them)")
     p.add_argument("--qty", type=int, default=1)
     p.add_argument("--campaign", default=None)
@@ -869,7 +870,7 @@ def main():
             if args.loot_command == "roll":
                 return rules_cmd.execute_loot_roll(args.cr, args.kind, args.seed, args.type)
             if args.loot_command == "force":
-                return rules_cmd.execute_loot_force(args.campaign, args.to, args.item, args.qty, args.perk, args.rarity, args.effects)
+                return rules_cmd.execute_loot_force(args.campaign, args.to, args.item, args.qty, args.perk, args.rarity, args.effects, args.base)
             print("Usage: dnd-cli loot roll|force (see --help)", file=sys.stderr)
             return 1
 
