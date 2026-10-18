@@ -16,8 +16,10 @@ import io
 import json
 from functools import cache, lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 from stage import beat, creatures, lpc, pose
 from stage.assets import ensure_dcss
@@ -305,6 +307,7 @@ def _tile_frame(spec: dict, facing: str = "down", scale: float | None = None) ->
 
     The frame is 64 px, or bigger when the figure is: the stage reads its size from the PNG.
     """
+    from PIL import Image
     scale = tile_scale(spec) if scale is None else scale
     if spec["tile"].startswith(creatures.PREFIX):
         tile = creatures.frame(spec["tile"], facing)
@@ -359,6 +362,7 @@ def png(spec: dict, kind: str, position: str | None = None, emotion: str | None 
 
 def preview(spec: dict, out: Path, emotion: str | None = None) -> Path:
     """Full body, side view, and portrait in one image, for the DM to check."""
+    from PIL import Image
     if "tile" in spec:
         frame = _tile_frame(spec)
         out.parent.mkdir(parents=True, exist_ok=True)

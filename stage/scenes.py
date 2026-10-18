@@ -22,8 +22,10 @@ import random
 import re
 from functools import cache, lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 from stage import rooms
 from stage.assets import ASSETS_DIR, ensure_dcss, ensure_tiles
@@ -86,6 +88,7 @@ def catalog() -> dict:
 
 @cache
 def _sheet(name: str) -> Image.Image:
+    from PIL import Image
     if name.startswith("dcss:"):
         return Image.open(ensure_dcss() / name[5:]).convert("RGBA")
     ensure_tiles()
@@ -104,6 +107,7 @@ def _crop(sheet: str, rect: list[int]) -> Image.Image:
 
 @cache
 def prop_image(name: str) -> Image.Image:
+    from PIL import Image
     p = catalog()["props"][name]
     if "parts" in p:
         w, h = p["size"]
@@ -161,6 +165,7 @@ _atlas_stamp = None
 @lru_cache(maxsize=1)
 def _build_atlas(stamp: int) -> tuple[bytes, dict]:
     """Every prop picture, cropped to its alpha box, packed in rows on one sheet. Result: (png, {name: entry})."""
+    from PIL import Image
     names = sorted(catalog()["props"], key=lambda n: (-prop_box(n)[3] + prop_box(n)[1], n))
     sheet_h = 0
     x = y = row_h = 0
@@ -384,6 +389,7 @@ def _lift(name: str) -> int:
 
 def _icon(path: str) -> Image.Image:
     """A DCSS item icon cropped to its alpha box."""
+    from PIL import Image
     icon = Image.open(ensure_dcss() / "item" / path).convert("RGBA")
     return icon.crop(icon.getchannel("A").getbbox())
 
@@ -474,6 +480,7 @@ def _wall_strip(r: dict, west: bool) -> list[Image.Image]:
 
 @lru_cache(maxsize=64)
 def _room_png(spec_json: str, stuff: tuple) -> bytes:
+    from PIL import Image
     spec = json.loads(spec_json)
     r = resolve(spec)
     made = room(spec, stuff)

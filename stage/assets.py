@@ -20,8 +20,6 @@ from __future__ import annotations
 import io
 import subprocess
 import sys
-import urllib.request
-import zipfile
 from pathlib import Path
 
 from dnd_cli.campaign import REPO_ROOT
@@ -101,6 +99,8 @@ DCSS_COMMIT = "ce84ee3930ae2ed6449925a54cf847e754c8836e"
 
 
 def _download(name: str) -> bytes:
+    import urllib.request  # slow to import: only a download needs it
+
     try:
         with urllib.request.urlopen(OGA + name, timeout=60) as resp:
             return resp.read()
@@ -120,6 +120,8 @@ def ensure_tiles() -> Path:
             for name in archive:
                 (dest / name).write_bytes(_download(name))
         else:
+            import zipfile
+
             try:
                 with zipfile.ZipFile(io.BytesIO(_download(archive))) as z:
                     z.extractall(dest, [n for n in z.namelist() if not n.startswith("__MACOSX")])

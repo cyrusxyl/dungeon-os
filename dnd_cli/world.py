@@ -11,8 +11,6 @@ import json
 import re
 from pathlib import Path
 
-import jsonschema
-
 from dnd_cli import canon
 from stage import maps
 from stage.beat import ID_RE, ID_RULE
@@ -280,6 +278,8 @@ def _value(text: str):
 
 def _save_npc(path: Path, npc: dict) -> None:
     """Write only an NPC that passes npc.schema.json."""
+    import jsonschema  # slow to import: load it only when an NPC is saved
+
     try:
         jsonschema.validate(npc, json.loads(NPC_SCHEMA.read_text()))
     except jsonschema.ValidationError as e:

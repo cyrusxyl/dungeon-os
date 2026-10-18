@@ -24,8 +24,10 @@ from collections import Counter
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 from stage.assets import ensure_lpc
 
@@ -294,6 +296,7 @@ def _sheet_path(item: Item, rel: str, color: str | None) -> Path:
 
 def render(spec: dict, facing: str = "down", emotion: str | None = None) -> Image.Image:
     """One 64x64 standing frame of the actor."""
+    from PIL import Image
     body, items = resolve(spec)
     face = EMOTION_FACES.get(emotion or "")
     head_item = next((i for i, _ in items if i.type == "head"), None)
