@@ -26,6 +26,7 @@ from pathlib import Path
 
 from dnd_cli import abilities, character, dice, effects
 from dnd_cli.api import api_get
+from dnd_cli.errors import RulesError  # noqa: F401 (also reached as combat.RulesError)
 from stage.files import read_json, write_json
 
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
@@ -39,10 +40,6 @@ SKILLS = {
 }
 XP_LEVELS = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000,
              120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000]
-
-
-class RulesError(ValueError):
-    """A rules command that cannot run. The message says how to fix it."""
 
 
 # -- small helpers -----------------------------------------------------------

@@ -67,5 +67,9 @@ def mod(score: int) -> int:
     return (score - 10) // 2
 
 
+def prof_for_level(level: int) -> int:
+    return 2 + (level - 1) // 4
+
+
 def signed(n: int) -> str:
     return f"+{n}" if n >= 0 else str(n)

@@ -13,18 +13,15 @@ from __future__ import annotations
 import random
 import re
 
-from dnd_cli import dice, resources
+from dnd_cli import dice, item, resources
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, level_for_xp
+from dnd_cli.dice import prof_for_level
 
 GOLD = "Gold Pieces"
 
 
 def mods(sheet: dict) -> dict:
     return {a: dice.mod(sheet["ability_scores"].get(a, 10)) for a in ABILITIES}
-
-
-def prof_for_level(level: int) -> int:
-    return 2 + (level - 1) // 4
 
 
 def prof_from(level_data: dict, level: int) -> int:
@@ -67,90 +64,20 @@ def base_ac(class_name: str, m: dict) -> int:
 # -- items and gold ----------------------------------------------------------
 
 
-def _find_item(sheet: dict, name: str) -> dict | None:
-    items = sheet.setdefault("inventory", [])
-    return next((i for i in items if i.get("name", "").lower() == name.lower()), None)
-
-
-def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity: str | None = None, **gear) -> str:
-    """Add an item, or add to its quantity. Giving it again with more detail updates it. `gear`: type, base, effects."""
-    if qty < 1:
-        raise RulesError("quantity must be 1 or more.")
-    item = _find_item(sheet, name)
-    if item:
-        item["quantity"] = item.get("quantity", 1) + qty
-    else:
-        item = {"name": name, "quantity": qty}
-        sheet["inventory"].append(item)
-    for key, value in {"description": description, "rarity": rarity, **gear}.items():
-        if value:
-            item[key] = value  # giving an item again with more detail updates it
-    return f"{sheet['name']}: {item['name']} x{item['quantity']}"
+# The rows are `dnd_cli.item`'s. These names stay for the callers.
+add_item = item.add
+remove_item = item.remove
+set_equipped = item.set_equipped
+set_profile = item.set_profile
 
 
 def get_item(sheet: dict, name: str) -> dict:
-    item = _find_item(sheet, name)
-    if not item:
-        have = ", ".join(i["name"] for i in sheet.get("inventory", [])) or "nothing"
-        raise RulesError(f"{sheet['name']} has no {name!r}. Inventory: {have}.")
-    return item
-
-
-def set_equipped(sheet: dict, name: str, on: bool) -> str:
-    """Wear or take off an inventory item. Its `effects` count only while it is worn. A weapon that is put away
-    stays an attack that the character can use, like any weapon that is not wielded."""
-    item = get_item(sheet, name)
-    item["equipped"] = on
-    for w in sheet.get("weapons", []):
-        if w.get("name") == item["name"]:
-            w["equipped"] = on
-    return f"{sheet['name']}: {item['name']} {'equipped' if on else 'put away'}"
-
-
-def remove_item(sheet: dict, name: str, qty: int = 1) -> str:
-    item = _find_item(sheet, name)
-    if not item:
-        have = ", ".join(i["name"] for i in sheet.get("inventory", [])) or "nothing"
-        raise RulesError(f"{sheet['name']} has no {name!r}. Inventory: {have}.")
-    if item.get("quantity", 1) < qty:
-        raise RulesError(f"{sheet['name']} has only {item.get('quantity', 1)} {item['name']}.")
-    item["quantity"] = item.get("quantity", 1) - qty
-    if item["quantity"] == 0:  # the schema has no zero quantities
-        sheet["inventory"].remove(item)
-        return f"{sheet['name']}: no {item['name']} left"
-    return f"{sheet['name']}: {item['name']} x{item['quantity']}"
-
-
-def set_profile(sheet: dict, name: str, profile: dict) -> str:
-    """Give an inventory row what it does on the board (stage/data/items.json has the shape): a ruling the DM approved, kept for the next use."""
-    item = _find_item(sheet, name)
-    if not item:
-        raise RulesError(f"{sheet['name']} has no {name!r}.")
-    kind = profile.get("kind")
-    if kind == "heal":
-        need = {"heal": str}
-    elif kind == "throw":
-        need = {"range_ft": int, "damage": list}
-    else:
-        raise RulesError("a profile has kind heal or throw.")
-    for key, typ in need.items():
-        if not isinstance(profile.get(key), typ):
-            raise RulesError(f"a {kind} profile needs {key}.")
-    if kind == "throw" and len(profile["damage"]) != 2:
-        raise RulesError('damage is ["1d6", "fire"]: dice and type.')
-    if profile.get("cost", "action") not in ("action", "bonus"):
-        raise RulesError("cost is action or bonus.")
-    try:
-        dice.parse(profile["heal"] if kind == "heal" else profile["damage"][0])
-    except dice.DiceError as e:
-        raise RulesError(str(e)) from None
-    item["profile"] = profile
-    return f"{sheet['name']}: {item['name']} now does something in a fight ({kind})"
+    return item.get(sheet, name).to_row()
 
 
 def gold(sheet: dict, delta: int) -> str:
-    item = _find_item(sheet, GOLD)
-    have = item.get("quantity", 0) if item else 0
+    purse = item.find(sheet, GOLD)
+    have = purse.quantity if purse else 0
     if have + delta < 0:
         raise RulesError(f"{sheet['name']} has only {have} gp; {-delta} gp is too much.")
     if delta > 0:
@@ -163,71 +90,7 @@ def gold(sheet: dict, delta: int) -> str:
 # -- gear --------------------------------------------------------------------
 
 
-def _weapon_ability(sheet: dict, props: list[str], ranged: bool) -> str:
-    m = mods(sheet)
-    if "finesse" in props or "martial arts" in props:
-        return "dexterity" if m["dexterity"] >= m["strength"] else "strength"
-    return "dexterity" if ranged else "strength"
-
-
-def _with_bonus(expr: str, bonus: int) -> str:
-    base = re.sub(r"[+-]\d+$", "", expr.replace(" ", ""))
-    return base + (dice.signed(bonus) if bonus else "")
-
-
-def _shield_equipped(sheet: dict) -> bool:
-    return any(i.get("equipped") and i.get("name", "").lower() == "shield" for i in sheet.get("inventory", []))
-
-
-def equip(sheet: dict, item: dict, proficient: bool = True, as_name: str | None = None) -> list[str]:
-    """Equip a weapon, armor, or shield from the 5e API. Only armor and shields change AC.
-    `as_name`: the inventory row it is (a magic item made from this base): the attack or armor takes that name.
-
-    Unarmored AC (a monk's 10 + DEX + WIS) is never recomputed: a shield adds 2 to it.
-    """
-    name = as_name or item["name"]
-    category = item.get("equipment_category", {}).get("index", "")
-    armor_cat = item.get("armor_category", "").lower()
-    if armor_cat == "shield" and _shield_equipped(sheet):
-        return [f"{sheet['name']} already carries a shield: AC {sheet['armor_class']}"]
-    shield = _shield_equipped(sheet)
-    if not _find_item(sheet, name):
-        add_item(sheet, name, 1)
-    if category == "armor" and armor_cat != "shield" and sheet.get("armor"):  # new armor replaces the old: its perks end
-        old = _find_item(sheet, sheet["armor"].get("name", ""))
-        if old:
-            old["equipped"] = False
-    _find_item(sheet, name)["equipped"] = True
-    m, prof = mods(sheet), sheet.get("proficiency_bonus", prof_for_level(sheet["level"]))
-    if category == "weapon":
-        props = [p["index"] for p in item.get("properties", [])]
-        abil = _weapon_ability(sheet, props, item.get("weapon_range") == "Ranged")
-        dmg = item.get("damage") or {}
-        bonus = m[abil] + (prof if proficient else 0)
-        entry = {
-            "name": name, "attack_bonus": bonus,
-            "damage": _with_bonus(dmg.get("damage_dice", "1"), m[abil]),
-            "damage_type": dmg.get("damage_type", {}).get("index", ""),
-            "properties": props, "equipped": True,
-        }
-        sheet["weapons"] = [w for w in sheet.get("weapons", []) if w.get("name") != name] + [entry]
-        return [f"{sheet['name']} wields {name}: {dice.signed(bonus)} to hit, {entry['damage']} {entry['damage_type']}"]
-    if armor_cat == "shield":
-        sheet["armor_class"] += 2
-        return [f"{sheet['name']} takes up a shield: AC {sheet['armor_class']}"]
-    if category == "armor":
-        ac = item.get("armor_class", {})
-        cap = ac.get("max_bonus") if ac.get("dex_bonus") else 0  # None: no cap
-        dex = m["dexterity"] if cap is None else min(m["dexterity"], cap)
-        sheet["armor"] = {"name": name, "type": armor_cat, "ac_bonus": ac.get("base", 10), "equipped": True}
-        sheet["armor_class"] = ac.get("base", 10) + dex + (2 if shield else 0)
-        line = f"{sheet['name']} wears {name}: AC {sheet['armor_class']}"
-        if item.get("str_minimum") and sheet["ability_scores"]["strength"] < item["str_minimum"]:
-            line += f" (STR under {item['str_minimum']}: speed -10 ft)"
-        if item.get("stealth_disadvantage"):
-            line += " (disadvantage on Stealth)"
-        return [line]
-    return [f"{sheet['name']} carries {name} (no attack or AC change)."]
+equip = item.equip_base
 
 
 # -- rests -------------------------------------------------------------------
@@ -397,7 +260,7 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
         abil = weapon_abil[w["name"]]
         w["attack_bonus"] = new_mods[abil] + weapon_mult[w["name"]] * prof
         if w.get("damage"):
-            w["damage"] = _with_bonus(w["damage"], new_mods[abil])
+            w["damage"] = item.with_bonus(w["damage"], new_mods[abil])
     if ensure_spellcasting(sheet, level_data, class_data):
         lines.append(f"{sheet['class']} now casts spells ({sheet['spellcasting']['ability'][:3].upper()}): "
                      "ask the player which spells to prepare or learn")
