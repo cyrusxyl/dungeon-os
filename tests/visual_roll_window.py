@@ -143,6 +143,11 @@ async def scenarios(page: Page, c: Path) -> None:
     await asyncio.sleep(1.5)
     dialog = (await page.eval("document.querySelector('[role=dialog]')?.innerText || ''")).lower()
     check("the request window is open", "athletics" in dialog, dialog)
+    beat.append(c, [{"type": "dm_status", "status": "busy"}])
+    await asyncio.sleep(1)
+    check("the Roll button says why it is off while the DM works", "wait for the dm" in (await page.eval("document.querySelector('[role=dialog]')?.innerText || ''")).lower())
+    idle(c)
+    await asyncio.sleep(1)
     check("no DC in the request window", "difficulty" not in dialog and "17" not in dialog, dialog.replace("\n", " | "))
     check("no DC anywhere in the page", "difficulty class" not in (await page.eval("document.body.innerText")).lower())
     beat.append(c, [{"type": "narrate", "text": "The DM moved on."}])
@@ -156,6 +161,14 @@ async def scenarios(page: Page, c: Path) -> None:
     status = await page.eval("document.body.innerText")
     check("the DM is idle, so only the unread story can hold the button back", "Your move" in status or "Wait for the DM" in status)
     check("the window waits until the story is read", not await page.eval("Boolean(document.querySelector('[role=dialog][aria-label$=\" roll\"]'))"))
+
+
+# A hand card is a button with an icon and a name in its first span. It is greyed with aria-disabled, not `disabled`.
+CARD = "((n) => [...document.querySelectorAll('button')].find(b => b.querySelector('span')?.textContent.trim().endsWith(' ' + n)))"
+
+
+async def click_card(page: Page, name: str) -> bool:
+    return bool(await page.eval(f"(() => {{ const b = {CARD}({json.dumps(name)}); if (b?.ariaDisabled === 'true') return false; b?.click(); return Boolean(b) }})()"))
 
 
 async def click_starting(page: Page, text: str) -> bool:
@@ -175,10 +188,8 @@ async def combat_turn(page: Page, c: Path) -> None:
     await page.shot("card-exploring")
     text = await page.eval("document.body.innerText")
     check("the action, bonus action and reaction are shown", all(w in text for w in ("Action", "Bonus", "Reaction")))
-    check("the common actions are on the card", all(w in text for w in ("Attack", "Dash", "Disengage", "Dodge", "Help", "Hide", "Shove")))
-    check("Attack is greyed (no combat), Hide is on", await page.eval(
-        "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Attack' && b.disabled) && "
-        "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Hide' && !b.disabled)"))
+    check("outside a combat the hand shows Hide and hides what is blocked", await page.eval(
+        f"{CARD}('Hide')?.ariaDisabled === 'false' && !{CARD}('Longsword') && !{CARD}('Shove')"))
     check("the turn icons cannot be clicked", await page.eval("document.querySelectorAll('[aria-label=\"This turn\"] button').length") == 0)
     check("no bonus can be added: no one in the party can give one", "+ Bonus" not in text)
 
@@ -195,12 +206,11 @@ async def combat_turn(page: Page, c: Path) -> None:
     check("Your turn and End turn are on the active card", "Your turn" in text and "End turn" in text)
 
     print("Attack from the card: weapon, target, then the roll")
-    check("Attack is on", await click_starting(page, "Attack"))
-    await asyncio.sleep(0.3)
-    check("a weapon is asked for first", await click_starting(page, "Longsword"))
+    check("Longsword is on", await click_card(page, "Longsword"))
     await asyncio.sleep(0.3)
     await page.shot("attack-target")
-    check("then a target", await click_starting(page, "Goblin 1"))
+    check("a target is asked for", await page.eval("Boolean(document.querySelector('[aria-label=\"Targets for Longsword\"]'))"))
+    check("then a target is picked", await click_starting(page, "Goblin 1"))
     await asyncio.sleep(1.5)
     await page.shot("attack-rolled")
     used = combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {})
@@ -208,9 +218,7 @@ async def combat_turn(page: Page, c: Path) -> None:
     await asyncio.sleep(8)
     await turn_over(c)
     await page.shot("action-spent")
-    check("Attack is now greyed, Shove is still on", await page.eval(
-        "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Attack' && b.disabled) && "
-        "[...document.querySelectorAll('button')].some(b => b.textContent.trim() === 'Shove' && !b.disabled)"))
+    check("Longsword is now greyed, Shove is still on", await page.eval(f"{CARD}('Longsword')?.ariaDisabled === 'true' && {CARD}('Shove')?.ariaDisabled !== 'true'"))
 
     print("End turn")
     await page.click("End turn")
@@ -263,9 +271,12 @@ def main() -> int:
                 await asyncio.sleep(1)
                 await page.shot("seat-picker")
                 check("then it sees the seat picker", await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
-                check("the first device is the host: it sees a host code", "Host code" in await page.eval("document.body.innerText"))
                 await page.click("Play all free")
                 await asyncio.sleep(1.2)
+                await click_starting(page, "Menu")
+                await asyncio.sleep(0.5)
+                check("the first device is the host: its menu shows a host code", "Host code" in await page.eval("document.body.innerText"))
+                await click_starting(page, "Menu")
                 check("sitting down closes the picker", not await page.eval("Boolean(document.querySelector('[aria-label=\"Pick your seat\"]'))"))
                 import os
                 os.environ["DUNGEON_STAGE_LOG"] = str(beat.log_path(c))
@@ -300,8 +311,7 @@ def main() -> int:
                 await asyncio.sleep(2.5)
                 await page.shot("hand")
                 check("the hand screen has the input box", bool(await page.eval("Boolean(document.querySelector('#player-input'))")))
-                check("the hand screen shows only this player's cards", await page.eval("document.querySelectorAll('main section h2').length") >= 1
-                      and "Where" not in await page.eval("document.body.innerText"))
+                check("?view=hand is the player screen now: it shows the party cards", await page.eval("document.querySelectorAll('main section h2').length") >= 1)
 
                 print("scene title, notices, the table follows the phone")
                 from dnd_cli import character, sheet as dnd_sheet
