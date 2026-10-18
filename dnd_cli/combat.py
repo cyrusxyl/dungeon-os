@@ -366,8 +366,9 @@ def combatant(campaign_dir: Path, state: dict, cid: str) -> dict:
     if cid in (enc.get("monsters") or {}):
         return enc["monsters"][cid]
     if character.character_path(campaign_dir, cid).exists():
-        rec = pc_record(character.load(campaign_dir, cid), cid)
-        fx = effects.defense(campaign_dir, cid)  # worn gear: Armor Class and resistances
+        sheet = character.load(campaign_dir, cid)
+        rec = pc_record(sheet, cid)
+        fx = effects.defense(campaign_dir, cid, sheet)  # worn gear: Armor Class and resistances
         rec["ac"] += fx["ac"]
         rec["resist"] = rec["resist"] + fx["resist"]
         rec["reduce"] = fx["reduce"]

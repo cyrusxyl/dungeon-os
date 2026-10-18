@@ -275,14 +275,15 @@ def _feature(campaign_dir: Path, state: dict, cid: str, sheet: dict, spec: dict,
 # -- bonuses a party member can give -------------------------------------------
 
 
-def offers(campaign_dir: Path, state: dict, target: str) -> list[dict]:
-    """The bonuses the party can put on `target` right now: a spell a member knows, Bardic Inspiration they have left."""
+def offers(campaign_dir: Path, state: dict, target: str, sheets: dict[str, dict] | None = None) -> list[dict]:
+    """The bonuses the party can put on `target` right now: a spell a member knows, Bardic Inspiration they have left.
+    `sheets`: the sheets the caller has already read, by id; a member not in it is loaded from the file."""
     out = []
     held = effects.active(campaign_dir, target)
     for src in combat.party(campaign_dir, state):
         if not character.character_path(campaign_dir, src).exists():
             continue
-        sheet = character.load(campaign_dir, src)
+        sheet = (sheets or {}).get(src) or character.load(campaign_dir, src)
         known = {_slug(s) for s in (sheet.get("spellcasting") or {}).get("spells_known", [])}
         slots = (sheet.get("spellcasting") or {}).get("spell_slots") or {}
         for eid, level in SPELL_BONUSES.items():

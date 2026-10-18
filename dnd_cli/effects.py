@@ -118,14 +118,15 @@ def _worn(sheet: dict) -> list[tuple[str, str]]:
     return [(e, it.name) for it in item.items(sheet) for e in it.effects() if e in PRESETS]
 
 
-def worn(campaign_dir: Path, cid: str) -> list[tuple[str, str]]:
-    """(preset id, item name) for each effect of an equipped item. A sheet that is missing gives none."""
-    return _worn(_sheet(campaign_dir, cid))
+def worn(campaign_dir: Path, cid: str, sheet: dict | None = None) -> list[tuple[str, str]]:
+    """(preset id, item name) for each effect of an equipped item. A sheet that is missing gives none.
+    `sheet`: the sheet the caller has already read; the file is read only when it is None."""
+    return _worn(_sheet(campaign_dir, cid) if sheet is None else sheet)
 
 
-def active(campaign_dir: Path, cid: str) -> list[str]:
+def active(campaign_dir: Path, cid: str, sheet: dict | None = None) -> list[str]:
     """The stored effects, then the effects of worn gear."""
-    return stored(campaign_dir, cid) + [e for e, _ in worn(campaign_dir, cid)]
+    return stored(campaign_dir, cid) + [e for e, _ in worn(campaign_dir, cid, sheet)]
 
 
 def _save(campaign_dir: Path, data: dict[str, list[str]]) -> None:
@@ -156,7 +157,8 @@ def apply(campaign_dir: Path, cid: str, kind: str, rng: random.Random | None = N
     """
     rng = rng or random
     out: dict = {"adv": False, "dis": False, "bonus": [], "flat": [], "used": []}
-    ids = stored(campaign_dir, cid)
+    data = load(campaign_dir)
+    ids = data.get(cid, [])
     for eid in ids + [e for e, _ in worn(campaign_dir, cid)]:
         spec = PRESETS[eid]
         if kind not in spec["on"] or eid in skip or (spec.get("only") and not set(spec["only"]) & set(tags)):
@@ -176,7 +178,6 @@ def apply(campaign_dir: Path, cid: str, kind: str, rng: random.Random | None = N
                                  "value": sign * total})
     spent = [e for e in out["used"] if PRESETS[e]["use"] == "next"]
     if spent:
-        data = load(campaign_dir)
         data[cid] = [e for e in ids if e not in spent]
         _save(campaign_dir, data)
     return out
@@ -206,9 +207,14 @@ def weapon(campaign_dir: Path, cid: str, target_type: str = "", attack: str = ""
     return out
 
 
-def defense(campaign_dir: Path, cid: str) -> dict:
+def defense(campaign_dir: Path, cid: str, sheet: dict | None = None) -> dict:
     """What the character's effects add to its defense: Armor Class, resistances, flat damage reduction."""
-    specs = [PRESETS[e] for e in active(campaign_dir, cid)]
+    return defense_of(active(campaign_dir, cid, sheet))
+
+
+def defense_of(held: list[str]) -> dict:
+    """The same, for effects the caller already has from `active`."""
+    specs = [PRESETS[e] for e in held]
     reduce: dict[str, int] = {}
     for s in specs:
         for dtype, n in s.get("reduce", {}).items():
