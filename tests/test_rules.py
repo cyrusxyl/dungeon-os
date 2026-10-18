@@ -702,6 +702,17 @@ def test_session_end(c: Path) -> None:
     check("game time is set", json.loads((c / "state.json").read_text())["game_time"] == "Day 2")
 
 
+def _bow_match(c: Path) -> bool:
+    d = character.load(c, "aragorn")
+    sheet.add_item(d, "+1 Hand Crossbow of Frost", 1, effects=["magic-weapon-1"])
+    sheet.set_equipped(d, "+1 Hand Crossbow of Frost", True)
+    character.save(c, "aragorn", d)
+    ok = effects.weapon(c, "aragorn", "", "Crossbow, hand")["dmg"] == 1
+    d["inventory"] = [i for i in d["inventory"] if "Crossbow" not in i["name"]]
+    character.save(c, "aragorn", d)
+    return ok
+
+
 def test_gear(c: Path) -> None:
     """The effect types that item perks use: weapon bonuses, crit range, extra dice, AC, saves, resistance."""
     print("gear effects")
@@ -847,6 +858,8 @@ def test_gear(c: Path) -> None:
     effects.add(c, "aragorn", "magic-weapon-2")
     check("a stored weapon effect still applies to every weapon", effects.weapon(c, "aragorn", "", "Longbow")["dmg"] == 2)
     effects.remove(c, "aragorn", "magic-weapon-2")
+    check("an API-style weapon name matches the loot item name", effects.weapon(c, "aragorn", "", "Crossbow, hand")["dmg"] == 0
+          and _bow_match(c))
 
     old = {"name": "Leather", "quantity": 1, "equipped": True, "effects": ["magic-armor-1"]}
     d = {"name": "T", "level": 1, "ability_scores": {a: 10 for a in combat.ABILITIES}, "armor_class": 11, "inventory": [old],
@@ -879,6 +892,9 @@ def test_loot() -> None:
           and any("you rule it" in h for h in loot.hints("vicious")))
     sheet.add_item(data, "Ring", 1, effects=["warding"])
     check("a forced item keeps the effects it gives when worn", data["inventory"][1]["effects"] == ["warding"])
+    sheet.add_item(data, "Ring", 1, effects=["vigor"])
+    check("giving an item again adds its effects", data["inventory"][1]["effects"] == ["vigor"] and data["inventory"][1]["quantity"] == 2)
+    check("a hint is skipped for an effect that was given", loot.hints("Keen", ["keen-edge"]) == [])
 
     print("perk catalog")
     book = loot.perks()["perks"]

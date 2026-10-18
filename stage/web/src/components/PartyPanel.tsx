@@ -275,8 +275,8 @@ export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds
       )}
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {held.map((e) => (
-          <Chip key={e.id} tone={TONE[e.tone]} title={e.concentration ? `${e.info} (a concentration spell)` : e.info}>
+        {held.map((e, i) => (
+          <Chip key={`${e.id}-${i}`} tone={TONE[e.tone]} title={e.concentration ? `${e.info} (a concentration spell)` : e.info}>
             {e.concentration && '◎ '}
             {e.label}
           </Chip>

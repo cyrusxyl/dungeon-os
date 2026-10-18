@@ -609,7 +609,7 @@ def _teams_line(state: dict, stage: dict | None) -> str:
     teams = {}
     for cid in enc["participants"]:
         teams.setdefault(team_of(state, cid), []).append(cid)
-    out = [a for a, v in (stage or {}).items() if v.get("side") == "bystander" and not v.get("down")]
+    out = [a for a, v in (stage or {}).items() if v.get("side") == "bystander" and not v.get("down") and a not in enc["participants"]]
     return "Teams: " + "; ".join(f"{t} {', '.join(ids)}" for t, ids in teams.items()) + (f". Out of the fight: {', '.join(out)}." if out else ".")
 
 

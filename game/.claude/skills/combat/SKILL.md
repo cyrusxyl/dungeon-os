@@ -96,7 +96,7 @@ XP comes only from enemies of the party: a dead companion gives none. When the f
 
 It prints "LEVEL UP READY" for a character who reached the next level (see the `character-advancement` skill). Then offer a search, loot, or a rest (`uv run dnd-cli rest short` / `rest long`).
 
-`loot roll` lists gear with its perks, for example `+1 Longsword of Flame (rare)`. It names the effects of the item and the perks you must rule yourself. Give the item with those effects (`uv run dnd-cli loot force "+1 Longsword" --to aragorn --effects magic-weapon-1`). The stage counts the effects only while the item is equipped: use `uv run dnd-cli character item <campaign> aragorn equip "+1 Longsword"` and `unequip`. Do not use `effect add` for gear. A weapon effect applies to the weapon whose name is in the item name. `loot force` with a catalog perk name (`--perk "Keen"`) prints the preset to use.
+`loot roll` lists gear with its perks, for example `+1 Longsword of Flame (rare)`. It names the effects of the item and the perks you must rule yourself. Give the item with those effects (`uv run dnd-cli loot force "+1 Longsword" --to aragorn --effects magic-weapon-1`). The stage counts the effects only while the item is equipped: use `uv run dnd-cli character item <campaign> aragorn equip "+1 Longsword"` and `unequip`. Do not use `effect add` for gear. A weapon effect applies to the weapon whose name words are all in the item name. `character item equip` does not take off other armor and does not change base AC: use `character equip` for armor. `loot force` with a catalog perk name (`--perk "Keen"`) prints the preset to use.
 
 ## Conditions: what to apply
 

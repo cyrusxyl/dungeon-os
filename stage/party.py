@@ -30,7 +30,7 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict, present: lis
     prof = sheet.get("proficiency_bonus", 2)
     saves = sheet.get("saving_throws", {})
     inventory = [{"name": i.get("name"), "quantity": i.get("quantity", 1), "weight": i.get("weight", 0),
-                  "equipped": bool(i.get("equipped")), "description": i.get("description", ""), "rarity": i.get("rarity")}
+                  "equipped": bool(i.get("equipped")), "description": i.get("description", ""), "rarity": i.get("rarity"), "effects": i.get("effects", [])}
                  for i in sheet.get("inventory", [])]
     spell = sheet.get("spellcasting") or {}
     return {

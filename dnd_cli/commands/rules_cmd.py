@@ -248,10 +248,11 @@ def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarit
         if rarity and rarity not in loot.RARITIES:
             raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
         ids = [e.strip() for e in fx.split(",") if e.strip()]
-        bad = [e for e in ids if e not in effects.PRESETS]
+        gear = [k for k, v in effects.PRESETS.items() if v["use"] == "kept" and not v["concentration"]]
+        bad = [e for e in ids if e not in gear]
         if bad:
-            raise combat.RulesError(f"no effect {', '.join(bad)}. Effects: {', '.join(effects.PRESETS)}.")
-        return [sheet.add_item(data, item, qty, perk, rarity, ids)] + ([] if ids else loot.hints(perk))
+            raise combat.RulesError(f"no gear effect {', '.join(bad)}. Gear effects: {', '.join(gear)}.")
+        return [sheet.add_item(data, item, qty, perk, rarity, ids)] + loot.hints(perk, ids)
     return _edit_sheet(campaign, who, fn)
 
 

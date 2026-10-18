@@ -78,12 +78,13 @@ def gear(rarity: str, rng: random.Random) -> dict:
             "rulings": [f"{p['name']}: {p['ruling']}" for p in chosen if not p["effect"]]}
 
 
-def hints(perk_text: str) -> list[str]:
-    """For `loot force`: the catalog perks named in the free text (split at commas), and what to do with each."""
+def hints(perk_text: str, given: list[str] | tuple = ()) -> list[str]:
+    """For `loot force`: the catalog perks named in the free text (split at commas), and what to do with each.
+    A perk whose effect is in `given` needs no hint."""
     out = []
     for word in (w.strip().lower() for w in perk_text.split(",")):
         for p in perks()["perks"]:
-            if p["name"].lower() == word:
+            if p["name"].lower() == word and p["effect"] not in given:
                 out.append(f"{p['name']} ({'/'.join(p['types'])}): " + (f"give it again with `--effects {p['effect']}`, and the stage counts it while it is equipped." if p["effect"]
                                                                        else f"you rule it: {p['ruling']}"))
     return out

@@ -81,13 +81,10 @@ def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity
         item["quantity"] = item.get("quantity", 1) + qty
     else:
         item = {"name": name, "quantity": qty}
-        if description:
-            item["description"] = description
-        if rarity:
-            item["rarity"] = rarity
-        if effects:
-            item["effects"] = effects
         sheet["inventory"].append(item)
+    for key, value in (("description", description), ("rarity", rarity), ("effects", effects)):
+        if value:
+            item[key] = value  # giving an item again with more detail updates it
     return f"{sheet['name']}: {item['name']} x{item['quantity']}"
 
 

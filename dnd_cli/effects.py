@@ -24,12 +24,13 @@ file, and the stage writes effects while the DM is idle.
 Worn gear adds effects too. An inventory item with `equipped: true` and an `effects` list
 gives those presets while it is equipped. Nothing is stored for them, so unequip removes them.
 Two equipped items with the same perk both count. A `weapon` part of an item applies only to
-the attack whose name is in the item name ("Longsword" in "+1 Longsword of Flame").
+the attack whose name words are all in the item name ("Longsword" in "+1 Longsword of Flame").
 """
 
 from __future__ import annotations
 
 import random
+import re
 from pathlib import Path
 
 from dnd_cli import character, dice
@@ -97,6 +98,10 @@ def load(campaign_dir: Path) -> dict[str, list[str]]:
 
 def stored(campaign_dir: Path, cid: str) -> list[str]:
     return load(campaign_dir).get(cid, [])
+
+
+def _words(name: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", name.lower()))
 
 
 def worn(campaign_dir: Path, cid: str) -> list[tuple[str, str]]:
@@ -176,7 +181,7 @@ def weapon(campaign_dir: Path, cid: str, target_type: str = "", attack: str = ""
         part = spec.get("weapon")
         if not part or (part.get("vs") and not any(t in target_type.lower() for t in part["vs"])):
             continue
-        if item and attack.lower() not in item.lower():
+        if item and not _words(attack) <= _words(item):  # "Crossbow, hand" is in "+1 Hand Crossbow of Frost"
             continue
         if part.get("hit"):
             out["hit"].append({"label": spec["label"], "value": part["hit"]})
