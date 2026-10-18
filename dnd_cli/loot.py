@@ -133,6 +133,4 @@ def lines(result: dict) -> list[str]:
             out.append(f"      give it with --effects {','.join(item['effects'])}")
         out += [f"      you rule: {r}" for r in item.get("rulings", [])]
     out.append("  Give coins with `character gold <who> +N` (in gp), items with `character item <who> add \"<item>\"`, or `loot force \"<item>\" --to <who> --perk \"...\" --effects <preset>`.")
-    if any(i.get("effects") for i in result["items"]):
-        out.append("  Put an effect on the wearer with `effect add <who> <effect>`; take it off with `effect remove`.")
     return out
