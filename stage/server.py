@@ -55,7 +55,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
-from dnd_cli import item as inventory
+from dnd_cli import item as items
 from dnd_cli.item import GOLD
 from dnd_cli.errors import RulesError
 from stage import actors, arena, beat, board, cast, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, ttsctl, voice, walk
@@ -468,7 +468,7 @@ class Stage:
             if (sheet := read_json(path)) is None:
                 continue
             now: dict[str, int] = {}
-            for it in inventory.items(sheet):
+            for it in items.items(sheet):
                 now[it.name] = now.get(it.name, 0) + it.quantity
             before = self.holdings.get(path.stem)
             self.holdings[path.stem] = now

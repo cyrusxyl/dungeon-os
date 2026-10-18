@@ -15,7 +15,7 @@ from functools import cache
 from pathlib import Path
 from typing import Optional
 
-from dnd_cli import item
+from dnd_cli import item as items
 from dnd_cli.campaign import REPO_ROOT, CampaignError
 
 SCHEMA_PATH = REPO_ROOT / "game" / "schemas" / "character.schema.json"
@@ -61,7 +61,7 @@ def load(campaign_dir: Path, name: str) -> dict:
     with open(path) as f:
         data = json.load(f)
     validate(data)
-    item.link_gear(data)  # a sheet from before the `item` link
+    items.link_gear(data)  # a sheet from before the `item` link
     return data
 
 

@@ -15,7 +15,7 @@ from datetime import date
 from pathlib import Path
 
 from dnd_cli import audit, character, dice, sheet
-from dnd_cli import item as inv
+from dnd_cli import item as items
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, load_state, save_state
 from dnd_cli.errors import RulesError
 from stage.files import read_json, write_json
@@ -166,10 +166,10 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
         del data["alignment"]
 
     for idx, n in Counter(slug(i) for i in _names(equipment)).items():  # a repeated index is a quantity
-        item = fetch(f"equipment/{idx}")
-        inv.equip_base(data, item)
+        row = fetch(f"equipment/{idx}")
+        items.equip_base(data, row)
         if n > 1:
-            inv.add(data, item["name"], n - 1)
+            items.add(data, row["name"], n - 1)
 
     traits = [(t["name"], f"traits/{t['index']}") for t in r.get("traits", []) + sub.get("racial_traits", [])]
     feats = [(f["name"], f"features/{f['index']}") for f in lvl.get("features", [])]
@@ -279,8 +279,8 @@ def _gear_sets(fetch, o: dict) -> list[list[tuple[str, str, int]]]:
         return []
     if kind == "multiple":
         sets = [[]]
-        for item in o["items"]:
-            alts = _gear_sets(fetch, item)
+        for part in o["items"]:
+            alts = _gear_sets(fetch, part)
             if not alts:
                 return []
             sets = [a + b for a in sets for b in alts]
@@ -290,10 +290,10 @@ def _gear_sets(fetch, o: dict) -> list[list[tuple[str, str, int]]]:
     return []
 
 
-def _gear_option(items: list[tuple[str, str, int]]) -> dict:
+def _gear_option(parts: list[tuple[str, str, int]]) -> dict:
     """One option for the creator: the indexes joined by commas (a repeat is a quantity), and a name to read."""
-    name = ", ".join(n if c == 1 else f"{n} \u00d7{c}" for _, n, c in items)
-    return {"index": ",".join(i for i, _, c in items for _ in range(c)), "name": name}
+    name = ", ".join(n if c == 1 else f"{n} \u00d7{c}" for _, n, c in parts)
+    return {"index": ",".join(i for i, _, c in parts for _ in range(c)), "name": name}
 
 
 def _simple_choices(fetch, cls: dict) -> list[dict]:

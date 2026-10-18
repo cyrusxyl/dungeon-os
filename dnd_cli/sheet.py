@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import random
 
-from dnd_cli import dice, item, resources
+from dnd_cli import dice, item as items, resources
 from dnd_cli.combat import ABILITIES, SKILLS, ability, level_for_xp
 from dnd_cli.errors import RulesError
 from dnd_cli.dice import prof_for_level
@@ -60,14 +60,14 @@ def base_ac(class_name: str, m: dict) -> int:
 
 
 def gold(sheet: dict, delta: int) -> str:
-    purse = item.find(sheet, item.GOLD)
+    purse = items.find(sheet, items.GOLD)
     have = purse.quantity if purse else 0
     if have + delta < 0:
         raise RulesError(f"{sheet['name']} has only {have} gp; {-delta} gp is too much.")
     if delta > 0:
-        item.add(sheet, item.GOLD, delta)
+        items.add(sheet, items.GOLD, delta)
     elif delta < 0:
-        item.remove(sheet, item.GOLD, -delta)
+        items.remove(sheet, items.GOLD, -delta)
     return f"{sheet['name']}: {have + delta} gp"
 
 
@@ -218,7 +218,7 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
         sheet["skills"][s] = new_mods[SKILLS[s]] + mult * prof
     for a, mult in save_mult.items():
         sheet["saving_throws"][a] = new_mods[a] + mult * prof
-    item.retotal_weapons(sheet, old_mods, old_prof, new_mods, prof)
+    items.retotal_weapons(sheet, old_mods, old_prof, new_mods, prof)
     if ensure_spellcasting(sheet, level_data, class_data):
         lines.append(f"{sheet['class']} now casts spells ({sheet['spellcasting']['ability'][:3].upper()}): "
                      "ask the player which spells to prepare or learn")

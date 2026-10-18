@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 
 from dnd_cli import actions, canon, character, combat, dice, effects, loot, resources, sheet
-from dnd_cli import item as inv
+from dnd_cli import item as items
 from dnd_cli.commands import session_cmd
 from dnd_cli.errors import RulesError
 
@@ -40,7 +40,7 @@ GOBLIN = {
 
 
 def wear(d: dict, name: str, on: bool) -> None:
-    it = inv.get(d, name)
+    it = items.get(d, name)
     (it.equip if on else it.unequip)(d)
 
 
@@ -662,27 +662,27 @@ def test_death(c: Path) -> None:
 def test_sheet(c: Path) -> None:
     print("character sheet")
     data = character.load(c, "aragorn")
-    inv.add(data, "Healing Potion", 2)
-    check("removing the last unit removes the entry", "no Healing Potion left" in inv.remove(data, "Healing Potion", 2)
+    items.add(data, "Healing Potion", 2)
+    check("removing the last unit removes the entry", "no Healing Potion left" in items.remove(data, "Healing Potion", 2)
           and not any(i["name"] == "Healing Potion" for i in data["inventory"]))
-    inv.add(data, "Smoke bomb", 1)
-    inv.set_profile(data, "Smoke bomb", {"kind": "throw", "range_ft": 20, "damage": ["1d6", "fire"]})
+    items.add(data, "Smoke bomb", 1)
+    items.set_profile(data, "Smoke bomb", {"kind": "throw", "range_ft": 20, "damage": ["1d6", "fire"]})
     check("a DM ruling is saved on the row as its profile", next(i for i in data["inventory"] if i["name"] == "Smoke bomb")["profile"]["kind"] == "throw")
-    check("a bad profile is refused", all(raises(lambda p=p: inv.set_profile(data, "Smoke bomb", p)) for p in
+    check("a bad profile is refused", all(raises(lambda p=p: items.set_profile(data, "Smoke bomb", p)) for p in
           ({"kind": "bless"}, {"kind": "heal"}, {"kind": "throw", "range_ft": 20, "damage": ["1d6"]}, {"kind": "heal", "heal": "lots"}, {"kind": "heal", "heal": "1d4", "cost": "reaction"})))
-    check("a profile for an item that is not carried is refused", raises(lambda: inv.set_profile(data, "Ghost", {"kind": "heal", "heal": "1d4"})))
+    check("a profile for an item that is not carried is refused", raises(lambda: items.set_profile(data, "Ghost", {"kind": "heal", "heal": "1d4"})))
     check("gold cannot go below zero", raises(lambda: sheet.gold(data, -5)))
     check("gold is an item", sheet.gold(data, 30) == "Aragorn: 30 gp")
     mail = {"name": "Chain Mail", "equipment_category": {"index": "armor"}, "armor_category": "Heavy",
             "armor_class": {"base": 16, "dex_bonus": False}, "stealth_disadvantage": True}
-    inv.equip_base(data, mail)
+    items.equip_base(data, mail)
     check("heavy armor sets AC without DEX", data["armor_class"] == 16)
     shield = {"name": "Shield", "equipment_category": {"index": "armor"}, "armor_category": "Shield"}
-    inv.equip_base(data, shield)
-    check("a shield adds 2 once", data["armor_class"] == 18 and "already" in inv.equip_base(data, shield))
+    items.equip_base(data, shield)
+    check("a shield adds 2 once", data["armor_class"] == 18 and "already" in items.equip_base(data, shield))
     rapier = {"name": "Rapier", "equipment_category": {"index": "weapon"}, "weapon_range": "Melee",
               "properties": [{"index": "finesse"}], "damage": {"damage_dice": "1d8", "damage_type": {"index": "piercing"}}}
-    inv.equip_base(data, rapier)
+    items.equip_base(data, rapier)
     w = next(w for w in data["weapons"] if w["name"] == "Rapier")
     check("a finesse weapon uses the better of STR and DEX", w["attack_bonus"] == 3 + 2 and w["damage"] == "1d8+3")
     character.save(c, "aragorn", data)
@@ -739,7 +739,7 @@ def test_session_end(c: Path) -> None:
 
 def _bow_match(c: Path) -> bool:
     d = character.load(c, "aragorn")
-    inv.add(d, "+1 Hand Crossbow of Frost", 1, effects=["magic-weapon-1"])
+    items.add(d, "+1 Hand Crossbow of Frost", 1, effects=["magic-weapon-1"])
     d["weapons"].append({"name": "Crossbow, hand", "attack_bonus": 4, "damage": "1d6+2", "equipped": True})
     wear(d, "+1 Hand Crossbow of Frost", True)
     character.save(c, "aragorn", d)
@@ -860,7 +860,7 @@ def test_gear(c: Path) -> None:
 
     def give(name, ids, on=True):
         d = character.load(c, "aragorn")
-        inv.add(d, name, 1, effects=ids)
+        items.add(d, name, 1, effects=ids)
         wear(d, name, on)
         character.save(c, "aragorn", d)
 
@@ -888,7 +888,7 @@ def test_gear(c: Path) -> None:
 
     give("+1 Longsword of Flame", ["magic-weapon-1", "flame-edge"], on=False)
     d = character.load(c, "aragorn")
-    row = inv.get(d, "+1 Longsword of Flame")
+    row = items.get(d, "+1 Longsword of Flame")
     row.row.update(type="weapon", base="Longsword")
     row.equip(d, {"name": "Longsword", "equipment_category": {"index": "weapon"}, "damage": {"damage_dice": "1d8", "damage_type": {"index": "slashing"}}})
     character.save(c, "aragorn", d)
@@ -911,7 +911,7 @@ def test_gear(c: Path) -> None:
     old = {"name": "Leather", "quantity": 1, "equipped": True, "effects": ["magic-armor-1"]}
     d = {"name": "T", "level": 1, "ability_scores": {a: 10 for a in combat.ABILITIES}, "armor_class": 11, "inventory": [old],
          "armor": {"name": "Leather", "item": "Leather", "type": "light", "ac_bonus": 11, "equipped": True}}
-    inv.equip_base(d, {"name": "Plate", "equipment_category": {"index": "armor"}, "armor_class": {"base": 18, "dex_bonus": False}})
+    items.equip_base(d, {"name": "Plate", "equipment_category": {"index": "armor"}, "armor_class": {"base": 18, "dex_bonus": False}})
     check("new armor takes the old armor off, and its perks end", old["equipped"] is False and d["armor"]["item"] == "Plate")
     d = character.load(c, "aragorn")
     wear(d, "+1 Longsword of Flame", False)
@@ -928,8 +928,8 @@ def test_gear(c: Path) -> None:
     rules_cmd._api = lambda ep: (asked.append(ep), plate if "plate" in ep else rapier)[1]
     try:
         d = character.load(c, "aragorn")
-        inv.add(d, "+1 Rapier of Frost", 1, type="weapon", base="Rapier", effects=["magic-weapon-1", "frost-edge"])
-        inv.add(d, "+1 Plate Armor", 1, type="armor", base="Plate Armor", effects=["magic-armor-1"])
+        items.add(d, "+1 Rapier of Frost", 1, type="weapon", base="Rapier", effects=["magic-weapon-1", "frost-edge"])
+        items.add(d, "+1 Plate Armor", 1, type="armor", base="Plate Armor", effects=["magic-armor-1"])
         _wear = rules_cmd._equip
         _wear(d, "+1 Rapier of Frost", True)
         w = next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")
@@ -942,9 +942,9 @@ def test_gear(c: Path) -> None:
         character.save(c, "aragorn", d)
         r = effects.weapon(c, "aragorn", "", "+1 Rapier of Frost")
         check("the perks of the item reach the attack of the same name", r["dmg"] == 1 and r["extra"] == [["1d4", "cold"]])
-        inv.get(d, "+1 Rapier of Frost").unequip(d)
+        items.get(d, "+1 Rapier of Frost").unequip(d)
         check("putting the weapon away keeps the attack, not wielded", next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")["equipped"] is False)
-        inv.add(d, "Flame Tongue", 1, type="weapon", effects=["flame-edge"])
+        items.add(d, "Flame Tongue", 1, type="weapon", effects=["flame-edge"])
         check("a weapon with effects and no base warns the DM", any("Warning" in line for line in _wear(d, "Flame Tongue", True)))
         asked.clear()
         _wear(d, "rapier", True)
@@ -968,15 +968,15 @@ def test_loot() -> None:
     check("a legendary item is never named: the DM writes it", any(i["rarity"] == "legendary" and i["name"] is None for n in range(40) for i in loot.roll(20, "hoard", n)["items"]))
     check("a bad kind or CR is refused", raises(lambda: loot.roll(1, "pile")) and raises(lambda: loot.roll(-1)))
     data = {"name": "Aragorn", "inventory": []}
-    inv.add(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
+    items.add(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
     check("a forced item keeps its perk text and rarity", data["inventory"][0] == {"name": "Longsword", "quantity": 1, "description": "keen: it hums near orcs", "rarity": "uncommon"})
     hints = loot.hints("Keen, of Flame, hums")
     check("item add names the effect of a catalog perk and says when the DM must rule", any("--effects keen-edge" in h for h in hints)
           and any("--effects flame-edge" in h for h in hints) and len(hints) == 2
           and any("you rule it" in h for h in loot.hints("vicious")))
-    inv.add(data, "Ring", 1, effects=["warding"])
+    items.add(data, "Ring", 1, effects=["warding"])
     check("a forced item keeps the effects it gives when worn", data["inventory"][1]["effects"] == ["warding"])
-    inv.add(data, "Ring", 1, effects=["vigor"])
+    items.add(data, "Ring", 1, effects=["vigor"])
     check("giving an item again adds its effects", data["inventory"][1]["effects"] == ["vigor"] and data["inventory"][1]["quantity"] == 2)
     check("a hint is skipped for an effect that was given", loot.hints("Keen", ["keen-edge"]) == [])
     check("the base and type of gear are found in its name", loot.base_of("+1 Keen Hand Crossbow of Frost") == ("weapon", "Hand Crossbow")

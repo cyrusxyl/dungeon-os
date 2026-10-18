@@ -33,7 +33,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from dnd_cli import character, dice, item
+from dnd_cli import character, dice, item as items
 from dnd_cli.errors import RulesError
 from stage.files import read_json, write_json
 
@@ -115,7 +115,7 @@ def _sheet(campaign_dir: Path, cid: str) -> dict:
 
 
 def _worn(sheet: dict) -> list[tuple[str, str]]:
-    return [(e, it.name) for it in item.items(sheet) for e in it.effects() if e in PRESETS]
+    return [(e, it.name) for it in items.items(sheet) for e in it.effects() if e in PRESETS]
 
 
 def worn(campaign_dir: Path, cid: str, sheet: dict | None = None) -> list[tuple[str, str]]:
