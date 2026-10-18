@@ -600,7 +600,17 @@ def start(campaign_dir: Path, state: dict, specs: list[str], pcs: list[str] | No
     lines = _join(campaign_dir, state, pcs, specs, rng, stage)
     enc["current_turn"] = enc["initiative_order"][0]["name"] if enc["initiative_order"] else None
     _initiative_feed(campaign_dir, state, enc)
-    return lines + [_order_lines(enc), f"Round 1: {enc['current_turn']}'s turn."]
+    return lines + [_teams_line(state, stage), _order_lines(enc), f"Round 1: {enc['current_turn']}'s turn."]
+
+
+def _teams_line(state: dict, stage: dict | None) -> str:
+    """Who joined, by team, and who stays out (a bystander on the stage). `@side <id> bystander` keeps an actor out."""
+    enc = state["active_encounter"]
+    teams = {}
+    for cid in enc["participants"]:
+        teams.setdefault(team_of(state, cid), []).append(cid)
+    out = [a for a, v in (stage or {}).items() if v.get("side") == "bystander" and not v.get("down")]
+    return "Teams: " + "; ".join(f"{t} {', '.join(ids)}" for t, ids in teams.items()) + (f". Out of the fight: {', '.join(out)}." if out else ".")
 
 
 def _initiative_feed(campaign_dir: Path, state: dict, enc: dict) -> None:

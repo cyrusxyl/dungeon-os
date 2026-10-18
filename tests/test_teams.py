@@ -70,11 +70,15 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         c, stage = scene_fight(tmp)
         state = combat.load_state(c)
-        combat.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
+        started = combat.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
         enc = state["active_encounter"]
         check("the fighters of the stage join: the party, the companion, the faction, the goblin under its stage id",
               set(enc["participants"]) == {"aragorn", "legolas", "ilvuur", "qorlia", "goblin#1"}, str(enc["participants"]))
         check("a bystander and a fallen creature do not", "mara-shop" not in enc["participants"] and "dead-guard" not in enc["participants"])
+        teams = next(x for x in started if x.startswith("Teams:"))
+        check("the start output lists each team and who is out of the fight",
+              "party aragorn, legolas, ilvuur" in teams and "neutral qorlia" in teams and "hostile goblin#1" in teams
+              and teams.endswith("Out of the fight: mara-shop."), teams)
         check("teams: green companion, yellow faction", enc["teams"] == {"ilvuur": "party", "qorlia": "neutral"})
         check("everyone who joined has an initiative", {o["name"] for o in enc["initiative_order"]} == set(enc["participants"]))
 
