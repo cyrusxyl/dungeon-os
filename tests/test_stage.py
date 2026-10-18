@@ -839,7 +839,6 @@ def test_creator() -> None:
     import shutil
     import sys
 
-    from dnd_cli.commands import rules_cmd
     from stage import server
     from stage.server import Stage, create_app, stage_first_prompt
 
@@ -955,15 +954,15 @@ def test_creator() -> None:
         asyncio.run(queue())
 
         async def routes():
-            saved = rules_cmd._api
+            saved = server.fetch
             try:
-                rules_cmd._api = lambda ep: (_ for _ in ()).throw(RulesError("down"))
+                server.fetch = lambda ep: (_ for _ in ()).throw(RulesError("down"))
                 app = create_app(None)
                 await app.state.table.start(camp(tmp, {"party": "create"}), ["cat"])
                 status, r = await api(app, "GET", "/api/creation/options")
                 check("options: 503 with the message when the API is down", status == 503 and "cannot be reached" in r["error"])
                 await app.state.table.stop()
-                rules_cmd._api = tc.fetch
+                server.fetch = tc.fetch
                 c = camp(tmp, {"party": "create"})
                 app = create_app(None)
                 stage = await app.state.table.start(c, ["cat"])
@@ -1030,7 +1029,7 @@ def test_creator() -> None:
                 check("game start: premade needs a pitch", status == 400)
                 await app.state.table.stop()
             finally:
-                rules_cmd._api = saved
+                server.fetch = saved
         asyncio.run(routes())
 
 

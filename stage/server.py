@@ -55,10 +55,17 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from core.ids import ID_RE
-from dnd_cli import actions, character, combat, effects, resources, saves
+from dnd_cli import actions, character, combat, creation, effects, resources, saves
 from dnd_cli import item as items
-from dnd_cli.item import GOLD
+from dnd_cli import campaign as camp
+from dnd_cli.api import api_get, fetch
+from dnd_cli.campaign import (
+    CampaignError, active_campaign_slug, create_campaign, delete_campaign, list_campaigns,
+    resolve_campaign_dir, slugify,
+)
+from dnd_cli.character import CharacterError
 from dnd_cli.errors import RulesError
+from dnd_cli.item import GOLD
 from stage import actors, arena, beat, board, cast, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, ttsctl, voice, walk
 from stage.assets import AssetError
 from core.files import read_json, write_json
@@ -836,9 +843,6 @@ def make_character(campaign_dir: Path, body: dict) -> dict:
 
     Blocking (the 5e API, files): run it in a thread. Raises RulesError, or ActorError for a bad look.
     """
-    from dnd_cli import character, creation
-    from dnd_cli.campaign import slugify
-    from dnd_cli.commands import rules_cmd
 
     def text(key: str) -> str:
         return str(body.get(key) or "").strip()
@@ -861,7 +865,7 @@ def make_character(campaign_dir: Path, body: dict) -> dict:
     tokens = actors.creator_tokens(look, text("class"), name)
     actors.look_spec(char_id, tokens)  # a bad look fails before anything is written
     lines = creation.create(
-        campaign_dir, rules_cmd._api, char_id, player_name=player_name, player=slugify(player_name) or "player",
+        campaign_dir, fetch, char_id, player_name=player_name, player=slugify(player_name) or "player",
         name=name, race=text("race"), subrace=text("subrace") or None, cls=text("class"), background=text("background"),
         scores=csv("scores"), assign=csv("assign"), skills=csv("skills"), background_skills=csv("background_skills") or None,
         cantrips=csv("cantrips") or None, spells=csv("spells") or None, equipment=csv("equipment") or None,
@@ -937,13 +941,12 @@ def _last_played(campaign_dir: Path) -> int:
 
 
 def _menu(table: Table) -> dict:
-    from dnd_cli.campaign import CAMPAIGNS_DIR, active_campaign_slug, list_campaigns
     from view.settings import FRAMEWORKS, campaign_in_progress, can_continue, framework_available, load_settings
 
     settings = load_settings()
     campaigns = [
-        {"slug": slug, "name": name, "in_progress": campaign_in_progress(CAMPAIGNS_DIR / slug),
-         "can_continue": can_continue(slug, settings), "last_played": _last_played(CAMPAIGNS_DIR / slug)}
+        {"slug": slug, "name": name, "in_progress": campaign_in_progress(camp.CAMPAIGNS_DIR / slug),
+         "can_continue": can_continue(slug, settings), "last_played": _last_played(camp.CAMPAIGNS_DIR / slug)}
         for slug, name in list_campaigns()
     ]
     campaigns.sort(key=lambda c: c["last_played"], reverse=True)  # the campaign played last comes first
@@ -1177,7 +1180,6 @@ def create_app(
         return JSONResponse(_menu(table))
 
     async def api_game_start(request: Request):
-        from dnd_cli.campaign import CampaignError, create_campaign, resolve_campaign_dir
 
         device = menu_gate(request)
         body = await request.json()
@@ -1198,7 +1200,6 @@ def create_app(
         return JSONResponse({"game": campaign.name})
 
     async def api_saves(request: Request):
-        from dnd_cli.campaign import CampaignError, resolve_campaign_dir
 
         try:
             campaign = resolve_campaign_dir(request.path_params["slug"])
@@ -1219,7 +1220,6 @@ def create_app(
 
     async def api_game_load(request: Request):
         """Put a campaign back to a save, then start it with a new DM session (the old conversation is from later)."""
-        from dnd_cli.campaign import CampaignError, resolve_campaign_dir
         from view.settings import clear_session
 
         device = menu_gate(request)
@@ -1237,7 +1237,6 @@ def create_app(
         return JSONResponse({"game": campaign.name})
 
     async def api_campaign_delete(request: Request):
-        from dnd_cli.campaign import CampaignError, delete_campaign
         from view.settings import clear_session
 
         menu_gate(request)
@@ -1296,12 +1295,10 @@ def create_app(
 
     def options_doc() -> dict:
         """The creator's options, built once (slow on a cold cache). Raises RulesError."""
-        from dnd_cli import creation
-        from dnd_cli.commands import rules_cmd
 
         with rules["lock"]:
             if rules["doc"] is None:
-                rules["doc"] = actors.creator_options(creation.options(rules_cmd._api))
+                rules["doc"] = actors.creator_options(creation.options(fetch))
             return rules["doc"]
 
     def prefetch() -> None:
@@ -1330,7 +1327,6 @@ def create_app(
         return await png_response(render)
 
     async def api_creation_character(request: Request):
-        from dnd_cli.character import CharacterError
 
         stage = need()
         device = require_device(request)
@@ -1669,7 +1665,6 @@ def create_app(
 
     async def api_spell_levels(request: Request):
         """Spell index -> level, to group a spell list by level (the 5e API's spell list, cached on disk)."""
-        from dnd_cli.api import api_get
 
         data, err, _ = await run_in_threadpool(api_get, "spells")
         if err or not data:
@@ -1681,7 +1676,6 @@ def create_app(
         index = request.path_params["index"].lower().replace("'", "")
         if not beat.SLUG_RE.match(index):
             return error("No such spell.", 404)
-        from dnd_cli.api import api_get
 
         data, err, _ = await run_in_threadpool(api_get, f"spells/{index}")
         if err or not data:

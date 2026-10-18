@@ -10,7 +10,6 @@ scene location ids. See dungeon-crawl.md.
 
 from __future__ import annotations
 
-from collections import deque
 from pathlib import Path
 
 from stage import crawl
