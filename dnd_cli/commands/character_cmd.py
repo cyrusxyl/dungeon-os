@@ -3,8 +3,9 @@
 import json
 import sys
 
-from dnd_cli import canon, character
+from dnd_cli import character
 from dnd_cli.combat import stage_feed
+from dnd_cli.commands.show_cmd import run_stage
 
 
 def _print(obj) -> int:
@@ -12,24 +13,19 @@ def _print(obj) -> int:
     return 0
 
 
-def _run(campaign: str, fn) -> int:
-    """Resolve the campaign dir, run fn(dir), print CampaignError to stderr."""
-    try:
-        campaign_dir = canon.resolve_campaign_dir(campaign)
-        return fn(campaign_dir)
-    except character.CampaignError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+def _run(campaign: str | None, fn) -> int:
+    """Run fn(campaign_dir) on the campaign (default: the one the stage shows, else the active one); print its errors."""
+    return run_stage(campaign, fn)
 
 
-def execute_show(campaign: str, name: str) -> int:
+def execute_show(campaign: str | None, name: str) -> int:
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
         return _print(data)
     return _run(campaign, go)
 
 
-def execute_validate(campaign: str, name: str, fix: bool = False) -> int:
+def execute_validate(campaign: str | None, name: str, fix: bool = False) -> int:
     from dnd_cli import audit
     from dnd_cli.commands.rules_cmd import _api
 
@@ -52,7 +48,7 @@ def execute_validate(campaign: str, name: str, fix: bool = False) -> int:
     return _run(campaign, go)
 
 
-def execute_apply_damage(campaign: str, name: str, amount: int) -> int:
+def execute_apply_damage(campaign: str | None, name: str, amount: int) -> int:
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
         result = character.apply_damage(data, amount)
@@ -62,7 +58,7 @@ def execute_apply_damage(campaign: str, name: str, amount: int) -> int:
     return _run(campaign, go)
 
 
-def execute_heal(campaign: str, name: str, amount: int) -> int:
+def execute_heal(campaign: str | None, name: str, amount: int) -> int:
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
         result = character.heal(data, amount)
@@ -71,7 +67,7 @@ def execute_heal(campaign: str, name: str, amount: int) -> int:
     return _run(campaign, go)
 
 
-def execute_add_temp_hp(campaign: str, name: str, amount: int) -> int:
+def execute_add_temp_hp(campaign: str | None, name: str, amount: int) -> int:
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
         result = character.add_temp_hp(data, amount)
@@ -80,7 +76,7 @@ def execute_add_temp_hp(campaign: str, name: str, amount: int) -> int:
     return _run(campaign, go)
 
 
-def execute_cast(campaign: str, name: str, level: int) -> int:
+def execute_cast(campaign: str | None, name: str, level: int) -> int:
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
         result = character.cast_spell(data, level)
@@ -89,12 +85,13 @@ def execute_cast(campaign: str, name: str, level: int) -> int:
     return _run(campaign, go)
 
 
-def execute_use(campaign: str, name: str, resource: str, delta: int) -> int:
+def execute_use(campaign: str | None, name: str, resource: str, amount: int, back: bool = False) -> int:
     from dnd_cli import resources
+    delta = -amount if back else amount
 
     def go(campaign_dir):
-        if delta == 0:
-            raise character.CharacterError("--amount must be 1 or more.")
+        if amount < 1:
+            raise character.CharacterError("--amount must be 1 or more (use --back to give uses back).")
         data = character.load(campaign_dir, name)
         try:
             res = resources.spend(data, resource, delta)
@@ -109,7 +106,7 @@ def execute_use(campaign: str, name: str, resource: str, delta: int) -> int:
     return _run(campaign, go)
 
 
-def execute_set(campaign: str, name: str, field: str, value: str) -> int:
+def execute_set(campaign: str | None, name: str, field: str, value: str) -> int:
     """Record a subclass or fighting style choice. `character.save` validates the sheet."""
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
@@ -120,7 +117,7 @@ def execute_set(campaign: str, name: str, field: str, value: str) -> int:
     return _run(campaign, go)
 
 
-def execute_add(campaign: str, name: str, kind: str, value: str, prepared: bool = False, desc: str = "") -> int:
+def execute_add(campaign: str | None, name: str, kind: str, value: str, prepared: bool = False, desc: str = "") -> int:
     """Add a spell (known, or prepared with --prepared) or a feat. `character.save` validates the sheet."""
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
@@ -143,7 +140,7 @@ def execute_add(campaign: str, name: str, kind: str, value: str, prepared: bool 
     return _run(campaign, go)
 
 
-def execute_restore_slots(campaign: str, name: str, level) -> int:
+def execute_restore_slots(campaign: str | None, name: str, level) -> int:
     def go(campaign_dir):
         data = character.load(campaign_dir, name)
         result = character.restore_slots(data, level)

@@ -598,11 +598,31 @@ def test_cli_guards(c: Path) -> None:
         check("validate --fix offline: warning, no fixed claim, exit 1, sheet untouched",
               rc == 1 and "warning: cannot check" in err.getvalue() and "fixed:" not in out.getvalue()
               and path.read_bytes() == before and path.stat().st_mtime_ns == mtime)
-        sys.argv = ["dnd-cli", "character", "use", str(c), "aragorn", "Second Wind", "--amount", "-2"]
+        sys.argv = ["dnd-cli", "character", "use", "aragorn", "Second Wind", "--amount", "-2", "--campaign", str(c)]
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             rc = main()
         check("use --amount -2 is refused, no uses given back", rc == 1 and "--amount" in err.getvalue() and path.read_bytes() == before)
+
+        def run(*argv: str) -> tuple[int, str, str]:
+            sys.argv = ["dnd-cli", "character", "item", "aragorn", *argv, "--campaign", str(c)]
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                return main(), out.getvalue(), err.getvalue()
+        rc, out, _ = run("add", "+1 Rapier of Frost", "--perk", "keen", "--rarity", "rare", "--effects", "magic-weapon-1,frost-edge")
+        row = next(i for i in character.load(c, "aragorn")["inventory"] if i["name"] == "+1 Rapier of Frost")
+        check("item add takes a perk, a rarity and gear effects, and finds the base",
+              rc == 0 and row["description"] == "keen" and row["rarity"] == "rare" and row["effects"] == ["magic-weapon-1", "frost-edge"]
+              and row["type"] == "weapon" and row["base"] == "Rapier")
+        rc, _, err = run("add", "Ring", "--effects", "bless")
+        check("item add refuses an effect that is not gear", rc == 1 and "no gear effect bless" in err)
+        rc, _, err = run("add", "Ring", "--rarity", "shiny")
+        check("item add refuses an unknown rarity", rc == 1 and "rarity is one of" in err)
+        rc, _, err = run("profile", "+1 Rapier of Frost", "--profile", "{nope")
+        check("item profile refuses bad JSON", rc == 1 and "JSON" in err)
+        rc, _, _ = run("remove", "+1 Rapier of Frost")
+        check("item remove takes the item away", rc == 0 and not any(i["name"] == "+1 Rapier of Frost" for i in character.load(c, "aragorn")["inventory"]))
+        path.write_bytes(before)
     finally:
         rules_cmd._api, sys.argv = orig_api, orig_argv
 
@@ -901,7 +921,7 @@ def test_gear(c: Path) -> None:
         d = character.load(c, "aragorn")
         inv.add(d, "+1 Rapier of Frost", 1, type="weapon", base="Rapier", effects=["magic-weapon-1", "frost-edge"])
         inv.add(d, "+1 Plate Armor", 1, type="armor", base="Plate Armor", effects=["magic-armor-1"])
-        _wear = rules_cmd._wear
+        _wear = rules_cmd._equip
         _wear(d, "+1 Rapier of Frost", True)
         w = next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")
         check("equipping a loot weapon makes an attack under its name, from the stats of its base", asked == ["equipment/rapier"] and w["equipped"]
@@ -913,10 +933,14 @@ def test_gear(c: Path) -> None:
         character.save(c, "aragorn", d)
         r = effects.weapon(c, "aragorn", "", "+1 Rapier of Frost")
         check("the perks of the item reach the attack of the same name", r["dmg"] == 1 and r["extra"] == [["1d4", "cold"]])
-        _wear(d, "+1 Rapier of Frost", False)
+        inv.get(d, "+1 Rapier of Frost").unequip(d)
         check("putting the weapon away keeps the attack, not wielded", next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")["equipped"] is False)
         inv.add(d, "Flame Tongue", 1, type="weapon", effects=["flame-edge"])
         check("a weapon with effects and no base warns the DM", any("Warning" in line for line in _wear(d, "Flame Tongue", True)))
+        asked.clear()
+        _wear(d, "rapier", True)
+        check("an item not in the inventory is made from the 5e item of that name", asked == ["equipment/rapier"]
+              and any(i["name"] == "Rapier" and i["equipped"] for i in d["inventory"]))
     finally:
         rules_cmd._api = orig
         character.save(c, "aragorn", before)
@@ -938,7 +962,7 @@ def test_loot() -> None:
     inv.add(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
     check("a forced item keeps its perk text and rarity", data["inventory"][0] == {"name": "Longsword", "quantity": 1, "description": "keen: it hums near orcs", "rarity": "uncommon"})
     hints = loot.hints("Keen, of Flame, hums")
-    check("loot force names the effect of a catalog perk and says when the DM must rule", any("--effects keen-edge" in h for h in hints)
+    check("item add names the effect of a catalog perk and says when the DM must rule", any("--effects keen-edge" in h for h in hints)
           and any("--effects flame-edge" in h for h in hints) and len(hints) == 2
           and any("you rule it" in h for h in loot.hints("vicious")))
     inv.add(data, "Ring", 1, effects=["warding"])

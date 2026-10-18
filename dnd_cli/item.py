@@ -70,6 +70,10 @@ class Item:
         """True when equipping takes the stats of a base item from the 5e API (a weapon or armor with a `base`)."""
         return bool(self.base) and self.row.get("type") in ("weapon", "armor")
 
+    def has_weapon_effects(self, presets: dict) -> bool:
+        """True when one of its effects is a weapon effect. `presets` is the effects.PRESETS mapping (this module does not import it)."""
+        return any("weapon" in presets.get(e, {}) for e in self.perks)
+
     def profile(self) -> dict | None:
         """What it does on the board: the row's own profile, else the table's, else none."""
         p = self.row.get("profile") or table().get(self.name.lower())
@@ -109,6 +113,13 @@ class Item:
         if base is not None and self.needs_base:
             return equip_base(sheet, base, proficient, self.name)
         return self._flag(sheet, True)
+
+    def weapon_warning(self, presets: dict) -> str | None:
+        """A line for the DM when the item has weapon effects but no base, so no attack matches it."""
+        if not self.base and self.has_weapon_effects(presets):
+            return ("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
+                    "`character item <who> add \"<item>\" --base <Longsword>`.")
+        return None
 
     def unequip(self, sheet: dict) -> str:
         """Put it away. Its effects end. A weapon stays an attack that the character can use, like any weapon that is not wielded."""

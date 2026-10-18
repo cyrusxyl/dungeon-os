@@ -1,7 +1,7 @@
 """Treasure for `dnd-cli loot roll`: coins and items from the challenge rating, the kind of treasure and a seed.
 
 The table is stage/data/loot.json and the perks are in stage/data/perks.json. The same seed gives the same list. The engine rolls; the DM decides: it gives
-coins with `character gold`, items with `character item add` or `loot force`, and rerolls with another seed.
+coins with `character gold`, items with `character item add`, and rerolls with another seed.
 """
 
 from __future__ import annotations
@@ -96,7 +96,7 @@ def api_index(base: str) -> str:
 
 
 def hints(perk_text: str, given: list[str] | tuple = ()) -> list[str]:
-    """For `loot force`: the catalog perks named in the free text (split at commas), and what to do with each.
+    """For `character item add`: the catalog perks named in the free text (split at commas), and what to do with each.
     A perk whose effect is in `given` needs no hint."""
     out = []
     for word in (w.strip().lower() for w in perk_text.split(",")):
@@ -150,5 +150,5 @@ def lines(result: dict) -> list[str]:
         if item.get("effects"):
             out.append(f"      give it with --effects {','.join(item['effects'])}")
         out += [f"      you rule: {r}" for r in item.get("rulings", [])]
-    out.append("  Give coins with `character gold <who> +N` (in gp), items with `character item <who> add \"<item>\"`, or `loot force \"<item>\" --to <who> --perk \"...\" --effects <preset>`.")
+    out.append("  Give coins with `character gold <who> +N` (in gp), items with `character item <who> add \"<item>\" [--perk \"...\"] [--effects <preset>]`.")
     return out

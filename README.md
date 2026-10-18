@@ -33,7 +33,7 @@ Bardic Inspiration, advantage...), leave one off, and click **Roll**. The
 party panel shows the turn order, each character's action, bonus action and
 reaction, spell slots, class resources (Rage, Ki, Second Wind...),
 concentration and conditions. **Sheet** opens the abilities and skills, the
-inventory and the spellbook. The DM adds spell bonuses with `dnd-cli effect add`. Gear gives its effects while it is equipped (`loot force --effects`, `character item equip`).
+inventory and the spellbook. The DM adds spell bonuses with `dnd-cli effect add`. Gear gives its effects while it is equipped (`character item add --effects`, `character item equip`).
 
 The **Map** button shows the current level of the world (a dungeon, a city,
 a region) and the levels above it; pick a known place to travel there. In a

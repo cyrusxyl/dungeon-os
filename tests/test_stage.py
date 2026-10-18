@@ -774,7 +774,7 @@ def test_session_brief() -> None:
 def test_cli_defaults_and_races() -> None:
     print("cli defaults, races")
     import os
-    from dnd_cli.__main__ import fill_defaults
+    from dnd_cli.commands import canon_cmd, show_cmd
     from stage import actors
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -783,11 +783,10 @@ def test_cli_defaults_and_races() -> None:
         (c / "canon.json").write_text('{"last_session_written": 4}')
         os.environ["DUNGEON_STAGE_LOG"] = str(c / "stage" / "events.ndjson")
         try:
-            check("canon gets the stage campaign and the current session",
-                  fill_defaults(["canon", "add-fact", "DM", "x"]) == ["canon", "add-fact", str(c), "5", "DM", "x"])
-            check("character gets the stage campaign",
-                  fill_defaults(["character", "heal", "sireth", "3"]) == ["character", "heal", str(c), "sireth", "3"])
-            check("explicit arguments stay", fill_defaults(["canon", "show", str(c)]) == ["canon", "show", str(c)])
+            check("a command without --campaign gets the stage campaign", show_cmd._stage_campaign_dir(None) == c)
+            check("a canon session command without --session gets the current session",
+                  canon_cmd._session({"last_session_written": 4}, None) == 5 and canon_cmd._session({}, None) == 1
+                  and canon_cmd._session({"last_session_written": 4}, 2) == 2)
         finally:
             del os.environ["DUNGEON_STAGE_LOG"]
     drow = actors.build("x", ["race=drow", "eyes=green"], None)
@@ -1531,8 +1530,8 @@ def test_activity() -> None:
         ("uv run dnd-cli map place underdark deepvale-settlement name=D", "Drawing the map"),
         ("uv run dnd-cli actor set minthara name=Minthara", "Dressing the cast"),
         ("uv run dnd-cli site set crypt theme=dungeon", "Digging the dungeon"),
-        ("uv run dnd-cli character new menzoberranzan minthara --player cyrus", "Rolling up the party"),
-        ("uv run dnd-cli character level-up menzoberranzan minthara", "Levelling the party"),
+        ("uv run dnd-cli character new minthara --player cyrus --campaign menzoberranzan", "Rolling up the party"),
+        ("uv run dnd-cli character level-up minthara --campaign menzoberranzan", "Levelling the party"),
         ("uv run dnd-cli character show halsin", "Reading the character sheets"),
         ("uv run dnd-cli quest add x", "Weaving the plot threads"),
         ("uv run dnd-cli attack goblin", "Checking the rules"),

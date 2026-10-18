@@ -69,7 +69,7 @@ def brief(campaign_dir: Path, fetch=None) -> str:
     canon = _read(campaign_dir / "canon.json")
     out += ["", "## Canon (canon.json, DM only)"]
     out.append(json.dumps(json.loads(canon), separators=(",", ":")) if canon else
-               "(missing: run uv run dnd-cli canon init <campaign> before anything else)")
+               "(missing: run uv run dnd-cli canon init before anything else)")
 
     story = _read(campaign_dir / "dm_story.md")
     out += ["", "## Story bible (dm_story.md, DM only)",
