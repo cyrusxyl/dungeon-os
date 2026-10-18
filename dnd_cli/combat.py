@@ -25,9 +25,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from dnd_cli import abilities, character, dice, effects
+from dnd_cli.errors import RulesError
 from dnd_cli.item import attacks as pc_attacks, geometry
 from dnd_cli.api import api_get
-from dnd_cli.errors import RulesError  # noqa: F401 (also reached as combat.RulesError)
 from stage.files import read_json, write_json
 
 ABILITIES = dice.ABILITIES

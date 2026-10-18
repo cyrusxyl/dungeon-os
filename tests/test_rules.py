@@ -20,6 +20,7 @@ from pathlib import Path
 from dnd_cli import actions, canon, character, combat, dice, effects, loot, resources, sheet
 from dnd_cli import item as inv
 from dnd_cli.commands import session_cmd
+from dnd_cli.errors import RulesError
 
 REPO = Path(__file__).resolve().parents[1]
 PASS = FAIL = 0
@@ -52,7 +53,7 @@ def check(label: str, cond: bool) -> None:
 def raises(fn) -> bool:
     try:
         fn()
-    except (combat.RulesError, canon.CanonError, dice.DiceError):
+    except (RulesError, canon.CanonError, dice.DiceError):
         return True
     return False
 
@@ -585,7 +586,7 @@ def test_cli_guards(c: Path) -> None:
     from dnd_cli.commands import character_cmd, rules_cmd
 
     def offline(endpoint: str) -> dict:
-        raise combat.RulesError("offline")
+        raise RulesError("offline")
 
     orig_api, orig_argv = rules_cmd._api, sys.argv
     path = character.character_path(c, "aragorn")

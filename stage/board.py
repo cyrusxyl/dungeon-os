@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from dnd_cli import abilities, character, combat, dice, item as items
+from dnd_cli.errors import RulesError
 from stage import arena, cast
 from stage.beat import title
 
@@ -147,7 +148,7 @@ def open_fight(campaign_dir: Path, state: dict, stage: dict, who: str, target: s
 TILE_FT = 5
 
 
-class BoardError(combat.RulesError):
+class BoardError(RulesError):
     """A move or an attack the board refuses. The message says why."""
 
 

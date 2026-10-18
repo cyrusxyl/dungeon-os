@@ -13,7 +13,7 @@ from functools import cache
 from pathlib import Path
 
 from dnd_cli import dice
-from dnd_cli.combat import RulesError
+from dnd_cli.errors import RulesError
 
 LOOT_PATH = Path(__file__).resolve().parents[1] / "stage" / "data" / "loot.json"
 PERKS_PATH = LOOT_PATH.with_name("perks.json")

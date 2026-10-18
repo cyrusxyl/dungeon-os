@@ -5,6 +5,7 @@ from pathlib import Path
 
 from dnd_cli import audit, world
 from dnd_cli.commands.show_cmd import run_stage
+from dnd_cli.errors import RulesError
 from stage.files import read_json, write_json
 
 LOG_TAIL_WORDS = 1200
@@ -88,7 +89,6 @@ def cached_api(endpoint: str) -> dict:
     """5e API data from the local cache only. The brief must never wait for the network."""
     from dnd_cli import sources
     from dnd_cli.cache import load_cache
-    from dnd_cli.combat import RulesError
 
     hit = sources.replacement(endpoint.lstrip("/"))
     if hit is None:

@@ -13,10 +13,11 @@ from dnd_cli import item as items
 from dnd_cli.api import api_get
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from dnd_cli.dice import DiceError
+from dnd_cli.errors import RulesError
 from stage import arena, board, state as stage_state
 from stage.beat import log_path
 
-ERRORS = (combat.RulesError, DiceError, character.CharacterError, arena.ArenaError)
+ERRORS = (RulesError, DiceError, character.CharacterError, arena.ArenaError)
 
 
 def _out(lines: list[str]) -> int:
@@ -82,7 +83,7 @@ def execute_encounter(campaign, action: str, args) -> int:
             if on_board:
                 notify_stage(campaign_dir, {"type": "arena_end", **left})
             return lines
-        raise combat.RulesError("encounter start|add|next|status|damage|heal|condition|use|end")
+        raise RulesError("encounter start|add|next|status|damage|heal|condition|use|end")
     return _with_state(campaign, fn)
 
 
@@ -90,12 +91,12 @@ def _move(campaign_dir, state: dict, args) -> list[str]:
     """A creature the DM plays walks on the board. The rules of the board apply: speed, blocked cells, reaction attacks."""
     arena_id, a = board.running(campaign_dir, state)
     if bool(args.to) == bool(args.toward):
-        raise combat.RulesError("give --to X,Y or --toward <id>.")
+        raise RulesError("give --to X,Y or --toward <id>.")
     if args.to:
         try:
             x, y = (int(n) for n in args.to.split(","))
         except ValueError:
-            raise combat.RulesError("--to is X,Y, for example --to 7,4.") from None
+            raise RulesError("--to is X,Y, for example --to 7,4.") from None
         target = (x, y)
     else:
         target = board.approach(campaign_dir, state, a, args.who, args.toward)
@@ -153,7 +154,7 @@ def execute_save(campaign, args) -> int:
 
 def execute_check(campaign, args) -> int:
     if len(args.who) < 2:
-        raise combat.RulesError("usage: check <who...|all> <skill|ability|death> [--dc N]")
+        raise RulesError("usage: check <who...|all> <skill|ability|death> [--dc N]")
     names, what = args.who[:-1], args.who[-1]  # the last word is what is rolled
 
     def fn(campaign_dir, state):
@@ -173,13 +174,13 @@ def execute_effect(campaign, op: str, who: str | None, name: str | None) -> int:
             held = {who: held.get(who, [])} if who else held
             return _out([f"{cid}: {', '.join(ids)}" for cid, ids in held.items() if ids] or ["No active effects."])
         if not who or not name:
-            raise combat.RulesError(f"effect {op} <who> <effect>. Effects: {', '.join(effects.PRESETS)}.")
+            raise RulesError(f"effect {op} <who> <effect>. Effects: {', '.join(effects.PRESETS)}.")
         if not character.character_path(campaign_dir, who).exists():
-            raise combat.RulesError(f"no character {who!r}.")
+            raise RulesError(f"no character {who!r}.")
         try:
             (effects.add if op == "add" else effects.remove)(campaign_dir, who, name)
         except ValueError as e:
-            raise combat.RulesError(str(e)) from e
+            raise RulesError(str(e)) from e
         spec = effects.PRESETS[name]
         return _out([f"{who}: {spec['label']} {'on' if op == 'add' else 'off'}"
                      + (f" — {spec['info']}; " + ("the next matching roll uses it." if spec["use"] == "next"
@@ -234,7 +235,7 @@ def execute_item_add(args) -> int:
     from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
     def fn(campaign_dir, data):
         if args.rarity and args.rarity not in loot.RARITIES:
-            raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
+            raise RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
         ids = effects.gear_presets(args.effects)
         kind = loot.base_of(args.item, args.base)
         gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
@@ -267,7 +268,7 @@ def execute_item_profile(args) -> int:
         try:
             return [items.set_profile(data, args.item, json.loads(args.profile))]
         except json.JSONDecodeError:
-            raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
+            raise RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
     return _edit_sheet(args.campaign, args.name, fn)
 
 
@@ -287,7 +288,7 @@ def execute_gold(campaign, name: str, delta: str) -> int:
 def _api(endpoint: str) -> dict:
     data, error, _ = api_get(endpoint)
     if error or not data:
-        raise combat.RulesError(f"no {endpoint} in the 5e API. Find the index with: uv run dnd-cli search "
+        raise RulesError(f"no {endpoint} in the 5e API. Find the index with: uv run dnd-cli search "
                                 f"{endpoint.split('/')[0]} --name {endpoint.split('/')[-1].split('-')[0]}")
     return data
 
@@ -310,10 +311,10 @@ def _asi(text: str | None) -> dict:
     for part in filter(None, (text or "").split(",")):
         abil, sign, n = part.partition("+")
         if not sign or not n.isdigit():
-            raise combat.RulesError(f"--asi {text!r}: write it like str+2 or str+1,dex+1.")
+            raise RulesError(f"--asi {text!r}: write it like str+2 or str+1,dex+1.")
         out[combat.ability(abil)] = out.get(combat.ability(abil), 0) + int(n)
     if sum(out.values()) > 2:
-        raise combat.RulesError("an ability score improvement adds at most 2 points (a half-feat adds 1).")
+        raise RulesError("an ability score improvement adds at most 2 points (a half-feat adds 1).")
     return out
 
 
@@ -328,7 +329,7 @@ def execute_level_up(campaign, name: str, hp_mode: str, asi: str | None) -> int:
             desc = (_api(f"features/{f['index']}").get("desc") or [""])[0]
             feats.append({"name": f["name"], "description": desc[:300]})
         if any(f["name"].startswith("Ability Score Improvement") for f in feats) and asi is None:
-            raise combat.RulesError("this level gives an Ability Score Improvement. Ask the player, then run it with "
+            raise RulesError("this level gives an Ability Score Improvement. Ask the player, then run it with "
                                     "--asi str+2 (or --asi str+1,dex+1), or --asi none if they take a feat instead.")
         lines = sheet.level_up(data, level, hit_die, hp_mode, _asi(None if asi == "none" else asi), feats,
                                class_data=class_data)

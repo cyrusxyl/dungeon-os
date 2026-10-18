@@ -9,7 +9,7 @@ bonus. It never changes remaining slots or chosen spells.
 from __future__ import annotations
 
 from dnd_cli import actions, combat, resources, sheet
-from dnd_cli.combat import RulesError
+from dnd_cli.errors import RulesError
 
 # Features that need a recorded choice: feature name -> sheet key.
 CHOICES = {

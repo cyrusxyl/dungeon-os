@@ -57,6 +57,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli import item as inventory
 from dnd_cli.item import GOLD
+from dnd_cli.errors import RulesError
 from stage import actors, arena, beat, board, cast, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, ttsctl, voice, walk
 from stage.assets import AssetError
 from stage.files import read_json, write_json
@@ -725,7 +726,7 @@ def as_amount(value) -> int | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int | str) or not str(value).strip().lstrip("-").isdigit():
-        raise combat.RulesError("the amount must be a whole number.")
+        raise RulesError("the amount must be a whole number.")
     return int(value)
 
 
@@ -836,7 +837,6 @@ def make_character(campaign_dir: Path, body: dict) -> dict:
     """
     from dnd_cli import character, creation
     from dnd_cli.campaign import slugify
-    from dnd_cli.combat import RulesError
     from dnd_cli.commands import rules_cmd
 
     def text(key: str) -> str:
@@ -1313,7 +1313,6 @@ def create_app(
     table.on_start = prefetch
 
     async def api_creation_options(request: Request):
-        from dnd_cli.combat import RulesError
 
         try:
             return JSONResponse(await run_in_threadpool(options_doc))
@@ -1331,7 +1330,6 @@ def create_app(
 
     async def api_creation_character(request: Request):
         from dnd_cli.character import CharacterError
-        from dnd_cli.combat import RulesError
 
         stage = need()
         device = require_device(request)
@@ -1441,7 +1439,7 @@ def create_app(
             return board.open_fight(stage.campaign_dir, st, stage.state, who, str(target), str(weapon) if weapon else None, here, pcs)
         try:
             done = await run_in_threadpool(with_rules, stage, go)
-        except (combat.RulesError, character.CharacterError, arena.ArenaError) as e:
+        except (RulesError, character.CharacterError, arena.ArenaError) as e:
             return error(str(e), 400)
         beat.append(stage.campaign_dir, [{"type": "arena", "arena": done["arena"]}])
         name = stage.char_name(who)
@@ -1486,7 +1484,7 @@ def create_app(
         own(request, stage, src)  # the giver acts; the receiver may be anyone in the party
         try:
             await run_in_threadpool(with_rules, stage, lambda st: actions.grant(stage.campaign_dir, st, src, who, str(body.get("effect"))))
-        except (combat.RulesError, character.CharacterError) as e:
+        except (RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         return JSONResponse({"ok": True})
 
@@ -1500,7 +1498,7 @@ def create_app(
         weapon = body.get("weapon")
         try:
             amount = as_amount(body.get("amount"))
-        except combat.RulesError as e:
+        except RulesError as e:
             return error(str(e), 400)
         if board.arena_id_of(combat.load_state(stage.campaign_dir)):
             return await board_action(stage, who, body)
@@ -1513,7 +1511,7 @@ def create_app(
             done = await run_in_threadpool(with_rules, stage, lambda st: actions.perform(
                 stage.campaign_dir, st, who, str(body.get("action")), str(target) if target else None,
                 str(weapon) if weapon else None, amount=amount))
-        except (combat.RulesError, character.CharacterError) as e:
+        except (RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         name = character.load(stage.campaign_dir, who).get("name", who)
         if roll := done.get("roll"):
@@ -1544,7 +1542,7 @@ def create_app(
             arena_id, out = await run_in_threadpool(with_board, stage, go)
         except board.NeedsConfirm as e:
             return JSONResponse({"error": str(e), "confirm": True}, status_code=409)  # the browser asks the player, then sends it again with `confirm`
-        except (combat.RulesError, character.CharacterError) as e:
+        except (RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         await stage._local_event({"type": "arena_updated", "arena": arena_id})
         return JSONResponse(out)
@@ -1608,7 +1606,7 @@ def create_app(
             return out
         try:
             lines = await run_in_threadpool(with_rules, stage, end_and_skip)
-        except combat.RulesError as e:
+        except RulesError as e:
             return error(str(e), 400)
         state = combat.load_state(stage.campaign_dir)
         now = state["active_encounter"]["current_turn"]
@@ -1662,7 +1660,7 @@ def create_app(
         await stage._local_event({"type": "roll_done"})
         try:
             lines = await run_in_threadpool(roll_for, stage, req, skip)
-        except (combat.RulesError, character.CharacterError) as e:
+        except (RulesError, character.CharacterError) as e:
             return error(str(e), 400)
         await stage.submit(f"[{req.get('name', req['who'])} rolled in the roll window] " + " ".join(lines)
                            + (f" {req['note']}" if req.get("note") else "") + " Narrate the outcome.")
@@ -1856,7 +1854,7 @@ def create_app(
             return improvise.prompt(stage.campaign_dir, state, a, who, text, body.get("object"))
         try:
             line = await run_in_threadpool(build)
-        except (board.BoardError, combat.RulesError) as e:
+        except (board.BoardError, RulesError) as e:
             return error(str(e), 400)
         await stage.submit(line)
         return JSONResponse({"ok": True})
@@ -1873,7 +1871,7 @@ def create_app(
             return build(state, a, who)
         try:
             return JSONResponse(await run_in_threadpool(go))
-        except combat.RulesError as e:
+        except RulesError as e:
             return error(str(e), 404 if "no fight" in str(e) else 400)
 
     async def api_arena_hand(request: Request):

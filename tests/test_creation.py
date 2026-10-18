@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 
 from dnd_cli import character, combat, creation
+from dnd_cli.errors import RulesError
 from test_rules import campaign  # the committed example campaign, copied to a temp dir
 
 PASS = FAIL = 0
@@ -103,7 +104,7 @@ DATA.update({
 
 def fetch(endpoint: str) -> dict:
     if endpoint not in DATA:
-        raise combat.RulesError(f"no {endpoint}")
+        raise RulesError(f"no {endpoint}")
     return DATA[endpoint]
 
 
@@ -118,7 +119,7 @@ def build(**kw) -> dict:
 def fails(**kw) -> str:
     try:
         build(**kw)
-    except combat.RulesError as e:
+    except RulesError as e:
         return str(e)
     return ""
 
@@ -278,7 +279,7 @@ def test_create() -> None:
         try:
             creation.create(c, fetch, "thorin", **STD)
             refused = False
-        except combat.RulesError as e:
+        except RulesError as e:
             refused = "already exists" in str(e)
         check("an existing id is refused", refused)
         check("the output is short", len(lines) <= 3 and "HP 11" in lines[0] and "bonds" in lines[-1])

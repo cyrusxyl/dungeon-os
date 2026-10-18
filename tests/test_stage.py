@@ -14,6 +14,7 @@ import time
 import tempfile
 from pathlib import Path
 
+from dnd_cli.errors import RulesError
 from stage import beat, state
 from view.settings import build_dm_command
 
@@ -956,7 +957,7 @@ def test_creator() -> None:
         async def routes():
             saved = rules_cmd._api
             try:
-                rules_cmd._api = lambda ep: (_ for _ in ()).throw(tc.combat.RulesError("down"))
+                rules_cmd._api = lambda ep: (_ for _ in ()).throw(RulesError("down"))
                 app = create_app(None)
                 await app.state.table.start(camp(tmp, {"party": "create"}), ["cat"])
                 status, r = await api(app, "GET", "/api/creation/options")

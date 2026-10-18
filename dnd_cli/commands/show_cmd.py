@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dnd_cli import world
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
+from dnd_cli.errors import RulesError
 from stage import actors, beat, cast, crawl, maps, scenes, state
 from stage.files import read_json, write_json
 
@@ -129,10 +130,10 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
 
         try:
             if not character.character_path(campaign_dir, e["who"]).exists():
-                raise combat.RulesError(f"@roll is for player characters; {e['who']!r} has no sheet. "
+                raise RulesError(f"@roll is for player characters; {e['who']!r} has no sheet. "
                                         "Roll for others with `uv run dnd-cli check`.")
             e.update(combat.roll_preview(campaign_dir, combat.load_state(campaign_dir), e["who"], e["what"]))
-        except (combat.RulesError, character.CharacterError) as err:
+        except (RulesError, character.CharacterError) as err:
             print(f"Error: @roll {e['who']} {e['what']}: {err}", file=sys.stderr)
             return 1
 

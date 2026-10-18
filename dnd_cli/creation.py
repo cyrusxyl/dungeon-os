@@ -17,6 +17,7 @@ from pathlib import Path
 from dnd_cli import audit, character, dice, sheet
 from dnd_cli import item as inv
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, load_state, save_state
+from dnd_cli.errors import RulesError
 from stage.files import read_json, write_json
 
 

@@ -18,6 +18,7 @@ import random
 from pathlib import Path
 
 from dnd_cli import character, combat, dice, effects, item, resources
+from dnd_cli.errors import RulesError
 
 ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
 
@@ -62,15 +63,15 @@ def _lay_on_hands(ctx: dict) -> tuple[list[str], int]:
     """Heal `target` (default: self) from the pool: `amount` points, never above their max HP."""
     cid, target = ctx["cid"], ctx["target"] or ctx["cid"]
     if target not in combat.party(ctx["campaign_dir"], ctx["state"]):
-        raise combat.RulesError(f"Lay on Hands needs an ally: {', '.join(combat.party(ctx['campaign_dir'], ctx['state']))}.")
+        raise RulesError(f"Lay on Hands needs an ally: {', '.join(combat.party(ctx['campaign_dir'], ctx['state']))}.")
     left = ctx["spec"]["left"]
     amount = ctx["amount"] if ctx["amount"] is not None else left
     if not 1 <= amount <= left:
-        raise combat.RulesError(f"Lay on Hands: pick 1 to {left} points.")
+        raise RulesError(f"Lay on Hands: pick 1 to {left} points.")
     hp = combat.combatant(ctx["campaign_dir"], ctx["state"], target)["hp"]
     missing = hp["max"] - hp["current"]
     if missing <= 0:
-        raise combat.RulesError(f"{target} is at full HP.")
+        raise RulesError(f"{target} is at full HP.")
     healed = min(amount, missing)  # the pool pays only for the points that heal
     return [f"{cid} Lay on Hands: {healed} points from the pool ({left - healed} left).",
             combat.heal(ctx["campaign_dir"], ctx["state"], target, healed)], healed
@@ -148,25 +149,25 @@ def spec_for(sheet: dict, action: str) -> dict:
     if action.startswith("smite:"):
         choice = action.split(":", 1)[1]
         if choice != "none" and not choice.isdigit():
-            raise combat.RulesError(f"smite: use a slot level or none, not {choice!r}.")
+            raise RulesError(f"smite: use a slot level or none, not {choice!r}.")
         level = None if choice == "none" else int(choice)
         if level is not None:
             if not 1 <= level <= 9:
-                raise combat.RulesError(f"smite: slot level must be 1 to 9, not {level}.")
+                raise RulesError(f"smite: slot level must be 1 to 9, not {level}.")
             if combat.smite_levels(sheet).get(level, 0) <= 0:
-                raise combat.RulesError(f"smite: no level {level} spell slot left.")
+                raise RulesError(f"smite: no level {level} spell slot left.")
         return _smite_spec(level)
     if action.startswith("feature:"):
         name = action.split(":", 1)[1]
         res = next((r for r in resources.for_sheet(sheet) if r["name"] == name), None)
         if name not in card_features(sheet) or res is None:
-            raise combat.RulesError(f"no class feature {name!r}.")
+            raise RulesError(f"no class feature {name!r}.")
         f = FEATURES[name]
         return {"id": action, "label": name, "cost": f["cost"], "combat": f["combat"], "info": f["info"],
                 "left": res["max"] - res["used"], "feature": name, "target": f.get("target"), "amount": f.get("amount")}
     spec = next((a for a in BASIC if a["id"] == action), None)
     if spec is None:
-        raise combat.RulesError(f"no action {action!r}. Actions: {', '.join(a['id'] for a in BASIC)}.")
+        raise RulesError(f"no action {action!r}. Actions: {', '.join(a['id'] for a in BASIC)}.")
     return spec
 
 
@@ -230,7 +231,7 @@ def perform(campaign_dir: Path, state: dict, cid: str, action: str, target: str 
     spec = spec_for(sheet, action)
     reason = why_not(campaign_dir, state, cid, sheet, spec)
     if reason:
-        raise combat.RulesError(f"{spec['label']}: {reason.lower()}.")
+        raise RulesError(f"{spec['label']}: {reason.lower()}.")
     if "smite" in spec:
         pend = pending_smite(state, cid)
         if spec["smite"] is None:
@@ -238,7 +239,7 @@ def perform(campaign_dir: Path, state: dict, cid: str, action: str, target: str 
             return {"lines": [f"{cid} does not smite."]}
         return {"lines": combat.smite_hit(campaign_dir, state, cid, pend["target"], spec["smite"], bool(pend.get("crit")), rng)}
     if spec.get("target") == "enemy" and target not in _enemies(state):
-        raise combat.RulesError(f"{spec['label']} needs an enemy that is standing: {', '.join(_enemies(state))}.")
+        raise RulesError(f"{spec['label']} needs an enemy that is standing: {', '.join(_enemies(state))}.")
     cost = spec["cost"]
     if spec["id"] == "attack":
         name = weapon or next(a["name"] for a in attacks(sheet))
@@ -308,9 +309,9 @@ def grant(campaign_dir: Path, state: dict, src: str, target: str, effect: str) -
     """`src` puts `effect` on `target`: spends the slot or use and the action or bonus action, then adds it."""
     offer = next((o for o in offers(campaign_dir, state, target) if o["from"] == src and o["effect"] == effect), None)
     if offer is None:
-        raise combat.RulesError(f"{src} cannot give {effect} to {target}.")
+        raise RulesError(f"{src} cannot give {effect} to {target}.")
     if offer["why"]:
-        raise combat.RulesError(f"{effect}: {offer['why'].lower()}.")
+        raise RulesError(f"{effect}: {offer['why'].lower()}.")
     sheet = character.load(campaign_dir, src)
     if offer["slot"]:
         character.cast_spell(sheet, offer["slot"])
