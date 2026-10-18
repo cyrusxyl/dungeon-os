@@ -11,6 +11,7 @@ magic for how the AI DM is expected to call it.
 """
 
 import json
+from functools import cache
 from pathlib import Path
 from typing import Optional
 
@@ -27,9 +28,12 @@ class CharacterError(CampaignError):
     """Raised for any character file problem: missing file, bad data, bad arguments."""
 
 
-def _load_schema() -> dict:
+@cache
+def _validator():
+    """The schema checked and compiled once: `jsonschema.validate` would check the schema again on every call."""
     with open(SCHEMA_PATH) as f:
-        return json.load(f)
+        schema = json.load(f)
+    return jsonschema.validators.validator_for(schema)(schema)
 
 
 def character_path(campaign_dir: Path, name: str) -> Path:
@@ -38,9 +42,8 @@ def character_path(campaign_dir: Path, name: str) -> Path:
 
 def validate(data: dict) -> None:
     """Raise CharacterError with a clear message if data does not match the schema."""
-    schema = _load_schema()
     try:
-        jsonschema.validate(data, schema)
+        _validator().validate(data)
     except jsonschema.ValidationError as e:
         location = "/".join(str(p) for p in e.absolute_path) or "(root)"
         raise CharacterError(

@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from dnd_cli import abilities, character, combat, dice
+from dnd_cli import abilities, character, combat, dice, item as items
 from stage import arena, cast
 from stage.beat import title
 
@@ -262,7 +262,7 @@ def sight_radius(campaign_dir: Path, state: dict, a: dict, cid: str) -> int:
     dv = max((ft for word, ft in arena.arena_data()["darkvision_ft"].items() if word in race), default=0) // TILE_FT
     if a["spec"]["light"] == "dim":
         return max(DIM_TILES, dv)
-    torch = TORCH_TILES if any("torch" in i["name"].lower() for i in sheet.get("inventory", [])) else 0
+    torch = TORCH_TILES if any("torch" in it.name.lower() for it in items.items(sheet)) else 0
     return max(dv, torch, 1)
 
 

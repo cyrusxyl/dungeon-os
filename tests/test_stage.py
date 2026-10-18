@@ -1037,6 +1037,7 @@ def test_creator() -> None:
 def test_notices() -> None:
     print("inventory notices: only the owner, never on first sight")
     from dnd_cli import character, sheet
+    from dnd_cli import item as items
     from stage.server import Stage
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -1045,14 +1046,15 @@ def test_notices() -> None:
         check("first sight sets the baseline and says nothing", st.inventory_notices() == [] and set(st.holdings) == {"aragorn", "legolas"})
         check("an unchanged sheet says nothing", st.inventory_notices() == [])
         sh = character.load(c, "legolas")
-        sheet.add_item(sh, "Rope", 2)
+        items.add(sh, "Rope", 2)
         sheet.gold(sh, 15)
         character.save(c, "legolas", sh)
         got = st.inventory_notices()
         check("a gain names the item, the count and the gold", len(got) == 1 and got[0]["who"] == "legolas"
               and set(got[0]["lines"]) == {"+Rope ×2", "+15 gp"})
+        time.sleep(0.02)  # notices compare file mtimes, and a fast save can land in the same clock tick
         sh = character.load(c, "legolas")
-        sheet.remove_item(sh, "Rope", 1)
+        items.remove(sh, "Rope", 1)
         character.save(c, "legolas", sh)
         check("a loss shows a minus", [n["lines"] for n in st.inventory_notices()] == [["−Rope"]])
         st.fold(got)

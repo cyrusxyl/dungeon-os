@@ -17,7 +17,6 @@ from dnd_cli import dice, item, resources
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, level_for_xp
 from dnd_cli.dice import prof_for_level
 
-GOLD = "Gold Pieces"
 
 
 def mods(sheet: dict) -> dict:
@@ -64,33 +63,19 @@ def base_ac(class_name: str, m: dict) -> int:
 # -- items and gold ----------------------------------------------------------
 
 
-# The rows are `dnd_cli.item`'s. These names stay for the callers.
-add_item = item.add
-remove_item = item.remove
-set_equipped = item.set_equipped
-set_profile = item.set_profile
-
-
-def get_item(sheet: dict, name: str) -> dict:
-    return item.get(sheet, name).to_row()
-
-
 def gold(sheet: dict, delta: int) -> str:
-    purse = item.find(sheet, GOLD)
+    purse = item.find(sheet, item.GOLD)
     have = purse.quantity if purse else 0
     if have + delta < 0:
         raise RulesError(f"{sheet['name']} has only {have} gp; {-delta} gp is too much.")
     if delta > 0:
-        add_item(sheet, GOLD, delta)
+        item.add(sheet, item.GOLD, delta)
     elif delta < 0:
-        remove_item(sheet, GOLD, -delta)
+        item.remove(sheet, item.GOLD, -delta)
     return f"{sheet['name']}: {have + delta} gp"
 
 
 # -- gear --------------------------------------------------------------------
-
-
-equip = item.equip_base
 
 
 # -- rests -------------------------------------------------------------------

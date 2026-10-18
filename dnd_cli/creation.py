@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 
 from dnd_cli import audit, character, dice, sheet
+from dnd_cli import item as inv
 from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, load_state, save_state
 from stage.files import read_json, write_json
 
@@ -148,7 +149,7 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
     if clash:
         raise RulesError(f"{', '.join(sorted(clash))} comes from two sources. Pick another class skill, "
                          "or another skill in --background-skills.")
-    prof = sheet.prof_for_level(1)
+    prof = dice.prof_for_level(1)
     proficient = [*chosen, *bg_skills, *race_skills]
 
     die = c["hit_die"]
@@ -173,9 +174,9 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
 
     for idx, n in Counter(slug(i) for i in _names(equipment)).items():  # a repeated index is a quantity
         item = _lookup(fetch, f"equipment/{idx}", "equipment")
-        sheet.equip(data, item)
+        inv.equip_base(data, item)
         if n > 1:
-            sheet.add_item(data, item["name"], n - 1)
+            inv.add(data, item["name"], n - 1)
 
     traits = [(t["name"], f"traits/{t['index']}") for t in r.get("traits", []) + sub.get("racial_traits", [])]
     feats = [(f["name"], f"features/{f['index']}") for f in lvl.get("features", [])]

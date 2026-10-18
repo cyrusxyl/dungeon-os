@@ -46,13 +46,13 @@ def test_round_trip() -> None:
     for pattern in (REPO / "tests" / "fixtures", REPO / "game" / "campaigns"):
         for f in pattern.glob("**/characters/*.json"):
             rows += json.loads(f.read_text()).get("inventory", [])
-    ok = all(json.dumps(Item.from_row(copy.deepcopy(r)).to_row()) == json.dumps(r) for r in rows)
+    ok = all(json.dumps(Item(copy.deepcopy(r)).row) == json.dumps(r) for r in rows)
     check(f"{len(rows)} rows come back byte for byte, unknown fields and key order kept", ok)
     row = {"name": "Rope"}
-    Item.from_row(row).view()
-    Item.from_row(row).effects()
+    Item(row).view()
+    Item(row).effects()
     check("reading an item adds no key to the row", row == {"name": "Rope"})
-    check("view of a bare row has the old defaults", Item.from_row({}).view() == {
+    check("view of a bare row has the old defaults", Item({}).view() == {
         "name": None, "quantity": 1, "weight": 0, "equipped": False, "description": "", "rarity": None, "effects": []})
 
 
@@ -73,30 +73,18 @@ def test_hand_edit_survives() -> None:
           str(list(after)))
 
 
-def test_kinds() -> None:
-    print("kinds")
-    kind = lambda **r: Item.from_row({"name": r.pop("name", "Thing"), **r}).kind  # noqa: E731
-    check("weapon and armor by type", kind(type="weapon") == "weapon" and kind(type="armor") == "armor")
-    check("a table potion is a consumable", kind(name="Potion of Healing") == "consumable")
-    check("a table bomb is a throwable", kind(name="Acid") == "throwable")
-    check("a profile on the row gives the kind", kind(profile={"kind": "heal", "heal": "1d4"}) == "consumable"
-          and kind(profile={"kind": "throw", "range_ft": 20, "damage": ["1d4", "fire"]}) == "throwable")
-    check("a ring or an item with effects is a wearable", kind(type="ring") == "wearable" and kind(effects=["warding"]) == "wearable")
-    check("anything else is an item", kind() == "item")
-
-
 def test_ability_and_effects() -> None:
     print("ability and effects")
     rec = {"mods": {"dexterity": 3}}
-    heal = Item.from_row({"name": "Potion of Healing", "quantity": 2}).ability(rec)
+    heal = Item({"name": "Potion of Healing", "quantity": 2}).ability(rec)
     check("heal card", heal and heal["kind"] == "heal" and heal["heal"] == "2d4+2" and heal["qty"] == 2 and heal["id"] == "item:Potion of Healing")
-    bomb = Item.from_row({"name": "Acid"}).ability(rec)
+    bomb = Item({"name": "Acid"}).ability(rec)
     check("throw card uses DEX", bomb and bomb["to_hit"] == 3 and bomb["damage"] == [["2d6", "acid"]] and bomb["attack"]["range_ft"] == 20)
-    own = Item.from_row({"name": "Acid", "profile": {"kind": "heal", "heal": "1d4"}}).ability(rec)
+    own = Item({"name": "Acid", "profile": {"kind": "heal", "heal": "1d4"}}).ability(rec)
     check("the row's profile wins over the table", own and own["kind"] == "heal")
-    check("no profile, no card", Item.from_row({"name": "Rope"}).ability(rec) is None)
-    ring = Item.from_row({"name": "Ring", "effects": ["warding"], "equipped": True})
-    check("effects count while equipped only", ring.effects() == ["warding"] and Item.from_row({"name": "Ring", "effects": ["warding"]}).effects() == [])
+    check("no profile, no card", Item({"name": "Rope"}).ability(rec) is None)
+    ring = Item({"name": "Ring", "effects": ["warding"], "equipped": True})
+    check("effects count while equipped only", ring.effects() == ["warding"] and Item({"name": "Ring", "effects": ["warding"]}).effects() == [])
 
 
 def test_inventory() -> None:
@@ -111,7 +99,7 @@ def test_inventory() -> None:
     check("get names the inventory", raises(lambda: items.get(sh, "Ghost")))
     items.add(sh, "+1 Sword", 1, type="weapon", base="Longsword", effects=["magic-weapon-1"])
     sword = items.get(sh, "+1 sword")
-    check("needs_base", sword.needs_base and not Item.from_row({"name": "x", "type": "ring", "base": "y"}).needs_base)
+    check("needs_base", sword.needs_base and not Item({"name": "x", "type": "ring", "base": "y"}).needs_base)
     sh["weapons"].append({"name": "+1 Sword", "attack_bonus": 4, "damage": "1d8", "equipped": False})
     sword.equip(sh)
     check("equip without base data sets the flag and the attack", sword.equipped and sh["weapons"][0]["equipped"])
@@ -125,7 +113,7 @@ def test_inventory() -> None:
 
 
 if __name__ == "__main__":
-    for t in (test_round_trip, test_hand_edit_survives, test_kinds, test_ability_and_effects, test_inventory):
+    for t in (test_round_trip, test_hand_edit_survives, test_ability_and_effects, test_inventory):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

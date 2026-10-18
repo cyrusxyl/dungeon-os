@@ -314,7 +314,7 @@ def main() -> int:
                 check("?view=hand is the player screen now: it shows the party cards", await page.eval("document.querySelectorAll('main section h2').length") >= 1)
 
                 print("scene title, notices, the table follows the phone")
-                from dnd_cli import character, sheet as dnd_sheet
+                from dnd_cli import character, item as inv
                 beat.append(c, [{"type": "scene", "location": "mossy-crypt", "party": ["aragorn", "legolas"]},
                                 {"type": "narrate", "text": "First line zzz."}, {"type": "narrate", "text": "Second line yyy."}, {"type": "dm_status", "status": "idle"}])
                 await asyncio.sleep(1.5)
@@ -336,7 +336,7 @@ def main() -> int:
                 await page.call("Page.navigate", url=f"http://127.0.0.1:{port}/?view=hand")
                 await asyncio.sleep(2.5)
                 sh = character.load(c, "aragorn")
-                dnd_sheet.add_item(sh, "Silver Key", 1)
+                inv.add(sh, "Silver Key", 1)
                 character.save(c, "aragorn", sh)
                 await asyncio.sleep(1.5)
                 await page.shot("notice")

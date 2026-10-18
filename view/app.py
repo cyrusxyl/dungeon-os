@@ -31,6 +31,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 from textual_tty import Terminal
 
+from dnd_cli import item as items
 from dnd_cli.campaign import GAME_DIR, resolve_campaign_dir
 from view.settings import build_dm_command, load_settings
 
@@ -51,10 +52,9 @@ def _format_character(data: dict) -> str:
         "",
         "[b]Inventory[/b]",
     ]
-    for item in data.get("inventory", []):
-        qty = item.get("quantity", 1)
-        suffix = f" x{qty}" if qty and qty != 1 else ""
-        lines.append(f"  • {escape(item.get('name', '?'))}{suffix}")
+    for it in items.items(data):
+        suffix = f" x{it.quantity}" if it.quantity != 1 else ""
+        lines.append(f"  • {escape(it.name or '?')}{suffix}")
     return "\n".join(lines)
 
 

@@ -218,7 +218,7 @@ def _wear(data: dict, name: str, on: bool) -> list[str]:
     if not on:
         return it.unequip(data)
     lines = it.equip(data, _api(f"equipment/{loot.api_index(it.base)}") if it.needs_base else None)
-    if not it.base and any("weapon" in effects.PRESETS[e] for e in it.perks if e in effects.PRESETS):
+    if not it.base and any("weapon" in effects.PRESETS.get(e, {}) for e in it.perks):
         lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
                      "`loot force \"<item>\" --to <who> --base <Longsword>`.")
     return lines
@@ -228,14 +228,14 @@ def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon
     def fn(campaign_dir, data):
         if op == "profile":
             try:
-                return [sheet.set_profile(data, item, json.loads(profile or ""))]
+                return [items.set_profile(data, item, json.loads(profile or ""))]
             except json.JSONDecodeError:
                 raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
         if op in ("equip", "unequip"):
             return _wear(data, item, op == "equip")
         if op == "remove":
-            return [sheet.remove_item(data, item, qty)]
-        lines = [sheet.add_item(data, item, qty)]
+            return [items.remove(data, item, qty)]
+        lines = [items.add(data, item, qty)]
         if record_canon:
             from dnd_cli import canon
             c = canon.load(campaign_dir)
@@ -269,7 +269,7 @@ def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarit
             raise combat.RulesError(f"no gear effect {', '.join(bad)}. Gear effects: {', '.join(gear)}.")
         kind = loot.base_of(item, base)
         gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
-        return [sheet.add_item(data, item, qty, perk, rarity, **gear)] + loot.hints(perk, ids)
+        return [items.add(data, item, qty, perk, rarity, **gear)] + loot.hints(perk, ids)
     return _edit_sheet(campaign, who, fn)
 
 
@@ -291,7 +291,7 @@ def _api(endpoint: str) -> dict:
 
 
 def execute_equip(campaign, name: str, index: str, proficient: bool) -> int:
-    return _edit_sheet(campaign, name, lambda c, data: sheet.equip(data, _api(f"equipment/{index}"), proficient))
+    return _edit_sheet(campaign, name, lambda c, data: items.equip_base(data, _api(f"equipment/{index}"), proficient))
 
 
 def execute_xp(campaign, names: list[str], amount: int) -> int:

@@ -23,7 +23,7 @@ from dnd_cli.errors import RulesError
 
 ITEMS_PATH = Path(__file__).resolve().parents[1] / "stage" / "data" / "items.json"
 PROFILE_KINDS = ("heal", "throw")
-GEAR_TYPES = ("weapon", "armor")  # types whose `base` gives real stats
+GOLD = "Gold Pieces"
 
 
 @cache
@@ -33,17 +33,10 @@ def table() -> dict:
 
 
 class Item:
-    """One inventory row. Build it with `Item.from_row(row)`; `to_row()` is the same row."""
+    """One inventory row. `Item(row)` wraps it; `.row` is the same dict."""
 
     def __init__(self, row: dict):
         self.row = row
-
-    @classmethod
-    def from_row(cls, row: dict) -> "Item":
-        return cls(row)
-
-    def to_row(self) -> dict:
-        return self.row
 
     # -- what the row says ---------------------------------------------------
 
@@ -72,22 +65,12 @@ class Item:
     @property
     def needs_base(self) -> bool:
         """True when equipping takes the stats of a base item from the 5e API (a weapon or armor with a `base`)."""
-        return bool(self.base) and self.row.get("type") in GEAR_TYPES
+        return bool(self.base) and self.row.get("type") in ("weapon", "armor")
 
     def profile(self) -> dict | None:
         """What it does on the board: the row's own profile, else the table's, else none."""
         p = self.row.get("profile") or table().get(self.name.lower())
         return p if p and p.get("kind") in PROFILE_KINDS else None
-
-    @property
-    def kind(self) -> str:
-        """weapon, armor, consumable (heals), throwable, wearable (other gear or an item with effects), or item."""
-        if self.row.get("type") in GEAR_TYPES:
-            return self.row["type"]
-        p = self.profile()
-        if p:
-            return "consumable" if p["kind"] == "heal" else "throwable"
-        return "wearable" if self.row.get("type") or self.perks else "item"
 
     # -- what it gives -------------------------------------------------------
 
@@ -208,15 +191,8 @@ def remove(sheet: dict, name: str, qty: int = 1) -> str:
     return f"{sheet['name']}: {item.name} x{item.quantity}"
 
 
-def set_equipped(sheet: dict, name: str, on: bool) -> str:
-    item = get(sheet, name)
-    return item.equip(sheet)[0] if on else item.unequip(sheet)[0]
-
-
 def set_profile(sheet: dict, name: str, profile: dict) -> str:
-    item = find(sheet, name)
-    if not item:
-        raise RulesError(f"{sheet['name']} has no {name!r}.")
+    item = get(sheet, name)
     kind = item.set_profile(profile)
     return f"{sheet['name']}: {item.name} now does something in a fight ({kind})"
 

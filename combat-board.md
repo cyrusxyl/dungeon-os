@@ -315,10 +315,10 @@ The character sheet keeps the whole inventory. The hand shows only what a player
 
 **The Item layer** (`dnd_cli/item.py`). The sheet is the save file: the DM reads it, fixes it by hand, and git diffs it. The engine reads a row through one `Item` and no module reads the keys of a row itself. Rules:
 
-- An `Item` wraps one row. It does not copy it. `Item.from_row(row)` and `item.to_row()` give the same row, so a field that the class does not know (a DM's hand edit) stays. The class adds no default key.
+- An `Item` wraps one row. It does not copy it. `Item(row)` and `item.row` are the same dict, so a field that the class does not know (a DM's hand edit) stays. The class adds no default key.
 - A row is an *instance*: `name`, `quantity`, `equipped`, `rarity`, and `type` and `base` as a reference to the definition. The definition comes from the 5e data (`equip_base`), from `stage/data/items.json` (the profile), or from the row. A field of the row wins over the definition (a DM ruling, for example `profile`).
-- `Item.kind` is weapon, armor, consumable, throwable, wearable or item. `equip(sheet, base)` and `unequip(sheet)` change the sheet. `ability(rec)` is the hand card. `effects()` are the presets while it is equipped. `view()` is the UI row.
-- `Item` does no I/O and imports no rules module. The caller loads and saves through `dnd_cli.character`, and fetches the 5e data of a base. The `sheet.py` names (`add_item`, `remove_item`, `set_equipped`, `set_profile`, `equip`) stay as aliases.
+- `equip(sheet, base)` and `unequip(sheet)` change the sheet. `ability(rec)` is the hand card. `effects()` are the presets while it is equipped. `view()` is the UI row.
+- `Item` does no I/O and imports no rules module. The caller loads and saves through `dnd_cli.character`, and fetches the 5e data of a base. Callers use `item.add`, `item.remove`, `item.get`, `item.equip_base` and `item.set_profile`; `sheet.py` has no item names.
 - The JSON schema (`game/schemas/character.schema.json`) is the contract for the file. A new field goes in the schema and in the class together. A new item kind is added in `item.py` and nowhere else.
 - Not now: a typed `Character`, NPC records, a database, a registry, and automatic load and save. The same pattern fits `Character` later (`from_sheet` and `to_sheet`) and the monster records (`combat.pc_record`, `stage_record`). Start them only when the same pain shows up.
 
