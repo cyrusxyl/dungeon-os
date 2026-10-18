@@ -1,89 +1,168 @@
-"""Where each actor stands in a scene room, in cells. A port of `stage/web/src/lib/layout.ts`: keep the two the same.
+"""Where each actor stands in a scene room. The server runs this for every actor that has no cell, and keeps the cell.
 
-`stage/web/check/layout_cases.json` holds inputs and the cells the TypeScript gives; both languages are tested against it.
-On the screen a cell (x, y) lies at s = x - y across and d = x + y deep. The party takes the left of the screen, the hostile
-the right, the others the back or beside the party. Same inputs, same cells.
+The order of the steps:
+ 1. An actor `on` a prop stands on the cell of the prop, at a point of its picture. The browser finds the point; the cell is kept here.
+ 2. An actor `near` a prop takes a free cell next to it.
+ 3. The party and its allies stand in one tight group, as far from the others as the room allows.
+ 4. Every other actor takes a cell drawn from a weight map: hostile actors favour cells far from the party, neutral actors cells
+    at a middle distance, and no one stands on top of another.
+Each choice is made on the screen, not on the grid. A figure is 64 px wide and a cell is 64 px across on the screen, so two
+cells (x, y) and (x+1, y) differ by 32 px across and the figures overlap. `apart` is the rule: two actors differ by 2 or more
+across (s = x - y) or deep (d = x + y). A room too full for that relaxes the rule to "not the same cell"; no one is left out.
 """
 
 from __future__ import annotations
 
-RANK = {"far-left": 0, "left": 1, "center": 2, "right": 3, "far-right": 4}
-ROW_DEPTH = {"back": 0.27, "mid": 0.48, "front": 0.69}  # the fraction of the way from the back of the floor to the front
+import math
+import random
+
+SPACE = 2  # the least difference across or deep (see above)
+AWAY = 8  # the distance from the others at which a group has "enough" room
+FRONT = ((1, 0), (0, 1), (1, 1))  # the cells in front of a prop, on the screen: no one stands there when the prop holds someone
+
+PARTY = ("party", "ally")
+
+Cell = tuple[int, int]
 
 
-def _targets(n: int, span: tuple[float, float], rows: list[str], depth) -> list[tuple[float, float]]:
-    """Spread n actors over the rows: the rows alternate, and a later row is staggered so heads show between bodies."""
-    s0, s1 = span
-    cols = max(1, -(-n // len(rows)))
-    step = (s1 - s0) / cols
-    out = []
-    for i in range(n):
-        r = i % len(rows)
-        out.append((s0 + step * (i // len(rows) + 0.5) + (min(step / 2, 0.75) if r else 0), depth(ROW_DEPTH[rows[r]])))
-    return out
+def apart(a: Cell, b: Cell, space: int = SPACE) -> bool:
+    return abs((a[0] - a[1]) - (b[0] - b[1])) >= space or abs((a[0] + a[1]) - (b[0] + b[1])) >= space
 
 
-def layout(actors: dict[str, dict], stand: list[dict], room: dict) -> list[dict]:
-    """The place of every actor: [{"id", "side", "cell", "facing", "sit", "onProp", "spot"?}], back to front.
+def dist(a: Cell, b: tuple[float, float]) -> float:
+    return math.hypot(a[0] - b[0], a[1] - b[1])
 
-    `actors`: id -> {"side", "position", "on"}. `stand`: the stand entries of the room. `room`: {"grid", "props"}.
+
+def centre(cells: list[Cell]) -> tuple[float, float] | None:
+    return (sum(x for x, _ in cells) / len(cells), sum(y for _, y in cells) / len(cells)) if cells else None
+
+
+def blank_room(w: int = 10, h: int = 8) -> dict:
+    """A room with nothing in it, for a place that has no look yet."""
+    return {"w": w, "h": h, "grid": ["." * w for _ in range(h)], "props": [], "stand": []}
+
+
+def near_cell(room: dict, slot: str) -> Cell | None:
+    """The cell to stand near for a slot: the cell of the prop there, or the floor cell in front of a piece of wall decor. None if the slot holds nothing."""
+    if prop := next((p for p in room["props"] if p["slot"] == slot), None):
+        return prop["x"], prop["y"]
+    if d := next((d for d in room.get("decor", []) if d["slot"] == slot), None):
+        return (int(d["t"]), d["line"] + 1) if d["wall"] == "n" else (d["line"] + 1, int(d["t"]))
+    return None
+
+
+def place(room: dict, actors: dict[str, dict], seed: str = "") -> dict[str, dict]:
+    """The new place of every actor that needs one: {id: {"cell": [x, y], "facing": "down" | "left" | "right"}}.
+
+    `actors`: id -> {"side", "on", "near", "cell"}. An actor keeps its cell while it is on floor of the room. `room` is
+    `scenes.room()`: {"grid", "props", "stand"}.
     """
-    placed: list[dict] = []
+    rng = random.Random(seed)
+    solid = {(p["x"], p["y"]) for p in room["props"] if not p.get("flat")}
+    floor = [(x, y) for y, row in enumerate(room["grid"]) for x, c in enumerate(row) if c == "." and (x, y) not in solid]
+    floor_set = set(floor)
+    side = lambda a: a.get("side") or "neutral"  # noqa: E731
+    out: dict[str, dict] = {}
+    cur: dict[str, Cell] = {}
+    keep_clear: set[Cell] = set()
+    todo: list[str] = []
+
+    # 1. On a prop: the cell of the prop, whatever the actor held before. The n-th actor on a slot takes its n-th point (see layout.ts).
     used: dict[str, int] = {}
-    rest: list[tuple[str, dict]] = []
-    taken = {(p["x"], p["y"]) for p in room["props"] if not p.get("flat")}
     for aid, a in actors.items():
-        spot = next((s for s in stand if s["slot"] == a.get("on")), None) if a.get("on") else None
+        spot = next((s for s in room["stand"] if s["slot"] == a.get("on")), None) if a.get("on") else None
         n = used.get(spot["slot"], 0) if spot else 0
         if spot and n < len(spot["points"]):
             used[spot["slot"]] = n + 1
-            placed.append({"id": aid, "side": a.get("side") or "neutral", "cell": [spot["x"], spot["y"]], "facing": "down", "sit": spot["mode"] == "sit",
-                           "onProp": True, "spot": {"stand": spot, "point": spot["points"][n]}})
-            taken |= {(spot["x"] + dx, spot["y"] + dy) for dx, dy in ((1, 0), (0, 1), (1, 1))}  # keep clear of someone on a prop
+            cur[aid] = (spot["x"], spot["y"])
+            keep_clear |= {(spot["x"] + dx, spot["y"] + dy) for dx, dy in FRONT}
+            if a.get("cell") != list(cur[aid]) or a.get("facing") != "down":
+                out[aid] = {"cell": list(cur[aid]), "facing": "down"}
+        elif a.get("cell") and tuple(a["cell"]) in floor_set:
+            cur[aid] = tuple(a["cell"])
         else:
-            rest.append((aid, a))
-    floor = [(x, y) for y, row in enumerate(room["grid"]) for x, c in enumerate(row) if c == "." and (x, y) not in taken]
-    if floor:
-        ss, ds = [x - y for x, y in floor], [x + y for x, y in floor]
-        s_lo, s_hi, d_lo, d_hi = min(ss), max(ss), min(ds), max(ds)
-    else:
-        s_lo = s_hi = d_lo = d_hi = 0
-    mid, half = (s_lo + s_hi) / 2, (s_hi - s_lo) / 2
-    across = lambda a, b: (mid + half * a, mid + half * b)  # noqa: E731
-    depth = lambda f: d_lo + f * (d_hi - d_lo)  # noqa: E731
+            todo.append(aid)
+    on_prop = set(out)
 
-    side = lambda a: a.get("side") or "neutral"  # noqa: E731
-    pick = lambda f: [aid for aid, a in sorted((r for r in rest if f(r[1])), key=lambda r: RANK.get(r[1].get("position") or "center", 2))]  # noqa: E731
-    party = pick(lambda a: side(a) in ("party", "ally"))
-    hostile = pick(lambda a: side(a) == "hostile")
-    neutral = pick(lambda a: side(a) == "neutral")
-    rows = lambda n: ["front", "mid", "back"] if n > 8 else ["front", "mid"]  # noqa: E731
-    beside = not hostile and bool(party)  # neutrals stand beside the party when no one opposes it
+    def open_cells(need: int = 1) -> tuple[list[Cell], int]:
+        """The cells no one holds that are `apart` from everyone, from `SPACE` down to 1. Too full: any cell left, kept-clear ones too."""
+        held = list(cur.values())
+        for space in (SPACE, 1):
+            cells = [c for c in floor if c not in keep_clear and all(apart(c, o, space) for o in held)]
+            if len(cells) >= need:
+                return cells, space
+        return [c for c in floor if c not in held], 1
 
-    wanted: dict[str, tuple[float, float]] = {}
-    for ids, targets in ((party, _targets(len(party), across(-0.92, -0.08), rows(len(party)), depth)),
-                         (hostile, _targets(len(hostile), across(0.08, 0.92), rows(len(hostile)), depth)),
-                         (neutral, _targets(len(neutral), across(0.08, 0.92), rows(len(neutral)), depth) if beside
-                          else _targets(len(neutral), across(-0.45, 0.45), ["back"], depth))):
-        wanted.update(zip(ids, targets))
+    def take(aid: str, cell: Cell) -> None:
+        cur[aid] = cell
+        out[aid] = {"cell": list(cell), "facing": "down"}
 
-    free = set(floor)
-    at: dict[str, tuple[int, int]] = {}
-    for aid, (s, d) in sorted(wanted.items(), key=lambda kv: (kv[1][1], kv[1][0])):
-        best, cost = None, float("inf")
-        for x, y in floor:
-            if (x, y) not in free:
-                continue
-            c = (x - y - s) ** 2 + 0.8 * (x + y - d) ** 2
-            if c < cost:
-                best, cost = (x, y), c
-        if best:
-            free.discard(best)
-            at[aid] = best
-    for aid, a in rest:
-        if aid not in at:
+    # 2. Near a prop, or near a piece of wall decor (a door, a fireplace): a free cell around it, the nearest ones likelier.
+    for aid in [i for i in todo if actors[i].get("near")]:
+        where = near_cell(room, actors[aid]["near"])
+        if not where:
             continue
-        s = side(a)
-        facing = "right" if s in ("party", "ally") else "left" if s == "hostile" or beside else "down"
-        placed.append({"id": aid, "side": s, "cell": list(at[aid]), "facing": facing, "sit": False, "onProp": False})
-    return sorted(placed, key=lambda p: p["cell"][0] + p["cell"][1])
+        reach = lambda c: max(abs(c[0] - where[0]), abs(c[1] - where[1]))  # noqa: E731
+        around = [c for c in open_cells()[0] if reach(c) <= 2]
+        if around:
+            take(aid, rng.choices(around, [3.0 if reach(c) <= 1 else 1.0 for c in around])[0])
+            todo.remove(aid)
+
+    # 3. The party in one tight group, away from everyone placed.
+    mates = [i for i in todo if side(actors[i]) in PARTY]
+    cells, space = open_cells(len(mates)) if mates else ([], 1)
+    if mates and cells:
+        # A party that is already on stage is the place to join: the newcomers stand around its middle. Else the group goes where it is
+        # far from everyone placed.
+        home = centre([c for i, c in cur.items() if side(actors[i]) in PARTY])
+        others = [c for i, c in cur.items() if side(actors[i]) not in PARTY]
+        best: list[Cell] = []
+        score = -math.inf
+        for anchor in [min(cells, key=lambda c: (dist(c, home), c))] if home else rng.sample(cells, min(len(cells), 24)):
+            pick: list[Cell] = []
+            for c in sorted(cells, key=lambda c: (dist(c, anchor), c)):
+                if all(apart(c, p, space) for p in pick):
+                    pick.append(c)
+                    if len(pick) == len(mates):
+                        break
+            if len(pick) < len(mates):
+                continue
+            away = min((dist(anchor, o) for o in others), default=AWAY)
+            got = min(away, AWAY) - 0.6 * sum(dist(c, anchor) for c in pick) / len(pick) + rng.random()
+            if got > score:
+                best, score = pick, got
+        for aid, c in zip(mates, best or cells[: len(mates)]):
+            take(aid, c)
+            todo.remove(aid)
+
+    # 4. Everyone else, one at a time, by weight.
+    party = centre([c for i, c in cur.items() if side(actors[i]) in PARTY])
+    for aid in list(todo):
+        cells, _ = open_cells()
+        if not cells:
+            break
+        mine = side(actors[aid])
+        kin = [c for i, c in cur.items() if side(actors[i]) == mine]
+        weights = []
+        for c in cells:
+            w = 1.0
+            if party:
+                d = dist(c, party)
+                w *= 0.3 + min(d, 10) / 10 * 1.7 if mine == "hostile" else math.exp(-(((d - 5) / 3) ** 2)) + 0.1
+            if kin and mine == "hostile":
+                w *= 1 + 1.5 * math.exp(-(min(dist(c, k) for k in kin) - 1.5) / 2)  # a hostile band keeps together a little
+            w *= 0.4 + min(min((dist(c, o) for o in cur.values()), default=4), 4) / 4 * 0.6  # no crowding
+            weights.append(w)
+        take(aid, rng.choices(cells, weights)[0])
+        todo.remove(aid)
+
+    # Each new floor actor faces the centre of the other group.
+    hostile_at = centre([c for i, c in cur.items() if side(actors[i]) == "hostile"])
+    party_at = centre([c for i, c in cur.items() if side(actors[i]) in PARTY])
+    for aid, v in out.items():
+        if aid in on_prop:
+            continue
+        goal = (hostile_at if side(actors[aid]) in PARTY else party_at) or centre(floor) or (0, 0)
+        across = (goal[0] - cur[aid][0]) - (goal[1] - cur[aid][1])
+        v["facing"] = "down" if abs(across) < 0.5 else "left" if across < 0 else "right"
+    return out

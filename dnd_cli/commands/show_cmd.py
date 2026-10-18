@@ -6,7 +6,7 @@ from pathlib import Path
 
 from dnd_cli import world
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
-from stage import actors, beat, crawl, maps, scenes, state
+from stage import actors, beat, cast, crawl, maps, scenes, state
 from stage.files import read_json, write_json
 
 
@@ -62,6 +62,23 @@ def execute_beat(campaign: str | None, file: str | None) -> int:
     return run_stage(campaign, lambda campaign_dir: _beat(campaign_dir, file))
 
 
+def _slot_warnings(campaign_dir: Path, scene: str | None, events: list[dict]) -> None:
+    """Warn when `@enter <id> on <slot>` or `near <slot>` names a slot that holds nothing in the room: the engine places that actor
+    by its side instead, and the DM should know."""
+    asked = [e for e in events if e["type"] == "enter" and (e.get("on") or e.get("near"))]
+    try:
+        room = scenes.room(spec) if asked and scene and (spec := scenes.load(campaign_dir, scene)) else None
+    except ValueError:
+        room = None
+    if not room:
+        return
+    for e in asked:
+        if e.get("on") and not any(st["slot"] == e["on"] for st in room["stand"]):
+            print(f"Warning: @enter {e['actor']} on {e['on']}: no prop in that slot takes an actor, so the stage places {e['actor']} on the floor.", file=sys.stderr)
+        if e.get("near") and cast.near_cell(room, e["near"]) is None:
+            print(f"Warning: @enter {e['actor']} near {e['near']}: nothing is in that slot, so the stage places {e['actor']} by their side.", file=sys.stderr)
+
+
 def _cast_report(campaign_dir: Path, events: list[dict]) -> str:
     """Fold the beat into the stage as it is now. Warn about what the beat does that the stage will not do, and
     return who is on stage after it, so the DM sees the cast and does not have to remember it."""
@@ -74,6 +91,7 @@ def _cast_report(campaign_dir: Path, events: list[dict]) -> str:
         s = state.apply(s, e)
     if s["explore"] or not s["actors"]:
         return ""
+    _slot_warnings(campaign_dir, s["scene"], events)
     if len(s["actors"]) > beat.MAX_ACTORS:
         print(f"Warning: {len(s['actors'])} actors are on stage; the stage fits {beat.MAX_ACTORS}. Send @exit for some.", file=sys.stderr)
     return "On stage: " + ", ".join(f"{a} ({v.get('side', 'neutral')}{', on ' + v['on'] if v.get('on') else ''})"

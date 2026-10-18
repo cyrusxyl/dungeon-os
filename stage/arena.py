@@ -460,8 +460,10 @@ def source_of(campaign_dir: Path, stage: dict, spec: dict) -> dict:
             props.append((name, slot))
         props += [(name, zone) for name, zone in resolved["add"]]
         room = scenes.room(scene)
+        actors = stage.get("actors") or {}
+        placed = {i: {**a, **cast.place(room, actors, seed=stage["scene"]).get(i, {})} for i, a in actors.items()}  # the CLI may start a fight before the server has placed the last actor
         out = {"kind": "scene", "id": stage["scene"], "theme": walls, "look": look, "props": props, "room": room, "scene_spec": scene,
-               "cast": cast.layout(stage.get("actors") or {}, room["stand"], room)}
+               "cast": [{"id": i, "side": a.get("side") or "neutral", "cell": a["cell"]} for i, a in placed.items() if a.get("cell")]}
         out["shell"] = "open" if template in cfg["open_templates"] else "room"
         out["decor"] = "forest" if out["shell"] == "open" else cfg["site_decor"].get(walls, "dungeon")
         out["layout"] = "open"
@@ -525,6 +527,14 @@ def _feature_kind(thing: str, decor: dict, rng: random.Random) -> str:
     return rng.choice(decor["cover"]) if thing == "cover" else decor["pillar"] if thing == "pillar" else "barrel" if thing == "barrels" else thing
 
 
+def room_board(room: dict) -> dict:
+    """A scene room as a bare board, the shape the walking and sight rules read: {"w", "h", "grid", "props", "items"}. Each prop gets an id."""
+    props: list[dict] = []
+    for p in room["props"]:
+        props.append({"id": _prop_id(props, p["kind"]), "kind": p["kind"], "x": p["x"], "y": p["y"], "flat": bool(p.get("flat"))})
+    return {"w": len(room["grid"][0]), "h": len(room["grid"]), "grid": list(room["grid"]), "props": props, "items": []}
+
+
 def _in_room(spec: dict, source: dict, party_ids: list[str], foe_ids: list[str]) -> dict | None:
     """The arena in the room of the scene: its grid and its props as they are, the party and the foes on the cells where the scene
     cast stands them (a cell a prop blocks is given up for the nearest free one). None when the starts cannot reach each other."""
@@ -532,10 +542,8 @@ def _in_room(spec: dict, source: dict, party_ids: list[str], foe_ids: list[str])
     grid = [list(row) for row in room["grid"]]
     w, h = len(grid[0]), len(grid)
     floor = [(x, y) for y in range(h) for x in range(w) if grid[y][x] == FLOOR]
-    props: list[dict] = []
-    for p in room["props"]:
-        props.append({"id": _prop_id(props, p["kind"]), "kind": p["kind"], "x": p["x"], "y": p["y"]})
-    a = {"w": w, "h": h, "grid": ["".join(r) for r in grid], "props": props, "items": []}
+    a = room_board(room)
+    props = a["props"]
     blocked = blocked_cells(a)
     cells = {c["id"]: tuple(c["cell"]) for c in source["cast"]}
     taken: set[tuple[int, int]] = set()
@@ -553,8 +561,11 @@ def _in_room(spec: dict, source: dict, party_ids: list[str], foe_ids: list[str])
     seed_rng = random.Random(f"scene:{spec['seed']}")
     party = []
     centre = (sum(x for x, _ in floor) / len(floor), sum(y for _, y in floor) / len(floor))
+    # A party member the scene did not place comes to where the party stands (else the left of the screen).
+    side_of = {c["id"]: c["side"] for c in source["cast"]}
+    home = cast.centre([cells[i] for i in cells if side_of[i] in ("party", "ally")]) or min(floor, key=lambda c: (c[0] - c[1], c))
     for pid in party_ids:
-        c = start(cells.get(pid), party[-1] if party else min(floor, key=lambda c: (c[0] + c[1], c)))
+        c = start(cells.get(pid), party[-1] if party else home)
         party.append(c)
     if None in party:
         return None
@@ -562,7 +573,7 @@ def _in_room(spec: dict, source: dict, party_ids: list[str], foe_ids: list[str])
     far = max(floor, key=lambda c: (dist(c, heart), c))
     foes = []
     for fid in foe_ids:
-        c = start(cells.get(fid), far)
+        c = start(cells.get(fid), cells.get(fid, far))
         foes.append(c)
     if None in foes:
         return None

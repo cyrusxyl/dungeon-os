@@ -45,7 +45,7 @@ UPRIGHT = re.compile(
 )
 UPRIGHT_FIRST = re.compile("cloud|smoke|armor|suit|cactus|corn|hoard")
 
-ROOM_W, ROOM_H = 10, 8  # the room of a scene in cells: with walls, the north row (y = 0) and the west column (x = 0) are wall
+ROOM_W, ROOM_H = 10, 8  # the room of a scene in cells (see `_make_grid`)
 # Where a wall slot hangs: the wall (n = north, w = west) and the place along it in cells (the centre of the piece).
 WALL_AT = {"wall_left": ("w", 2.6), "wall_left2": ("n", 2.6), "wall_center": ("n", 5.4), "wall_right2": ("w", 5.6), "wall_right": ("n", 8.3)}
 # How high above the floor a piece of wall decor hangs, in pixels: the first pattern that matches the name wins.
@@ -365,9 +365,11 @@ def _wall_runs(grid: list[str]) -> dict[str, tuple[int, int, int]]:
 
 
 def _make_grid(r: dict, walled: bool) -> list[str]:
-    """The rows of the room: the fixed 10 x 8 room (with walls, the north row and the west column are wall), or a shaped one."""
+    """The rows of the room: the fixed 10 x 8 room (with walls, the north row and the west column are wall, and a south row and
+    an east column are added as the low rim that the view cuts), or a shaped one."""
     if not r.get("shape"):
-        return ["".join("#" if walled and (x == 0 or y == 0) else "." for x in range(ROOM_W)) for y in range(ROOM_H)]
+        n = 1 if walled else 0
+        return ["".join("#" if walled and (x == 0 or y == 0 or x == ROOM_W or y == ROOM_H) else "." for x in range(ROOM_W + n)) for y in range(ROOM_H + n)]
     for attempt in range(60):
         made = rooms.mask(r["shape"], random.Random(f"{r['shape']}:{r['seed']}:{attempt}"), r.get("size"))
         if made:
@@ -389,7 +391,7 @@ def _icon(path: str) -> Image.Image:
 def room(spec: dict, stuff: tuple = ()) -> dict:
     """A scene as an isometric room, for the browser (see isometric-view.md).
 
-    The room is 10 x 8 cells. With walls, the north row (y = 0) and the west column (x = 0) are wall `#`; an open scene (a street,
+    The room is 10 x 8 cells, walled as `_make_grid` says; an open scene (a street,
     a forest) has floor everywhere. A scene with `shape=` has a room of that shape (`stage/rooms.py`), walled all round, with
     the void `-` outside. Floor props stand on cells by their zone; wall props hang on a wall at a place along it (`t`, in cells,
     on the wall `line`) and a height (`lift`, px). A prop with a stand point is listed in `stand`: the points are in pixels of

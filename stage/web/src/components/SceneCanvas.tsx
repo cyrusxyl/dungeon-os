@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 
-import { byDepth, geometry, groundCentre, roomCentre, S, unitDepth, type Base, type Geometry, type Pt as Point } from '@/lib/iso'
+import { byDepth, geometry, groundCentre, pick as pickCell, roomCentre, S, unitDepth, type Base, type Geometry, type Pt as Point } from '@/lib/iso'
 import type { Placed } from '@/lib/layout'
 import { usePropsInfo, type PropsInfo } from '@/lib/propAtlas'
 import { faceOf } from '@/lib/props'
@@ -77,6 +77,8 @@ interface Props {
   cast?: SceneActor[]
   speaker?: string
   mood?: string
+  /** A click on a floor cell of the room (a player sends their character there). Off when not given. */
+  onCell?: (cell: [number, number]) => void
   /** Fill the box and crop (a backdrop) instead of fitting inside it. */
   cover?: boolean
   className?: string
@@ -88,7 +90,7 @@ interface Props {
  * A scene room, drawn on the renderer of the combat board: the floor and the walls with their decor once, then the props
  * and the actors back to front. An actor walks to a new place in a short tween.
  */
-export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', cover = false, className = '', children }: Props) {
+export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', onCell, cover = false, className = '', children }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const g = useMemo(() => geometry(room.w, room.h), [room.w, room.h])
@@ -160,7 +162,7 @@ export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', 
   }, [room, cast, speaker, tick, props, atlas, sheet, image, g, centre]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filter = MOOD_FILTER[mood] ?? 'none'
-  // The cast as data on the canvas: the picture has no text, and the tests read it from here.
+  // The cast and the geometry as data on the canvas: the picture has no text, and the tests read it from here (the geometry: ox, oy, width, height).
   const shot = useMemo(() => JSON.stringify(cast.map((p) => ({ id: p.id, side: p.side, cell: p.cell, sit: p.sit, onProp: p.onProp }))), [cast])
   const picture = (
     <canvas
@@ -168,8 +170,18 @@ export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', 
       width={g.width * S}
       height={g.height * S}
       data-cast={shot}
+      data-geom={`${g.ox},${g.oy},${g.width},${g.height}`}
       aria-hidden="true"
-      className={`pixelated ${cover ? 'absolute inset-0 h-full w-full object-cover' : 'block'} ${className}`}
+      onClick={
+        onCell && !cover
+          ? (e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const [x, y] = pickCell(g, ((e.clientX - rect.left) / rect.width) * g.width, ((e.clientY - rect.top) / rect.height) * g.height)
+              if (room.grid[y]?.[x] === '.') onCell([x, y])
+            }
+          : undefined
+      }
+      className={`pixelated ${onCell && !cover ? 'cursor-pointer ' : ''}${cover ? 'absolute inset-0 h-full w-full object-cover' : 'block'} ${className}`}
       style={{ filter, ...(cover ? {} : { width: g.width * scale, height: g.height * scale }) }}
     />
   )

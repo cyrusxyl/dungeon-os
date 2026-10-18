@@ -137,17 +137,19 @@ def test_room() -> None:
         open_scenes += not walled
         solid = [(p["x"], p["y"]) for p in r["props"] if not p["flat"]]
         floor = lambda x, y: r["grid"][y][x] == "."  # noqa: E731
-        ok = (len(r["grid"]) == scenes.ROOM_H and all(len(row) == scenes.ROOM_W for row in r["grid"]) and r["open"] == (not walled)
+        rim = 1 if walled else 0  # a walled fixed room has a south row and an east column of low wall
+        ok = (len(r["grid"]) == scenes.ROOM_H + rim and all(len(row) == scenes.ROOM_W + rim for row in r["grid"]) and r["open"] == (not walled)
               and all(floor(p["x"], p["y"]) for p in r["props"]) and len(set(solid)) == len(solid)
               and (walled or not r["decor"]) and all(cat["props"][d["kind"]].get("on") == "wall" and d["wall"] in "nw" and 0 <= d["t"] <= scenes.ROOM_W and d["lift"] >= 0 for d in r["decor"])
               and all((s["x"], s["y"]) in solid for s in r["stand"]) and all(cat["props"][p["kind"]].get("on") != "wall" for p in r["props"]))
         if walled:
-            ok = ok and all(r["grid"][0][x] == "#" for x in range(scenes.ROOM_W)) and all(r["grid"][y][0] == "#" for y in range(scenes.ROOM_H))
+            ok = (ok and all(r["grid"][0][x] == "#" for x in range(scenes.ROOM_W + 1)) and all(r["grid"][y][0] == "#" for y in range(scenes.ROOM_H + 1))
+                  and all(r["grid"][scenes.ROOM_H][x] == "#" for x in range(scenes.ROOM_W + 1)) and all(r["grid"][y][scenes.ROOM_W] == "#" for y in range(scenes.ROOM_H + 1)))
         if not ok:
             bad.append(name)
     check(f"every template makes a room: cells in the grid, props on floor, one to a cell, wall decor only on walls {bad}", not bad)
     check("a scene with no walls is open floor", open_scenes > 5 and scenes.room({"template": "forest"})["grid"] == ["." * scenes.ROOM_W] * scenes.ROOM_H)
-    check("a street has the walls of its houses, though a fight in it is on open ground", scenes.room({"template": "street"})["grid"][0] == "#" * scenes.ROOM_W
+    check("a street has the walls of its houses, though a fight in it is on open ground", scenes.room({"template": "street"})["grid"][0] == "#" * (scenes.ROOM_W + 1)
           and "street" in arena.arena_data()["open_templates"])
 
     # The study, as the demo placed it.
@@ -172,7 +174,7 @@ def test_room() -> None:
     # The sheet: the floor (a tile a cell), the wall faces and caps, the desk icons.
     sheet = Image.open(io.BytesIO(scenes.room_png(scenes.FILLER, scenes.FILLER_STUFF))).convert("RGBA")
     lay = study["sheet"]
-    check("the sheet has the size the room says", sheet.size == (lay["w"], lay["h"]) and lay["w"] == scenes.ROOM_W * scenes.T)
+    check("the sheet has the size the room says", sheet.size == (lay["w"], lay["h"]) and lay["w"] == (scenes.ROOM_W + 1) * scenes.T)
     check("the floor part is solid", all(sheet.getpixel((x, y))[3] == 255 for x in (0, 150, 319) for y in (0, 100, 255)))
     face = sheet.crop((0, lay["north"][0], 32, lay["north"][0] + scenes.WALL_FACE[1] - scenes.WALL_FACE[0]))
     check("a wall face is 32 x 48 and opaque", face.size == (32, 48) and face.getchannel("A").getextrema()[0] == 255)
@@ -209,7 +211,7 @@ def test_shaped_scenes() -> None:
     saved = {"template": "tavern", "slots": {}, "add": [], "mood": "day"}
     check("a saved place without a shape keeps its plain room when it changes", "shape" not in scenes.build(["mood=night"], saved) and not scenes.room(scenes.build(["mood=night"], saved))["shaped"])
     check("shape=fixed gives the plain 10 x 8 room", not scenes.room(scenes.build(["template=tavern", "shape=fixed"], None))["shaped"]
-          and scenes.room(scenes.build(["template=tavern", "shape=fixed"], None))["w"] == scenes.ROOM_W)
+          and scenes.room(scenes.build(["template=tavern", "shape=fixed"], None))["w"] == scenes.ROOM_W + 1)
     check("a new template on a place changes its shape too", "shape" in scenes.build(["template=forest"], saved))
     bad, made = [], 0
     for shape in rooms.SHAPE_NAMES:
@@ -252,7 +254,7 @@ async def routes() -> None:
     check("the old prop route still works", status == 200)
     status, _, raw = await call(app, "GET", "/api/template/tavern?mood=night")
     room = json.loads(raw)
-    check("a template has a room, with its mood", status == 200 and room["has_look"] and room["mood"] == "night" and room["decor"] and len(room["grid"]) == 8)
+    check("a template has a room, with its mood", status == 200 and room["has_look"] and room["mood"] == "night" and room["decor"] and len(room["grid"]) == 9)
     status, _, raw = await call(app, "GET", "/asset/template/tavern/room.png")
     check("and a sheet", status == 200 and raw[:4] == b"\x89PNG")
     status, _, raw = await call(app, "GET", "/api/template/not_a_template")

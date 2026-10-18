@@ -78,7 +78,7 @@ def main() -> int:
                 await page.click("Play all free")
                 await asyncio.sleep(1.2)
                 beat.append(c, [{"type": "dm_status", "status": "idle"}])
-                show(c, "@scene hall\n@enter goblin#1 hostile\n@enter goblin#2 hostile\n@narrate Steel is drawn.")
+                show(c, "@scene hall\n@enter goblin#1 hostile\n@enter goblin#2 hostile\n@walk goblin#1 still\n@walk goblin#2 still\n@narrate Steel is drawn.")  # the cells are read from the page, so no one walks
                 await asyncio.sleep(2.5)
                 await page.shot("scene-before")
                 cast = {f["id"]: tuple(f["cell"]) for f in await page.eval(CAST)}

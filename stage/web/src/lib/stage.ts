@@ -108,7 +108,7 @@ export interface Seat {
 export interface StageState {
   seq: number
   scene: string | null
-  actors: Record<string, { position?: Position; emotion?: string; side?: Side; on?: string }>
+  actors: Record<string, { position?: Position; emotion?: string; side?: Side; on?: string; cell?: [number, number]; facing?: 'down' | 'left' | 'right' | 'up'; walk?: string }>
   log: StoryLine[]
   /** `who` set: the choices are for one player character (the server sends them to that player only). */
   choices: { options: string[]; seq: number; who?: string } | null
@@ -236,6 +236,14 @@ export function useStage(onNoGame: () => void): { state: StageState | null; camp
         if (data.kind === 'snapshot') {
           setState(data.state)
           setCampaign(data.campaign)
+        } else if (data.kind === 'cells') {
+          // The steps of the actors in a scene: a small message, no snapshot (see Stage.broadcast_cells).
+          setState((s) => {
+            if (!s || s.scene !== data.scene) return s
+            const actors = { ...s.actors }
+            for (const [id, v] of Object.entries(data.cells as Record<string, { cell: [number, number]; facing: 'down' | 'left' | 'right' | 'up' }>)) if (actors[id]) actors[id] = { ...actors[id], ...v }
+            return { ...s, actors }
+          })
         }
       }
       ws.onclose = async () => {

@@ -33,13 +33,15 @@ export function propThing(ctx: CanvasRenderingContext2D, g: Geometry, props: Pro
 
 /** A shaped room cuts its wall pictures from the north strip, which is as wide as the fixed room. */
 const SHAPED_STRIP = 10
+/** The west strip has 8 pictures; the low rim of the fixed room (south row, east column) reuses them. */
+const WEST_STRIP = 8
 
 /** The floor and wall tiles of a scene room, cut from its sheet. `extra` adds to the style (the board adds hazards and fog). */
 export function sceneStyle(room: SceneRoom, sheet: HTMLImageElement | undefined, extra: Partial<Style> = {}): Style {
   const { north, west } = room.sheet
   const wall = (x: number, y: number): Tex | undefined => {
     if (!sheet) return undefined
-    const [col, [face, cap]] = room.shaped ? [x % SHAPED_STRIP, north] : y === 0 ? [x, north] : [y, west]
+    const [col, [face, cap]] = room.shaped || y === 0 ? [x % SHAPED_STRIP, north] : [y % WEST_STRIP, west]
     return { img: sheet, sx: col * T, sy: face, sh: WALL_H, cap }
   }
   return { floor: (x, y) => sheet && { img: sheet, sx: x * T, sy: y * T }, wall, ...extra }

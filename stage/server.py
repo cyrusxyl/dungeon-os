@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import random
 import re
 import sys
 import threading
@@ -55,9 +56,9 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from dnd_cli import actions, character, combat, effects, resources, saves
 from dnd_cli.sheet import GOLD
-from stage import actors, arena, beat, board, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, ttsctl, voice
+from stage import actors, arena, beat, board, cast, crawl, hand, improvise, lpc, maps, party, scenes, state as stage_state, ttsctl, voice, walk
 from stage.assets import AssetError
-from stage.files import read_json
+from stage.files import read_json, write_json
 from stage.seats import DEVICE_RE, SeatError, Seats, sid
 
 RULES_LOCK = threading.Lock()  # the rules code writes state.json and the arena file: one writer at a time in this process
@@ -126,6 +127,12 @@ class Stage:
         self.log_path.touch()
         self.state = stage_state.empty()
         self.offset = 0
+        self.rooms: dict[str, tuple[int | None, dict, walk.Ground]] = {}
+        self.walkers = walk.Walkers(random.Random())
+        self.walk_scene: str | None = None
+        self.walk_ground: walk.Ground | None = None
+        self.cells_dirty = False  # actors have walked since the cells were last written to `stage/cells.json`
+        self.cells_saved = 0.0
         self.event_clients: set[WebSocket] = set()
         self.client_device: dict[WebSocket, str | None] = {}  # who each stage socket is, to filter its snapshot
         self.intents: dict[str, str] = {}  # character id -> what the player said while the DM awaits everyone
@@ -233,6 +240,112 @@ class Stage:
         if not self.state.get("await"):
             self.intents.clear()
         return bool(events)
+
+    def room_of(self, scene: str) -> dict:
+        """The room the browser draws for a scene: its look, else a bare room. Cached until the scene file changes."""
+        try:
+            stamp = (scenes.scenes_dir(self.campaign_dir) / f"{scene}.json").stat().st_mtime_ns
+        except OSError:
+            stamp = None
+        if scene not in self.rooms or self.rooms[scene][0] != stamp:
+            spec = scenes.load(self.campaign_dir, scene)
+            try:
+                room = scenes.room(spec) if spec else cast.blank_room()
+            except ValueError:
+                room = cast.blank_room()
+            self.rooms[scene] = (stamp, room, walk.ground(arena.room_board(room)))
+        return self.rooms[scene][1]
+
+    def ground_of(self, scene: str) -> walk.Ground:
+        self.room_of(scene)
+        return self.rooms[scene][2]
+
+    # -- walking in a scene (stage/walk.py) ---------------------------------
+
+    def walk_ground_of(self, scene: str) -> walk.Ground:
+        """The ground of the scene to walk on. Every plan was made for one room, so a new scene, or a look that was set or changed
+        (the ground is built again), makes the walkers forget them."""
+        ground = self.ground_of(scene)
+        if scene != self.walk_scene or ground is not self.walk_ground:
+            self.walkers.reset()
+            self.walk_scene, self.walk_ground = scene, ground
+        return ground
+
+    def walk_tick(self, now: float) -> dict[str, dict]:
+        """The steps the actors of the scene take now: {id: {"cell", "facing"}}. They go in the stage state at once, as new actor dicts (a
+        threadpool handler may be reading the old ones), and not in the log or the `seq`: a step is not an event. Nothing walks in a fight,
+        in a site, on the creator screen, or when no one watches."""
+        s = self.state
+        if not s["scene"] or s["arena"] or s["explore"] or self.creating() or not self.event_clients or not s["actors"]:
+            return {}
+        moves = self.walkers.tick(now, s["actors"], self.walk_ground_of(s["scene"]))
+        if moves:
+            actors = dict(s["actors"])
+            for aid, v in moves.items():
+                actors[aid] = {**actors[aid], **v}
+            self.state = {**s, "actors": actors}
+            self.cells_dirty = True
+        return moves
+
+    def order_walk(self, who: str, to) -> int:
+        """A player sends their character to a cell. The way is planned by the rules of the combat board; the tick walks it. Result: the
+        number of steps. A ValueError says why not."""
+        s = self.state
+        if not s["scene"] or s["arena"] or s["explore"]:
+            raise ValueError("there is no room to walk in now.")
+        a = s["actors"].get(who)
+        if not a or not a.get("cell"):
+            raise ValueError(f"{who} is not on stage.")
+        if a.get("on"):
+            raise ValueError(f"{who} is on a prop and does not walk from it yet.")
+        ground = self.walk_ground_of(s["scene"])
+        others = {tuple(b["cell"]) for i, b in s["actors"].items() if i != who and b.get("cell")}
+        here = tuple(a["cell"])
+        path = walk.find_path(ground, here, (int(to[0]), int(to[1])), others)
+        if not path:
+            raise ValueError("there is no way there.")
+        self.walkers.order(who, here, path, time.time())
+        return len(path)
+
+    def save_cells(self) -> None:
+        """Write where the actors stand to `stage/cells.json`, for a fight the DM's CLI starts and for a restart (see `state.with_cells`)."""
+        s = self.state
+        if s["scene"]:
+            write_json(stage_state.cells_path(self.log_path), {"scene": s["scene"], "cells": {
+                i: {"cell": a["cell"], "facing": a.get("facing", "down")} for i, a in s["actors"].items() if a.get("cell")}})
+        self.cells_dirty, self.cells_saved = False, time.time()
+
+    async def broadcast_cells(self, moves: dict[str, dict]) -> None:
+        """The steps of this tick to every stage socket: small, and no snapshot, so a walk costs little."""
+        msg = {"kind": "cells", "scene": self.state["scene"], "cells": moves}
+        for ws in list(self.event_clients):
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                self.event_clients.discard(ws)
+                self.client_device.pop(ws, None)
+
+    def settle(self) -> list[dict]:
+        """Give a cell to every actor on stage that has none (or whose cell is no longer floor), and log it, so a restart folds the
+        same cells. The `place` event has no beat id: it is not a beat. It is folded once, by reading the log back (the same way a
+        restart folds it, so `seq` agrees). Result: the events folded, for the caller to use like any others. A placing error is
+        printed and the actors stay as they are: the stage must not stop for it."""
+        s = self.state
+        if not s["scene"] or s["explore"] or not s["actors"]:
+            return []
+        try:
+            new = cast.place(self.room_of(s["scene"]), s["actors"], seed=f"{s['scene']}:{s['seq']}")
+        except Exception as err:  # noqa: BLE001
+            print(f"dungeon-os: could not place the actors of {s['scene']}: {err!r}", file=sys.stderr, flush=True)
+            return []
+        if not new:
+            return []
+        with open(self.log_path, "a") as f:
+            f.write(json.dumps({"type": "place", "scene": s["scene"], "cells": new}) + "\n")
+        events = self.read_new_events()
+        self.fold(events)
+        self.save_cells()  # a new place: the file must not keep the cells of an earlier visit
+        return events
 
     def remember_session(self, session_id: str) -> None:
         from view.settings import get_last_session_id, load_settings, set_last_session_id
@@ -373,9 +486,15 @@ class Stage:
             was_busy = self.state["dm"].get("status") != "idle"
             events += self.inventory_notices()  # a notice is for the owner's snapshot only (see `snapshot`); it is not in the log
             if self.fold(events):
+                events += self.settle()
                 voice.warm([voice.item(e, self.campaign_dir) for e in events])
                 self.pump_due = True
                 await self.broadcast()
+            now = time.time()
+            if moves := self.walk_tick(now):
+                await self.broadcast_cells(moves)
+            if self.cells_dirty and (now - self.cells_saved >= 1.5 or not any(self.walkers.busy(i) for i in self.state["actors"])):
+                self.save_cells()  # every 1.5 s of a walk, and at once when all have stopped, so a fight starts where they stand
             session = next((e["session"] for e in reversed(events) if e.get("session")), None)
             if session:
                 await asyncio.to_thread(self.remember_session, session)
@@ -757,6 +876,8 @@ class Table:
         stage.loop = self.loop
         # Restore the stage from earlier sessions without broadcasting it.
         stage.fold(stage.read_new_events())
+        stage.state = stage_state.with_cells(stage.state, stage.log_path)  # where the actors had walked to
+        stage.settle()
         stage.state["dm"] = {"status": "starting"}
         stage.dm.start()
         # The host code is also on the server's log: if the host's device dies, the owner can read it there.
@@ -1660,6 +1781,19 @@ def create_app(
             return board.move(stage.campaign_dir, st, a, who, to)
         return await board_call(request, go)
 
+    async def api_scene_walk(request: Request):
+        """A player sends their character to a cell of the scene room. The character is theirs; the DM need not be idle."""
+        stage = need()
+        body = await request.json()
+        who = pc_or_404(stage, body.get("who"))
+        own(request, stage, who)
+        try:
+            return JSONResponse({"ok": True, "steps": stage.order_walk(who, body["to"])})
+        except (KeyError, TypeError, IndexError):
+            return error("give to as [x, y].", 400)
+        except ValueError as e:
+            return error(str(e), 400)
+
     async def api_arena_attack(request: Request):
         def go(stage, st, a, who, body):
             return {"lines": board.player_attack(stage.campaign_dir, st, a, who, body.get("target"), body.get("weapon"))}
@@ -1912,6 +2046,7 @@ def create_app(
         Route("/api/site/{site_id}/move", api_site_move, methods=["POST"]),
         Route("/api/site/{site_id}/act", api_site_act, methods=["POST"]),
         Route("/api/arena/move", api_arena_move, methods=["POST"]),
+        Route("/api/scene/walk", api_scene_walk, methods=["POST"]),
         Route("/api/arena/attack", api_arena_attack, methods=["POST"]),
         Route("/api/arena/react", api_arena_react, methods=["POST"]),
         Route("/api/arena/act", api_arena_act, methods=["POST"]),

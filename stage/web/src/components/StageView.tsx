@@ -4,12 +4,13 @@ import { DmTable } from '@/components/DmTable'
 import { SceneCanvas, type SceneActor } from '@/components/SceneCanvas'
 import { layout } from '@/lib/layout'
 import { blankRoom, type SceneRoom } from '@/lib/scene'
-import { type StageState, useJson } from '@/lib/stage'
+import { postJson, type StageState, useJson } from '@/lib/stage'
 
 /** The scene room as the browser draws it: the room of the scene when it has a look, else bare floor. */
 const NO_LOOK: SceneRoom = { ...blankRoom(), props: [], has_look: false, mood: 'day', open: true, shaped: false, decor: [], stand: [], stuff: [], sheet: { w: 0, h: 0, north: [0, 0], west: [0, 0], stuff: 0 } }
 
-export function StageView({ state, speaker }: { state: StageState; speaker?: string }) {
+/** `walkAs`: the character this device plays; a click on the floor sends it there (the server checks the seat and the way). */
+export function StageView({ state, speaker, walkAs }: { state: StageState; speaker?: string; walkAs?: string | null }) {
   const scene = state.scene
   const version = state.versions?.[`scene:${scene}`] ?? 0
   const data = useJson<SceneRoom>(scene ? `/api/scene/${encodeURIComponent(scene)}?v=${version}` : null, version)
@@ -40,6 +41,7 @@ export function StageView({ state, speaker }: { state: StageState; speaker?: str
       cast={cast}
       speaker={speaker}
       mood={room.mood}
+      onCell={walkAs && state.actors[walkAs] ? (to) => void postJson('/api/scene/walk', { who: walkAs, to }) : undefined}
       className="scene-in"
     />
   )

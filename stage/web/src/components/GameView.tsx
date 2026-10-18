@@ -160,7 +160,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   ) : state.explore ? (
     <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
   ) : (
-    <StageView state={state} speaker={speaker} />
+    <StageView state={state} speaker={speaker} walkAs={mode !== 'table' && mine.includes(who) ? who : null} />
   )
   // The fight's own hand (on the board) lists the actions; the table screen takes no input. Cards then skip their action buttons.
   // The scene always shows on the table and on a wide window; on a small window it is the player's choice.

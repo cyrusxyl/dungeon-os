@@ -28,6 +28,7 @@ import websockets  # noqa: E402
 
 from dnd_cli.commands import show_cmd  # noqa: E402
 from stage import actors, beat, scenes  # noqa: E402
+from stage.cast import apart  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import campaign  # noqa: E402
 
@@ -57,6 +58,7 @@ def main() -> int:
         return 0
     tmp = Path(tempfile.mkdtemp(prefix="visual-"))
     c = campaign(tmp)
+    scenes.save(c, "hall", {"template": "throne_room", "slots": {}, "add": [], "mood": "torchlit", "shape": "h", "seed": 2})
     scenes.save(c, "court", {"template": "throne_room", "slots": {}, "add": [], "mood": "torchlit"})
     for aid, kind in LOOKS.items():
         actors.save(c, aid, actors.presets()[kind])
@@ -98,14 +100,14 @@ def main() -> int:
                 beat.append(c, [{"type": "dm_status", "status": "idle"}])
 
                 print("a companion joins and comes to the next scene by itself")
-                show(c, "@join ilvuur\n@join qorlia\n@scene court\n@narrate The court is silent.")
+                show(c, "@join ilvuur\n@join qorlia\n@scene court\n@walk ilvuur still\n@walk qorlia still\n@narrate The court is silent.")  # a placement test: everyone stands still
                 await asyncio.sleep(2)
                 check("the party and both companions are drawn", len(await page.eval(CAST)) == 6, str(await page.eval(CAST)))
                 out = show(c, "@scene court")
                 check("the readback lists the companions with their side", "ilvuur (ally)" in out and "qorlia (ally)" in out, out)
 
                 print("twelve actors, one of them seated on the throne")
-                show(c, "@enter sharael\n@enter arbiter on back_center\n@enter goblin#1\n@enter goblin#2\n@enter guard\n@enter sentry\n@narrate Steel is drawn.")
+                show(c, "@enter sharael\n@enter arbiter on back_center\n@enter goblin#1\n@enter goblin#2\n@enter guard\n@enter sentry\n" + "".join(f"@walk {i} still\n" for i in ("sharael", "goblin#1", "goblin#2", "guard", "sentry")) + "@narrate Steel is drawn.")
                 await asyncio.sleep(2.5)
                 await page.shot("cast-12")
                 cast = await page.eval(CAST)
@@ -127,6 +129,29 @@ def main() -> int:
                 await asyncio.sleep(1.5)
                 check("the companion is left out of the scene", "ilvuur" not in out and len(await page.eval(CAST)) == 11, out)
                 await page.shot("cast-sneak")
+
+                print("a big room with wings: each side stays together")
+                show(c, "@scene hall\n@enter goblin#1\n@enter goblin#2\n@enter goblin#3\n" + "".join(f"@walk {i} still\n" for i in ("ilvuur", "qorlia", "goblin#1", "goblin#2", "goblin#3")) + "@narrate Steel is drawn.")
+                await asyncio.sleep(2.5)
+                await page.shot("cast-wings")
+                cast = await page.eval(CAST)
+
+                def together(cells: list[tuple[int, int]]) -> bool:
+                    seen, todo = {cells[0]}, [cells[0]]
+                    while todo:
+                        a = todo.pop()
+                        for b in cells:
+                            if b not in seen and max(abs(a[0] - b[0]), abs(a[1] - b[1])) <= 3:
+                                seen.add(b)
+                                todo.append(b)
+                    return len(seen) == len(cells)
+
+                friends = [tuple(f["cell"]) for f in cast if f["side"] in ("party", "ally")]
+                foes = [tuple(f["cell"]) for f in cast if f["side"] == "hostile"]
+                check("the party and its companions stand together in a room with wings", len(friends) == 6 and together(friends), str(friends))
+                spread = [tuple(f["cell"]) for f in cast if not f["onProp"]]
+                check("no two figures overlap on the screen (2 or more across or deep)",
+                      all(apart(p, q) for i, p in enumerate(spread) for q in spread[i + 1:]), str(spread))
 
         asyncio.run(run())
     finally:

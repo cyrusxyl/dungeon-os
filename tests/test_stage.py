@@ -569,6 +569,79 @@ def test_maps() -> None:
               "Big City → Tower → Ruin" in prompt and "2 days, 1 day" in prompt and "@scene ruin" in prompt)
 
 
+def run_beat(c: Path, text: str) -> tuple[str, str]:
+    """Send beat text to `show beat` for campaign `c`. Result: (stdout, stderr)."""
+    import contextlib
+    import sys as _sys
+    from dnd_cli.commands import show_cmd
+
+    out, err = io.StringIO(), io.StringIO()
+    _sys.stdin = io.StringIO(text)
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            show_cmd.execute_beat(str(c), None)
+    finally:
+        _sys.stdin = _sys.__stdin__
+    return out.getvalue(), err.getvalue()
+
+
+def test_placement() -> None:
+    print("the server places actors and keeps the cells")
+    from stage import scenes
+    from stage.server import Stage
+
+    e = beat.parse("@enter guard near mid_center\n@enter clerk on back_center")
+    check("@enter near a slot", e[0] == {"type": "enter", "actor": "guard", "near": "mid_center"} and raises(lambda: beat.parse("@enter x near nowhere")))
+    s = state.apply(state.empty(), {"type": "scene", "location": "hall", "party": ["sireth"]})
+    check("a scene brings actors with no cell: the server places them", "cell" not in s["actors"]["sireth"])
+    check("@walk names a pattern", beat.parse("@walk gareth patrol") == [{"type": "walk", "actor": "gareth", "walk": "patrol"}]
+          and all(raises(lambda b=b: beat.parse(b)) for b in ("@walk gareth", "@walk gareth run", "@walk")))
+    walking = state.apply(state.apply(s, {"type": "enter", "actor": "gareth"}), {"type": "walk", "actor": "gareth", "walk": "wander"})
+    check("a walk event sets the pattern and an actor not on stage is ignored", walking["actors"]["gareth"]["walk"] == "wander"
+          and "nobody" not in state.apply(s, {"type": "walk", "actor": "nobody", "walk": "still"})["actors"])
+    check("entering again keeps the pattern", state.apply(walking, {"type": "enter", "actor": "gareth", "side": "hostile"})["actors"]["gareth"]["walk"] == "wander")
+    placed = state.apply(s, {"type": "place", "scene": "hall", "cells": {"sireth": {"cell": [3, 4], "facing": "right"}, "gone": {"cell": [1, 1], "facing": "down"}}})
+    check("a place event sets the cell and the facing, for actors on stage only",
+          placed["actors"]["sireth"]["cell"] == [3, 4] and placed["actors"]["sireth"]["facing"] == "right" and "gone" not in placed["actors"])
+    check("a place event for another scene is ignored", "cell" not in state.apply(s, {"type": "place", "scene": "road", "cells": {"sireth": {"cell": [3, 4], "facing": "down"}}})["actors"]["sireth"])
+    check("the same room again keeps the cells", state.apply(placed, {"type": "scene", "location": "hall"})["actors"]["sireth"]["cell"] == [3, 4])
+    check("a new room clears them", "cell" not in state.apply(placed, {"type": "scene", "location": "road", "party": ["sireth"]})["actors"]["sireth"])
+    check("entering again to set a side does not move the actor", state.apply(placed, {"type": "enter", "actor": "sireth", "side": "ally"})["actors"]["sireth"]["cell"] == [3, 4])
+    check("entering again with a new place places again", "cell" not in state.apply(placed, {"type": "enter", "actor": "sireth", "near": "back_center"})["actors"]["sireth"])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = fixture_campaign(tmp)
+        scenes.save(c, "hall", {"template": "tavern", "slots": {}, "add": [], "mood": "day", "shape": "h", "seed": 2})
+        beat.append(c, [{"type": "scene", "location": "hall", "party": ["a", "b", "c"], "companions": [{"id": "ilvuur", "side": "ally"}]},
+                        {"type": "enter", "actor": "goblin#1"}, {"type": "enter", "actor": "gareth"}])
+        st = Stage(c, ["cat"])
+        st.fold(st.read_new_events())
+        st.settle()
+        actors_now = st.state["actors"]
+        check("settle gives every actor a cell and a facing", len(actors_now) == 6 and all("cell" in a and "facing" in a for a in actors_now.values()))
+        before = {k: tuple(v["cell"]) for k, v in actors_now.items()}
+        st.settle()
+        check("settle again changes nothing and logs nothing new", {k: tuple(v["cell"]) for k, v in st.state["actors"].items()} == before
+              and sum('"place"' in line for line in st.log_path.read_text().splitlines()) == 1)
+        check("the live seq is the seq a replay of the log gives (the place event is folded once)", st.state["seq"] == state.replay(st.log_path)["seq"])
+        later = Stage(c, ["cat"])
+        later.fold(later.read_new_events())
+        later.settle()
+        check("a restart folds the same cells from the log", {k: tuple(v["cell"]) for k, v in later.state["actors"].items()} == before)
+        beat.append(c, [{"type": "enter", "actor": "sister-gareth"}])
+        st.fold(st.read_new_events())
+        st.settle()
+        check("a late actor is placed and the others stay", all(tuple(st.state["actors"][k]["cell"]) == v for k, v in before.items()) and "cell" in st.state["actors"]["sister-gareth"])
+        check("the room of a scene with no look is a bare room", Stage(c, ["cat"]).room_of("nowhere")["grid"] == ["." * 10] * 8)
+        hall = scenes.room(scenes.load(c, "hall"))
+        empty = next(z for z in scenes.ZONES if not any(p["slot"] == z for p in hall["props"]))
+        held = next(p["slot"] for p in hall["props"])
+        _, err = run_beat(c, f"@scene hall\n@enter x near {empty}\n@enter y on {empty}\n@enter z near {held}")
+        check("a slot that holds nothing is a warning for the DM, not a silent no-op", f"x near {empty}" in err and f"y on {empty}" in err)
+        check("a slot that holds something is not warned about", f"z near {held}" not in err)
+        check("a resent beat is still caught after a place event", beat.last_beat(st.log_path) != [])
+
+
 def test_roster() -> None:
     print("companions, sides and props")
     import contextlib, io, sys as _sys
@@ -607,15 +680,7 @@ def test_roster() -> None:
     s = state.apply(s, {"type": "enter", "actor": "arbiter", "on": "back_center"})
     check("@enter on keeps the slot", s["actors"]["arbiter"]["on"] == "back_center")
 
-    def run(c: Path, text: str) -> tuple[str, str]:
-        out, err = io.StringIO(), io.StringIO()
-        _sys.stdin = io.StringIO(text)
-        try:
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                show_cmd.execute_beat(str(c), None)
-        finally:
-            _sys.stdin = _sys.__stdin__
-        return out.getvalue(), err.getvalue()
+    run = run_beat
 
     with tempfile.TemporaryDirectory() as tmp:
         c = Path(tmp)
@@ -1799,6 +1864,7 @@ if __name__ == "__main__":
     test_maps()
     test_explore_beat()
     test_roster()
+    test_placement()
     test_session_brief()
     test_cli_defaults_and_races()
     test_creator()

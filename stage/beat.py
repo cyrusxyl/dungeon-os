@@ -30,7 +30,7 @@ The party is on stage in every new room: the player characters and the companion
 `@scene`, so the DM does not `@enter` them. `@enter` is for others. A companion is an NPC who travels with
 the party (`@join`, `@leave`); `@scene <loc> -<id>` leaves one out of that scene. Every actor has a side
 (party, ally, neutral, hostile) that the stage draws as a colored ring: `@side <id> <side>` changes it.
-`@enter <id> on <slot>` puts an actor on a prop (a seat or a table top) of the scene. `@enter <id> hostile`
+`@enter <id> on <slot>` puts an actor on a prop (a seat or a table top) of the scene; `@enter <id> near <slot>` puts one on the floor next to it. `@enter <id> hostile`
 sets the side of a named enemy when it enters.
 
 A line without an `@` continues the text of the line before it. Each line
@@ -50,6 +50,7 @@ from stage.files import read_json
 EMOTIONS = ("neutral", "happy", "angry", "sad", "surprised", "fearful", "disgusted")  # the voice labels; the DM-facing list
 MOODS = ("neutral", "ominous", "warm", "wry", "tense", "intense", "urgent", "action", "bright", "somber")  # narrator styles
 POSITIONS = ("left", "center", "right", "far-left", "far-right")
+WALKS = ("still", "wander", "patrol")  # how an actor moves in a room before a fight (stage/walk.py)
 SIDES = ("party", "ally", "neutral", "hostile")  # a ring under the feet: green, green, yellow, red
 JOIN_SIDES = ("ally", "neutral", "hostile")  # a companion is not a player character
 MAX_ACTORS = 12  # more than this does not fit the stage
@@ -69,7 +70,7 @@ def title(slug: str) -> str:
 
 USAGE = (
     "Beat lines: @scene <location-id> [-<actor-id> ...] (the party and the companions come with it; -<id> leaves one out) | "
-    "@enter <actor-id> [position | on <slot>] [party|ally|neutral|hostile] | @exit <actor-id> | @join <actor-id> [ally|neutral|hostile] | @leave <actor-id> | "
+    "@enter <actor-id> [position | on <slot> | near <slot>] [party|ally|neutral|hostile] | @exit <actor-id> | @join <actor-id> [ally|neutral|hostile] | @leave <actor-id> | @walk <actor-id> still|wander|patrol | "
     "@side <actor-id> party|ally|neutral|hostile | @narrate[mood] <text> (mood is optional: " + ", ".join(MOODS) + ") | @say[emotion] <actor-id> <text> (emotion is optional: " + ", ".join(EMOTIONS) + ") | "
     "@choices <a> | <b> | ... | @choices-for <pc-id> <a> | <b> | @whisper <pc-id> <text> | @await all|<pc-id> | "
     "@roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
@@ -130,18 +131,18 @@ def parse(text: str) -> list[dict]:
             event = {"type": "enter", "actor": _check_id(parts[0], line_no, "actor")}
             if len(parts) > 1 and parts[-1].lower() in SIDES:
                 event["side"] = parts.pop().lower()  # `@enter mizzrymth-guard hostile`
-            if len(parts) == 3 and parts[1].lower() == "on":
+            if len(parts) == 3 and parts[1].lower() in ("on", "near"):
                 from stage import scenes  # the slot names (it loads Pillow, so only when asked)
 
                 slot = parts[2].replace("-", "_")
                 if slot not in scenes.SLOTS:
                     raise BeatError(f"line {line_no}: slot {parts[2]!r} is not one of {', '.join(scenes.SLOTS)}.")
-                event["on"] = slot
+                event[parts[1].lower()] = slot
             elif len(parts) > 1:
                 position = parts[1].lower()
                 if len(parts) > 2 or position not in POSITIONS:
                     raise BeatError(f"line {line_no}: use '@enter <actor-id> <position>' (one of {', '.join(POSITIONS)}) or "
-                                    "'@enter <actor-id> on <slot>'.")
+                                    "'@enter <actor-id> on <slot>' or '@enter <actor-id> near <slot>'.")
                 event["position"] = position
             events.append(event)
         elif command == "exit":
@@ -156,6 +157,11 @@ def parse(text: str) -> list[dict]:
                                 f"{']' if command == 'join' else ''}'.")
             events.append({"type": command, "actor": _check_id(parts[0], line_no, "actor"),
                            "side": parts[1] if len(parts) == 2 else "ally"})
+        elif command == "walk":
+            parts = rest.lower().split()
+            if len(parts) != 2 or parts[1] not in WALKS:
+                raise BeatError(f"line {line_no}: use '@walk <actor-id> {'|'.join(WALKS)}'.")
+            events.append({"type": "walk", "actor": _check_id(parts[0], line_no, "actor"), "walk": parts[1]})
         elif command == "leave":
             if not rest:
                 raise BeatError(f"line {line_no}: @leave needs an actor id. {USAGE}")
