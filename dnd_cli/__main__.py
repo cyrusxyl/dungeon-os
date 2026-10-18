@@ -257,7 +257,7 @@ def create_parser():
     p = character_sub.add_parser("item", help="add|remove an inventory item: item <campaign> <name> add|remove \"<item>\" [--qty N] [--canon]")
     p.add_argument("campaign")
     p.add_argument("name")
-    p.add_argument("op", choices=["add", "remove", "profile"])
+    p.add_argument("op", choices=["add", "remove", "profile", "equip", "unequip"])
     p.add_argument("item")
     p.add_argument("--qty", type=int, default=1)
     p.add_argument("--profile", default=None, help='for op profile: what the item does in a fight, as JSON: {"kind": "heal", "heal": "2d4"} or {"kind": "throw", "range_ft": 20, "damage": ["1d6", "fire"]}')
@@ -555,6 +555,7 @@ def create_parser():
     p.add_argument("--to", required=True, metavar="WHO")
     p.add_argument("--perk", default="", help="what makes it special, in your words: it goes in the item's description")
     p.add_argument("--rarity", default=None)
+    p.add_argument("--effects", default="", help="effect presets the item gives while equipped, comma-separated (loot roll names them)")
     p.add_argument("--qty", type=int, default=1)
     p.add_argument("--campaign", default=None)
 
@@ -868,7 +869,7 @@ def main():
             if args.loot_command == "roll":
                 return rules_cmd.execute_loot_roll(args.cr, args.kind, args.seed, args.type)
             if args.loot_command == "force":
-                return rules_cmd.execute_loot_force(args.campaign, args.to, args.item, args.qty, args.perk, args.rarity)
+                return rules_cmd.execute_loot_force(args.campaign, args.to, args.item, args.qty, args.perk, args.rarity, args.effects)
             print("Usage: dnd-cli loot roll|force (see --help)", file=sys.stderr)
             return 1
 

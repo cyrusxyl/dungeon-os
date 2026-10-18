@@ -72,7 +72,8 @@ def _find_item(sheet: dict, name: str) -> dict | None:
     return next((i for i in items if i.get("name", "").lower() == name.lower()), None)
 
 
-def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity: str | None = None) -> str:
+def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity: str | None = None,
+             effects: list[str] | None = None) -> str:
     if qty < 1:
         raise RulesError("quantity must be 1 or more.")
     item = _find_item(sheet, name)
@@ -84,8 +85,20 @@ def add_item(sheet: dict, name: str, qty: int = 1, description: str = "", rarity
             item["description"] = description
         if rarity:
             item["rarity"] = rarity
+        if effects:
+            item["effects"] = effects
         sheet["inventory"].append(item)
     return f"{sheet['name']}: {item['name']} x{item['quantity']}"
+
+
+def set_equipped(sheet: dict, name: str, on: bool) -> str:
+    """Wear or take off an inventory item. Its `effects` count only while it is worn."""
+    item = _find_item(sheet, name)
+    if not item:
+        have = ", ".join(i["name"] for i in sheet.get("inventory", [])) or "nothing"
+        raise RulesError(f"{sheet['name']} has no {name!r}. Inventory: {have}.")
+    item["equipped"] = on
+    return f"{sheet['name']}: {item['name']} {'equipped' if on else 'put away'}"
 
 
 def remove_item(sheet: dict, name: str, qty: int = 1) -> str:
@@ -173,6 +186,10 @@ def equip(sheet: dict, item: dict, proficient: bool = True) -> list[str]:
     shield = _shield_equipped(sheet)
     if not _find_item(sheet, name):
         add_item(sheet, name, 1)
+    if category == "armor" and armor_cat != "shield" and sheet.get("armor"):  # new armor replaces the old: its perks end
+        old = _find_item(sheet, sheet["armor"].get("name", ""))
+        if old:
+            old["equipped"] = False
     _find_item(sheet, name)["equipped"] = True
     m, prof = mods(sheet), sheet.get("proficiency_bonus", prof_for_level(sheet["level"]))
     if category == "weapon":

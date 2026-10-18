@@ -809,6 +809,54 @@ def test_gear(c: Path) -> None:
     effects.remove(c, "aragorn", "blessed")
     check("the stage lists every preset with a tone", all(e["tone"] for e in effects.catalogue()))
 
+    print("worn gear")
+
+    def give(name, ids, on=True):
+        d = character.load(c, "aragorn")
+        sheet.add_item(d, name, 1, effects=ids)
+        sheet.set_equipped(d, name, on)
+        character.save(c, "aragorn", d)
+
+    sheet_ac = character.load(c, "aragorn")["armor_class"]
+    give("+1 Chain Mail", ["magic-armor-1"], on=False)
+    check("an item in the pack that is not worn gives nothing", effects.active(c, "aragorn") == [] and combat.combatant(c, state, "aragorn")["ac"] == sheet_ac)
+    d = character.load(c, "aragorn")
+    sheet.set_equipped(d, "+1 Chain Mail", True)
+    character.save(c, "aragorn", d)
+    check("a worn +1 armor adds 1 AC in the combat record", combat.combatant(c, state, "aragorn")["ac"] == sheet_ac + 1
+          and effects.defense(c, "aragorn")["ac"] == 1 and effects.stored(c, "aragorn") == [])
+    effects.add(c, "aragorn", "guidance")
+    effects.apply(c, "aragorn", "check", Fixed(2))
+    check("spending a next-roll effect does not write worn gear into effects.json", effects.stored(c, "aragorn") == []
+          and effects.active(c, "aragorn") == ["magic-armor-1"])
+    give("Ring of Warding", ["warding"])
+    give("Cloak of Warding", ["warding"])
+    check("the same perk on two worn items counts twice", effects.apply(c, "aragorn", "save")["flat"] == [{"label": "Warding", "value": 1}] * 2)
+    d = character.load(c, "aragorn")
+    sheet.set_equipped(d, "Cloak of Warding", False)
+    sheet.set_equipped(d, "Ring of Warding", False)
+    sheet.set_equipped(d, "+1 Chain Mail", False)
+    character.save(c, "aragorn", d)
+    check("the bonus ends when the item is put away", effects.active(c, "aragorn") == [] and combat.combatant(c, state, "aragorn")["ac"] == sheet_ac)
+
+    give("+1 Longsword of Flame", ["magic-weapon-1", "flame-edge"])
+    sword = effects.weapon(c, "aragorn", "", "Longsword")
+    bow = effects.weapon(c, "aragorn", "", "Longbow")
+    check("a worn sword's perks apply to the sword and not to the bow", sword["dmg"] == 1 and sword["extra"] == [["1d4", "fire"]]
+          and bow["dmg"] == 0 and not bow["extra"] and not bow["hit"])
+    effects.add(c, "aragorn", "magic-weapon-2")
+    check("a stored weapon effect still applies to every weapon", effects.weapon(c, "aragorn", "", "Longbow")["dmg"] == 2)
+    effects.remove(c, "aragorn", "magic-weapon-2")
+
+    old = {"name": "Leather", "quantity": 1, "equipped": True, "effects": ["magic-armor-1"]}
+    d = {"name": "T", "level": 1, "ability_scores": {a: 10 for a in combat.ABILITIES}, "armor_class": 11, "inventory": [old],
+         "armor": {"name": "Leather", "type": "light", "ac_bonus": 11, "equipped": True}}
+    sheet.equip(d, {"name": "Plate", "equipment_category": {"index": "armor"}, "armor_class": {"base": 18, "dex_bonus": False}})
+    check("new armor takes the old armor off, and its perks end", old["equipped"] is False)
+    d = character.load(c, "aragorn")
+    sheet.set_equipped(d, "+1 Longsword of Flame", False)
+    character.save(c, "aragorn", d)
+
 
 def test_loot() -> None:
     print("loot")
@@ -825,10 +873,12 @@ def test_loot() -> None:
     data = {"name": "Aragorn", "inventory": []}
     sheet.add_item(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
     check("a forced item keeps its perk text and rarity", data["inventory"][0] == {"name": "Longsword", "quantity": 1, "description": "keen: it hums near orcs", "rarity": "uncommon"})
-    hints = loot.hints("Keen, of Flame, hums", "aragorn")
-    check("loot force names the effect of a catalog perk and says when the DM must rule", any("effect add aragorn keen-edge" in h for h in hints)
-          and any("effect add aragorn flame-edge" in h for h in hints) and len(hints) == 2
-          and any("you rule it" in h for h in loot.hints("vicious", "aragorn")))
+    hints = loot.hints("Keen, of Flame, hums")
+    check("loot force names the effect of a catalog perk and says when the DM must rule", any("--effects keen-edge" in h for h in hints)
+          and any("--effects flame-edge" in h for h in hints) and len(hints) == 2
+          and any("you rule it" in h for h in loot.hints("vicious")))
+    sheet.add_item(data, "Ring", 1, effects=["warding"])
+    check("a forced item keeps the effects it gives when worn", data["inventory"][1]["effects"] == ["warding"])
 
     print("perk catalog")
     book = loot.perks()["perks"]
@@ -861,7 +911,7 @@ def test_loot() -> None:
     check("the same seed gives the same items and the same perks", all(loot.roll(14, "hoard", n) == loot.roll(14, "hoard", n) for n in range(30))
           and any(i["perks"] for n in range(30) for i in loot.roll(14, "hoard", n)["items"] if i.get("type")))
     text = "\n".join(line for n in range(40) for line in loot.lines(loot.roll(14, "hoard", n)))
-    check("the list names the effects to add and the perks to rule", "effects when worn:" in text and "you rule:" in text and "effect add <who>" in text)
+    check("the list names the effects to give and the perks to rule", "give it with --effects" in text and "you rule:" in text)
 
 
 if __name__ == "__main__":

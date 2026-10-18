@@ -217,6 +217,8 @@ def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon
                 return [sheet.set_profile(data, item, json.loads(profile or ""))]
             except json.JSONDecodeError:
                 raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
+        if op in ("equip", "unequip"):
+            return [sheet.set_equipped(data, item, op == "equip")]
         if op == "remove":
             return [sheet.remove_item(data, item, qty)]
         lines = [sheet.add_item(data, item, qty)]
@@ -239,12 +241,17 @@ def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str
     return 0
 
 
-def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None) -> int:
-    """Give an item the DM chose, with a perk written as free text (the lore is the DM's). A catalog perk in the text adds a hint."""
+def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None, fx: str = "") -> int:
+    """Give an item the DM chose, with a perk written as free text (the lore is the DM's). A catalog perk in the text adds a hint.
+    `fx` is a list of effect presets (comma-separated) that the item gives while it is equipped."""
     def fn(campaign_dir, data):
         if rarity and rarity not in loot.RARITIES:
             raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
-        return [sheet.add_item(data, item, qty, perk, rarity)] + loot.hints(perk, who)
+        ids = [e.strip() for e in fx.split(",") if e.strip()]
+        bad = [e for e in ids if e not in effects.PRESETS]
+        if bad:
+            raise combat.RulesError(f"no effect {', '.join(bad)}. Effects: {', '.join(effects.PRESETS)}.")
+        return [sheet.add_item(data, item, qty, perk, rarity, ids)] + ([] if ids else loot.hints(perk))
     return _edit_sheet(campaign, who, fn)
 
 

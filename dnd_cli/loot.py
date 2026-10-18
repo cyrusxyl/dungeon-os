@@ -78,13 +78,13 @@ def gear(rarity: str, rng: random.Random) -> dict:
             "rulings": [f"{p['name']}: {p['ruling']}" for p in chosen if not p["effect"]]}
 
 
-def hints(perk_text: str, who: str) -> list[str]:
+def hints(perk_text: str) -> list[str]:
     """For `loot force`: the catalog perks named in the free text (split at commas), and what to do with each."""
     out = []
     for word in (w.strip().lower() for w in perk_text.split(",")):
         for p in perks()["perks"]:
             if p["name"].lower() == word:
-                out.append(f"{p['name']} ({'/'.join(p['types'])}): " + (f"wear it, then `effect add {who} {p['effect']}`." if p["effect"]
+                out.append(f"{p['name']} ({'/'.join(p['types'])}): " + (f"give it again with `--effects {p['effect']}`, and the stage counts it while it is equipped." if p["effect"]
                                                                        else f"you rule it: {p['ruling']}"))
     return out
 
@@ -130,9 +130,9 @@ def lines(result: dict) -> list[str]:
     for item in result["items"]:
         out.append(f"  {item['name'] or 'A legendary item: write it yourself'} ({item['rarity']})")
         if item.get("effects"):
-            out.append(f"      effects when worn: {', '.join(item['effects'])}")
+            out.append(f"      give it with --effects {','.join(item['effects'])}")
         out += [f"      you rule: {r}" for r in item.get("rulings", [])]
-    out.append("  Give coins with `character gold <who> +N` (in gp), items with `character item <who> add \"<item>\"`, or `loot force \"<item>\" --to <who> --perk \"...\"`.")
+    out.append("  Give coins with `character gold <who> +N` (in gp), items with `character item <who> add \"<item>\"`, or `loot force \"<item>\" --to <who> --perk \"...\" --effects <preset>`.")
     if any(i.get("effects") for i in result["items"]):
         out.append("  Put an effect on the wearer with `effect add <who> <effect>`; take it off with `effect remove`.")
     return out

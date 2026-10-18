@@ -20,6 +20,11 @@ Loot perks (stage/data/perks.json) name presets with these parts.
 Effects live in `{campaign}/stage/effects.json` as `{character id: [preset id]}`.
 They are not in `state.json`: the rules commands load and save the whole state
 file, and the stage writes effects while the DM is idle.
+
+Worn gear adds effects too. An inventory item with `equipped: true` and an `effects` list
+gives those presets while it is equipped. Nothing is stored for them, so unequip removes them.
+Two equipped items with the same perk both count. A `weapon` part of an item applies only to
+the attack whose name is in the item name ("Longsword" in "+1 Longsword of Flame").
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from dnd_cli import dice
+from dnd_cli import character, dice
 from stage.files import read_json, write_json
 
 ROLLS = ("check", "save", "attack")
@@ -90,8 +95,20 @@ def load(campaign_dir: Path) -> dict[str, list[str]]:
     return {cid: [e for e in ids if e in PRESETS] for cid, ids in data.items() if isinstance(ids, list)}
 
 
-def active(campaign_dir: Path, cid: str) -> list[str]:
+def stored(campaign_dir: Path, cid: str) -> list[str]:
     return load(campaign_dir).get(cid, [])
+
+
+def worn(campaign_dir: Path, cid: str) -> list[tuple[str, str]]:
+    """(preset id, item name) for each effect of an equipped item. A sheet that is missing gives none."""
+    sheet = read_json(character.character_path(campaign_dir, cid)) or {}
+    return [(e, i.get("name", "")) for i in sheet.get("inventory", []) if i.get("equipped")
+            for e in i.get("effects", []) if e in PRESETS]
+
+
+def active(campaign_dir: Path, cid: str) -> list[str]:
+    """The stored effects, then the effects of worn gear."""
+    return stored(campaign_dir, cid) + [e for e, _ in worn(campaign_dir, cid)]
 
 
 def _save(campaign_dir: Path, data: dict[str, list[str]]) -> None:
@@ -122,8 +139,8 @@ def apply(campaign_dir: Path, cid: str, kind: str, rng: random.Random | None = N
     """
     rng = rng or random
     out: dict = {"adv": False, "dis": False, "bonus": [], "flat": [], "used": []}
-    ids = active(campaign_dir, cid)
-    for eid in ids:
+    ids = stored(campaign_dir, cid)
+    for eid in ids + [e for e, _ in worn(campaign_dir, cid)]:
         spec = PRESETS[eid]
         if kind not in spec["on"] or eid in skip or (spec.get("only") and not set(spec["only"]) & set(tags)):
             continue
@@ -148,14 +165,18 @@ def apply(campaign_dir: Path, cid: str, kind: str, rng: random.Random | None = N
     return out
 
 
-def weapon(campaign_dir: Path, cid: str, target_type: str = "") -> dict:
-    """What the character's effects add to a weapon attack against a target of `target_type`:
+def weapon(campaign_dir: Path, cid: str, target_type: str = "", attack: str = "") -> dict:
+    """What the character's effects add to the weapon attack `attack` against a target of `target_type`:
     to-hit tiles, flat damage, the lowest d20 that is a critical hit, and extra [dice, type] damage."""
     out = {"hit": [], "dmg": 0, "crit": 20, "extra": []}
-    for eid in active(campaign_dir, cid):
+    # A stored effect is for every weapon. A worn item's effect is for the weapon it names.
+    held = [(e, "") for e in stored(campaign_dir, cid)] + worn(campaign_dir, cid)
+    for eid, item in held:
         spec = PRESETS[eid]
         part = spec.get("weapon")
         if not part or (part.get("vs") and not any(t in target_type.lower() for t in part["vs"])):
+            continue
+        if item and attack.lower() not in item.lower():
             continue
         if part.get("hit"):
             out["hit"].append({"label": spec["label"], "value": part["hit"]})

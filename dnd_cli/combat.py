@@ -910,7 +910,7 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     r = _d20(campaign_dir, attacker, "attack", adv, dis, rng, skip)
     kept = r["kept"]
     # Weapon gear (a +1 sword, Keen, of Flame) touches weapon attacks only, not Unarmed Strike, spells or throws.
-    wfx = effects.NO_WEAPON if act.get("plain") else effects.weapon(campaign_dir, attacker, str(t_rec.get("ctype", "")))
+    wfx = effects.NO_WEAPON if act.get("plain") else effects.weapon(campaign_dir, attacker, str(t_rec.get("ctype", "")), act["name"])
     r["flat"] = r["flat"] + wfx["hit"]
     tiles = [{"label": "Attack Bonus", "value": act["bonus"]}] + ([{"label": "Bonus", "value": bonus}] if bonus else [])
     entry = _entry(a_rec, r, tiles)
