@@ -261,6 +261,10 @@ def create_parser():
     p.add_argument("item")
     p.add_argument("--qty", type=int, default=1)
     p.add_argument("--profile", default=None, help='for op profile: what the item does in a fight, as JSON: {"kind": "heal", "heal": "2d4"} or {"kind": "throw", "range_ft": 20, "damage": ["1d6", "fire"]}')
+    p.add_argument("--perk", default="", help="For op add: what makes it special, in your words: it goes in the item's description")
+    p.add_argument("--rarity", default=None, help="For op add")
+    p.add_argument("--base", default=None, help="For op add: the base item it is made from (Longsword, Plate Armor); found in the name when left out")
+    p.add_argument("--effects", default="", help="For op add: effect presets the item gives while equipped, comma-separated (loot roll names them)")
     p.add_argument("--not-proficient", action="store_true", help="For op equip: no proficiency bonus on the attack")
     p.add_argument("--canon", action="store_true", help="Also record the item as given this session (canon Part E)")
 
@@ -538,22 +542,13 @@ def create_parser():
         p.add_argument("--campaign", default=None)
 
     # Loot: the engine rolls, the DM decides
-    loot_parser = subparsers.add_parser("loot", help="Treasure: roll coins and items by challenge rating, or give an item you chose")
+    loot_parser = subparsers.add_parser("loot", help="Treasure: roll coins and items by challenge rating")
     loot_sub = loot_parser.add_subparsers(dest="loot_command", help="Loot subcommand")
     p = loot_sub.add_parser("roll", help="roll --cr N [--kind individual|hoard] [--seed N] [--type beast]: the same seed gives the same list")
     p.add_argument("--cr", type=float, required=True)
     p.add_argument("--kind", choices=["individual", "hoard"], default="individual")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--type", default="", help="creature type: a beast, an ooze or a plant carries nothing")
-    p = loot_sub.add_parser("force", help='force "<item>" --to <who> [--perk "free text"] [--rarity uncommon] [--qty N]: give an item you chose')
-    p.add_argument("item")
-    p.add_argument("--to", required=True, metavar="WHO")
-    p.add_argument("--perk", default="", help="what makes it special, in your words: it goes in the item's description")
-    p.add_argument("--rarity", default=None)
-    p.add_argument("--base", default=None, help="the base item it is made from (Longsword, Plate Armor); found in the name when left out")
-    p.add_argument("--effects", default="", help="effect presets the item gives while equipped, comma-separated (loot roll names them)")
-    p.add_argument("--qty", type=int, default=1)
-    p.add_argument("--campaign", default=None)
 
     # Map command group (region and city maps)
     map_parser = subparsers.add_parser("map", help="Region and city maps on the visual stage: places, routes, reveals")
@@ -760,7 +755,7 @@ def main():
                 return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
             if cc == "item":
                 return rules_cmd.execute_item(args.campaign, args.name, args.op, args.item, args.qty, args.canon, args.profile,
-                                              not args.not_proficient)
+                                              not args.not_proficient, args.perk, args.rarity, args.base, args.effects)
             if cc == "gold":
                 return rules_cmd.execute_gold(args.campaign, args.name, args.delta)
             if cc == "xp":
@@ -863,9 +858,7 @@ def main():
         elif args.command == "loot":
             if args.loot_command == "roll":
                 return rules_cmd.execute_loot_roll(args.cr, args.kind, args.seed, args.type)
-            if args.loot_command == "force":
-                return rules_cmd.execute_loot_force(args.campaign, args.to, args.item, args.qty, args.perk, args.rarity, args.effects, args.base)
-            print("Usage: dnd-cli loot roll|force (see --help)", file=sys.stderr)
+            print("Usage: dnd-cli loot roll (see --help)", file=sys.stderr)
             return 1
 
         elif args.command == "arena":

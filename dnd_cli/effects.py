@@ -34,6 +34,7 @@ import re
 from pathlib import Path
 
 from dnd_cli import character, dice, item
+from dnd_cli.errors import RulesError
 from stage.files import read_json, write_json
 
 ROLLS = ("check", "save", "attack")
@@ -85,6 +86,15 @@ PRESETS: dict[str, dict] = {
     "poison-ward": _gear("Poison Ward", "Resistance to poison damage", resist=("poison",)),
 }
 NO_WEAPON = {"hit": [], "dmg": 0, "crit": 20, "extra": []}
+
+
+def gear_presets(text: str) -> list[str]:
+    """The effect presets in a comma-separated list, checked: an item can give only a gear effect (kept, no concentration)."""
+    ids = [e.strip() for e in text.split(",") if e.strip()]
+    gear = [k for k, v in PRESETS.items() if v["use"] == "kept" and not v["concentration"]]
+    if bad := [e for e in ids if e not in gear]:
+        raise RulesError(f"no gear effect {', '.join(bad)}. Gear effects: {', '.join(gear)}.")
+    return ids
 
 
 def path(campaign_dir: Path) -> Path:

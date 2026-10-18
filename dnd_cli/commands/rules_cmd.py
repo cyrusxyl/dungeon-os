@@ -221,7 +221,11 @@ def _equip(data: dict, name: str, proficient: bool) -> list[str]:
 
 
 def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool, profile: str | None = None,
-                 proficient: bool = True) -> int:
+                 proficient: bool = True, perk: str = "", rarity: str | None = None, base: str | None = None,
+                 fx: str = "") -> int:
+    """`perk` is what makes an added item special, in the DM's words (a catalog perk in it adds a hint). `fx` is a list of
+    gear effect presets (comma-separated) that the item gives while it is equipped. `base` names the item the gear is made
+    from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
     def fn(campaign_dir, data):
         if op == "profile":
             try:
@@ -234,7 +238,12 @@ def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon
             return items.get(data, item).unequip(data)
         if op == "remove":
             return [items.remove(data, item, qty)]
-        lines = [items.add(data, item, qty)]
+        if rarity and rarity not in loot.RARITIES:
+            raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
+        ids = effects.gear_presets(fx)
+        kind = loot.base_of(item, base)
+        gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
+        lines = [items.add(data, item, qty, perk, rarity, **gear)] + loot.hints(perk, ids)
         if record_canon:
             from dnd_cli import canon
             c = canon.load(campaign_dir)
@@ -252,24 +261,6 @@ def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str
         print(f"Error: {e}")
         return 1
     return 0
-
-
-def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None, fx: str = "", base: str | None = None) -> int:
-    """Give an item the DM chose, with a perk written as free text (the lore is the DM's). A catalog perk in the text adds a hint.
-    `fx` is a list of effect presets (comma-separated) that the item gives while it is equipped. `base` names the item the gear
-    is made from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
-    def fn(campaign_dir, data):
-        if rarity and rarity not in loot.RARITIES:
-            raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
-        ids = [e.strip() for e in fx.split(",") if e.strip()]
-        gear = [k for k, v in effects.PRESETS.items() if v["use"] == "kept" and not v["concentration"]]
-        bad = [e for e in ids if e not in gear]
-        if bad:
-            raise combat.RulesError(f"no gear effect {', '.join(bad)}. Gear effects: {', '.join(gear)}.")
-        kind = loot.base_of(item, base)
-        gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
-        return [items.add(data, item, qty, perk, rarity, **gear)] + loot.hints(perk, ids)
-    return _edit_sheet(campaign, who, fn)
 
 
 def execute_gold(campaign, name: str, delta: str) -> int:

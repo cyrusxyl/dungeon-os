@@ -603,6 +603,22 @@ def test_cli_guards(c: Path) -> None:
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             rc = main()
         check("use --amount -2 is refused, no uses given back", rc == 1 and "--amount" in err.getvalue() and path.read_bytes() == before)
+
+        def run(*argv: str) -> tuple[int, str, str]:
+            sys.argv = ["dnd-cli", "character", "item", str(c), "aragorn", *argv]
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                return main(), out.getvalue(), err.getvalue()
+        rc, out, _ = run("add", "+1 Rapier of Frost", "--perk", "keen", "--rarity", "rare", "--effects", "magic-weapon-1,frost-edge")
+        row = next(i for i in character.load(c, "aragorn")["inventory"] if i["name"] == "+1 Rapier of Frost")
+        check("item add takes a perk, a rarity and gear effects, and finds the base",
+              rc == 0 and row["description"] == "keen" and row["rarity"] == "rare" and row["effects"] == ["magic-weapon-1", "frost-edge"]
+              and row["type"] == "weapon" and row["base"] == "Rapier")
+        rc, _, err = run("add", "Ring", "--effects", "bless")
+        check("item add refuses an effect that is not gear", rc == 1 and "no gear effect bless" in err)
+        rc, _, err = run("add", "Ring", "--rarity", "shiny")
+        check("item add refuses an unknown rarity", rc == 1 and "rarity is one of" in err)
+        path.write_bytes(before)
     finally:
         rules_cmd._api, sys.argv = orig_api, orig_argv
 
@@ -930,7 +946,7 @@ def test_loot() -> None:
     inv.add(data, "Longsword", 1, "keen: it hums near orcs", "uncommon")
     check("a forced item keeps its perk text and rarity", data["inventory"][0] == {"name": "Longsword", "quantity": 1, "description": "keen: it hums near orcs", "rarity": "uncommon"})
     hints = loot.hints("Keen, of Flame, hums")
-    check("loot force names the effect of a catalog perk and says when the DM must rule", any("--effects keen-edge" in h for h in hints)
+    check("item add names the effect of a catalog perk and says when the DM must rule", any("--effects keen-edge" in h for h in hints)
           and any("--effects flame-edge" in h for h in hints) and len(hints) == 2
           and any("you rule it" in h for h in loot.hints("vicious")))
     inv.add(data, "Ring", 1, effects=["warding"])
