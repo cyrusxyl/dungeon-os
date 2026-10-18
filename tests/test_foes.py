@@ -14,7 +14,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from dnd_cli import character, combat  # noqa: E402
+from dnd_cli import character  # noqa: E402
+from dnd_cli.combat import encounters, records, tracker  # noqa: E402
 from stage import arena, board, foes  # noqa: E402
 from tests.test_board import ROOM  # noqa: E402
 from tests.test_rules import Fixed, campaign  # noqa: E402
@@ -31,8 +32,8 @@ def check(label: str, cond: bool, detail: str = "") -> None:
 def battle(tmp: Path, specs: list[str], at: dict, props=()):
     """The example party (Aragorn, Legolas) against API creatures, on a plain room. `at` places units by id."""
     c = campaign(Path(tmp))
-    state = combat.load_state(c)
-    combat.start(c, state, specs, None, rng=Fixed(10))
+    state = tracker.load_state(c)
+    encounters.start(c, state, specs, None, rng=Fixed(10))
     enc = state["active_encounter"]
     units = {k: {"x": x, "y": y} for k, (x, y) in at.items()}
     a = {"w": 12, "h": 8, "grid": list(ROOM), "props": [dict(p, id=f"{p['kind']}#{i}") for i, p in enumerate(props)], "items": [],
@@ -80,7 +81,7 @@ def test_multiattack_and_breath() -> None:
         pl = foes.plan(c, state, a, "young-red-dragon")
         check("next to a hero, the dragon uses its Multiattack, not the breath", pl["kind"] == "multiattack")
         lines = foes.play_foe(c, state, a, "young-red-dragon", rng=Fixed(15, 1, 1, 15, 1, 1, 15, 1, 1))["lines"]
-        check("the Multiattack is a bite and two claws, with one action", sum("Bite" in ln or "Claw" in ln for ln in lines) == 3 and combat.turn_used(state, "young-red-dragon")["action"])
+        check("the Multiattack is a bite and two claws, with one action", sum("Bite" in ln or "Claw" in ln for ln in lines) == 3 and tracker.turn_used(state, "young-red-dragon")["action"])
         board.resources(state, "young-red-dragon").clear()
         down["hp"]["current"] = 200
         character.save(c, "legolas", down)
@@ -138,8 +139,8 @@ def test_styles() -> None:
         out = foes.play_foe(c, state, a, "goblin", rng=Fixed(10))
         x, y = board.pos(a, "goblin")
         check("a cowardly creature below half its HP runs, and gets farther away",
-              any("flees" in ln for ln in out["lines"]) and min(arena.cheb((x, y), (2, 3)), arena.cheb((x, y), (2, 6))) >= 4 and combat.has_condition(state, "goblin", "dashing"))
-        check("it does not attack when it runs", combat.turn_used(state, "goblin")["action"] and not any("Scimitar" in ln for ln in out["lines"]))
+              any("flees" in ln for ln in out["lines"]) and min(arena.cheb((x, y), (2, 3)), arena.cheb((x, y), (2, 6))) >= 4 and tracker.has_condition(state, "goblin", "dashing"))
+        check("it does not attack when it runs", tracker.turn_used(state, "goblin")["action"] and not any("Scimitar" in ln for ln in out["lines"]))
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = battle(tmp, ["goblin"], {"aragorn": (2, 3), "legolas": (2, 6), "goblin": (4, 3)})
         state["active_encounter"]["monsters"]["goblin"]["abilities"] = []
@@ -184,18 +185,18 @@ def test_traits() -> None:
         lines = board.attack(c, state, a, "hobgoblin#1", "longsword", "aragorn", rng=Fixed(18, 4, 3, 3))
         check("Martial Advantage: +2d6 once per turn when an ally is next to the target", board.resources(state, "hobgoblin#1").get("martial") is True
               and any("2d6" in ln or "damage" in ln for ln in lines))
-        before = combat.combatant(c, state, "aragorn")["hp"]["current"]
+        before = records.combatant(c, state, "aragorn")["hp"]["current"]
         board.attack(c, state, a, "hobgoblin#1", "longsword", "aragorn", rng=Fixed(18, 4))
-        check("only once per turn: the second hit is 1d8+1 alone (4 + 1)", before - combat.combatant(c, state, "aragorn")["hp"]["current"] == 5)
+        check("only once per turn: the second hit is 1d8+1 alone (4 + 1)", before - records.combatant(c, state, "aragorn")["hp"]["current"] == 5)
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = battle(tmp, ["goblin"], {"aragorn": (2, 3), "legolas": (2, 6), "goblin": (3, 3)})
         lines = foes._disengage_first(c, state, a, "goblin")
         check("Nimble Escape: a goblin next to a hero disengages with its bonus action before it walks away",
-              lines and combat.turn_used(state, "goblin")["bonus"] and combat.has_condition(state, "goblin", "disengaged"))
+              lines and tracker.turn_used(state, "goblin")["bonus"] and tracker.has_condition(state, "goblin", "disengaged"))
         check("and only once", foes._disengage_first(c, state, a, "goblin") == [])
         a["units"]["goblin"] = {"x": 9, "y": 3}
         state["active_encounter"]["resources"]["goblin"] = {}
-        combat.condition(state, "goblin", "remove", "disengaged")
+        encounters.condition(state, "goblin", "remove", "disengaged")
         check("no hero next to it: no need", foes._disengage_first(c, state, a, "goblin") == [])
 
 

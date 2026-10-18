@@ -703,9 +703,9 @@ def test_roster() -> None:
         check("a companion left out who then speaks has the companion's ring", "ilvuur (ally)" in out)
         run(c, "@side ilvuur neutral\n@enter ilvuur on back_right")
         check("@side changes the roster", beat.companions(c) == [{"id": "ilvuur", "side": "neutral"}])
-        from dnd_cli import combat
+        from dnd_cli.combat import tracker
 
-        combat.save_state(c, combat.load_state(c))
+        tracker.save_state(c, tracker.load_state(c))
         check("the roster survives another command that saves state.json", beat.companions(c) == [{"id": "ilvuur", "side": "neutral"}])
         out, _ = run(c, "@leave ilvuur")
         check("@leave drops the companion for good", beat.companions(c) == [] and "ilvuur" not in out)
@@ -1070,7 +1070,8 @@ def test_seats() -> None:
     import shutil
     import subprocess
 
-    from dnd_cli import character, combat
+    from dnd_cli import character
+    from dnd_cli.combat import tracker
     from stage.seats import SeatError, Seats, sid
     from stage.server import create_app
 
@@ -1114,11 +1115,11 @@ def test_seats() -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         c = fixture_campaign(tmp)
-        st = combat.load_state(c)
+        st = tracker.load_state(c)
         st["active_encounter"] = {"type": "combat", "round": 1, "participants": ["aragorn", "legolas"], "current_turn": "aragorn",
                                   "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "legolas", "initiative": 5, "bonus": 3}],
                                   "conditions": {}, "monsters": {}}
-        combat.save_state(c, st)
+        tracker.save_state(c, st)
         A, B, G = "device-alex-00000000", "device-sam-000000000", "device-guest-0000000"
 
         async def routes():
@@ -1133,9 +1134,9 @@ def test_seats() -> None:
             get = lambda path, d=A: api(app, "GET", path, device=d)
 
             def set_turn(cid):
-                st = combat.load_state(c)
+                st = tracker.load_state(c)
                 st["active_encounter"]["current_turn"] = cid
-                combat.save_state(c, st)
+                tracker.save_state(c, st)
             post = lambda path, b, d=A: api(app, "POST", path, b, device=d)
 
             status, r = await api(app, "GET", "/api/me", device=None)
@@ -1343,7 +1344,7 @@ def test_table_talk() -> None:
     import shutil
     import subprocess
 
-    from dnd_cli import combat
+    from dnd_cli.combat import tracker
     from stage.server import create_app
 
     check("@whisper parses and continues on the next line", beat.parse("@whisper cassara A key.\nIt bears your sigil.") == [
@@ -1487,11 +1488,11 @@ def test_table_talk() -> None:
             check("a busy DM refuses a line", status == 409)
             idle()
 
-            st = combat.load_state(c)
+            st = tracker.load_state(c)
             st["active_encounter"] = {"type": "combat", "round": 1, "participants": ["aragorn", "legolas"], "current_turn": "aragorn",
                                       "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "legolas", "initiative": 5, "bonus": 3}],
                                       "conditions": {}, "monsters": {}}
-            combat.save_state(c, st)
+            tracker.save_state(c, st)
             sent.clear()
             status, r = await post("/api/input", {"text": "I shoot"}, B)
             check("in a combat only the player on turn may speak", status == 409 and "Aragorn's turn" in r["error"])
@@ -1504,7 +1505,7 @@ def test_table_talk() -> None:
             sent.clear()
             status, r = await post("/api/end-turn", {"who": "aragorn"}, A)
             check("an away player's turn is skipped", status == 200 and any("Legolas is away" in x for x in r["lines"])
-                  and combat.load_state(c)["active_encounter"]["current_turn"] == "aragorn" and "Away, skip their turns: Legolas" in sent[-1])
+                  and tracker.load_state(c)["active_encounter"]["current_turn"] == "aragorn" and "Away, skip their turns: Legolas" in sent[-1])
             await app.state.table.stop()
         asyncio.run(routes())
 
@@ -1624,7 +1625,8 @@ def test_player_actions() -> None:
     import subprocess
     import sys
 
-    from dnd_cli import character, combat, effects
+    from dnd_cli import character, effects
+    from dnd_cli.combat import encounters, records, tracker
     from stage import party
     from stage.server import create_app
 
@@ -1662,14 +1664,14 @@ def test_player_actions() -> None:
               [r["name"] for r in next(x for x in view["characters"] if x["id"] == "aragorn")["resources"]] == ["Second Wind", "Action Surge"])
         check("the effect presets come with the view", {e["id"] for e in view["effects"]} >= {"guidance", "bless", "advantage"})
 
-        st = combat.load_state(c)
+        st = tracker.load_state(c)
         st["active_encounter"] = {"type": "combat", "round": 2, "participants": ["aragorn", "goblin#1", "legolas"], "current_turn": "aragorn",
                                   "initiative_order": [{"name": "aragorn", "initiative": 15, "bonus": 1}, {"name": "goblin#1", "initiative": 9, "bonus": 2},
                                                        {"name": "legolas", "initiative": 5, "bonus": 3}],
                                   "conditions": {"aragorn": [{"condition": "poisoned"}]}, "monsters": {"goblin#1": {"id": "goblin#1", "kind": "monster", "name": "Goblin", "hp": {"current": 7, "max": 7}, "ac": 15,
                                                                                          "mods": {}, "attacks": []}}}
-        combat.spend_turn(st, "aragorn", "bonus")
-        combat.save_state(c, st)
+        tracker.spend_turn(st, "aragorn", "bonus")
+        tracker.save_state(c, st)
         view = party.view(c)
         aragorn = next(x for x in view["characters"] if x["id"] == "aragorn")
         check("combat: the order, the turn and what is used", view["combat"]["current"] == "aragorn"
@@ -1680,14 +1682,14 @@ def test_player_actions() -> None:
         check("a monster's HP and AC never reach the view", "7" not in json.dumps(view["combat"]) and "\"ac\"" not in json.dumps(view["combat"])
               and "monsters" not in json.dumps(view))
         st["active_encounter"]["monsters"]["goblin#1"]["hp"]["current"] = 3
-        combat.save_state(c, st)
+        tracker.save_state(c, st)
         check("how hurt a creature is shows as a band: bloodied at half, near death at a quarter, down at 0",
               [party.view(c)["combat"]["order"][1]["health"]] == ["bloodied"] and all(
-                  combat.health_band({"hp": {"current": cur, "max": 8}}) == band
+                  records.health_band({"hp": {"current": cur, "max": 8}}) == band
                   for cur, band in ((8, "unhurt"), (7, "injured"), (4, "bloodied"), (2, "near death"), (0, "down"))))
         st["active_encounter"]["monsters"]["goblin#1"]["hp"]["current"] = 7
-        combat.save_state(c, st)
-        check("a new turn gives the actions back", combat.next_turn(c, st) and st["active_encounter"]["resources"]["goblin#1"] == {})
+        tracker.save_state(c, st)
+        check("a new turn gives the actions back", encounters.next_turn(c, st) and st["active_encounter"]["resources"]["goblin#1"] == {})
 
         async def routes():
             app = create_app(None)
@@ -1717,8 +1719,8 @@ def test_player_actions() -> None:
             check("the used-or-free toggle is gone", status == 404)
             status, r = await post("/api/action", {"who": "aragorn", "action": "dash"})
             check("Dash is a condition for a round, spends the action, and the DM is told",
-                  status == 200 and combat.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True
-                  and any(x["condition"] == "dashing" for x in combat.load_state(c)["active_encounter"]["conditions"]["aragorn"])
+                  status == 200 and tracker.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True
+                  and any(x["condition"] == "dashing" for x in tracker.load_state(c)["active_encounter"]["conditions"]["aragorn"])
                   and sent and "aragorn takes the Dash action" in sent[-1])
             status, r = await post("/api/action", {"who": "aragorn", "action": "dodge"})
             check("a spent action is refused", status == 400 and "used" in r["error"])
@@ -1730,9 +1732,9 @@ def test_player_actions() -> None:
             status, r = await post("/api/action", {"who": "aragorn", "action": "fly"})
             check("an unknown action is refused", status == 400)
             n = len(sent)
-            st = combat.load_state(c)
-            combat.spend_turn(st, "aragorn", "bonus", False)
-            combat.save_state(c, st)
+            st = tracker.load_state(c)
+            tracker.spend_turn(st, "aragorn", "bonus", False)
+            tracker.save_state(c, st)
             stage.state["dm"] = {"status": "busy"}
             status, r = await post("/api/action", {"who": "aragorn", "action": "shove", "target": "goblin#1"})
             check("a busy DM refuses an action", status == 409)
@@ -1748,27 +1750,27 @@ def test_player_actions() -> None:
             check("only the creature whose turn it is can end it", status == 400)
             status, r = await post("/api/end-turn", {"who": "aragorn"})
             check("End Turn moves the tracker and tells the DM to run the creature",
-                  status == 200 and combat.load_state(c)["active_encounter"]["current_turn"] == "goblin#1"
+                  status == 200 and tracker.load_state(c)["active_encounter"]["current_turn"] == "goblin#1"
                   and "ends their turn" in sent[-1] and "goblin#1's turn: run it" in sent[-1])
-            check("a new turn has all three free", combat.load_state(c)["active_encounter"]["resources"]["goblin#1"] == {})
-            st = combat.load_state(c)
+            check("a new turn has all three free", tracker.load_state(c)["active_encounter"]["resources"]["goblin#1"] == {})
+            st = tracker.load_state(c)
             st["active_encounter"]["current_turn"] = "legolas"
-            combat.save_state(c, st)
+            tracker.save_state(c, st)
             status, r = await post("/api/effects", {"who": "aragorn", "from": "legolas", "effect": "guidance"})
             check("a caster on their turn gives a bonus and spends the action", status == 200 and effects.active(c, "aragorn") == ["guidance"]
-                  and combat.load_state(c)["active_encounter"]["resources"]["legolas"]["action"] is True)
+                  and tracker.load_state(c)["active_encounter"]["resources"]["legolas"]["action"] is True)
             effects.remove(c, "aragorn", "guidance")
             st["active_encounter"]["current_turn"] = "aragorn"
-            combat.save_state(c, st)
+            tracker.save_state(c, st)
             from test_rules import GOBLIN
-            st = combat.load_state(c)
-            st["active_encounter"]["monsters"]["goblin#1"] = combat.monster_record(GOBLIN, "goblin#1")
-            combat.spend_turn(st, "aragorn", "action", False)
-            combat.save_state(c, st)
+            st = tracker.load_state(c)
+            st["active_encounter"]["monsters"]["goblin#1"] = records.monster_record(GOBLIN, "goblin#1")
+            tracker.spend_turn(st, "aragorn", "action", False)
+            tracker.save_state(c, st)
             status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "goblin#1", "weapon": "Longsword"})
             check("an attack from the card tells the DM to describe the wound, with no numbers",
                   status == 200 and "goblin#1 now looks" in sent[-1] and "no numbers" in sent[-1]
-                  and combat.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True)
+                  and tracker.load_state(c)["active_encounter"]["resources"]["aragorn"]["action"] is True)
             effects.add(c, "aragorn", "bless")  # the DM's own `effect add`
             status, r = await post("/api/resource", {"who": "aragorn", "name": "Second Wind"})
             check("a class resource is spent", status == 200 and json.loads((c / "characters" / "aragorn.json").read_text())["resources_used"] == {"Second Wind": 1})
@@ -1803,12 +1805,12 @@ def test_attack_opens_a_fight() -> None:
     print("the Attack card out of a fight starts one")
     import asyncio
 
-    from dnd_cli import combat
+    from dnd_cli.combat import encounters, tracker
     from stage import arena as stage_arena, board, party
     from stage.server import create_app
     from test_rules import GOBLIN
 
-    combat.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
+    encounters.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
     with tempfile.TemporaryDirectory() as tmp:
         c = fixture_campaign(tmp)
         (c / "world" / "npcs" / "orlo-tin.json").write_text(json.dumps({"name": "Orlo Tin", "personality": "A calm priest"}))
@@ -1830,19 +1832,19 @@ def test_attack_opens_a_fight() -> None:
             check("the card lists Attack with the creatures here as targets", attack["why"] is None and attack["target"] == "enemy"
                   and view["present"] == [{"id": "orlo-tin", "name": "Orlo Tin"}])
             status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "nobody", "weapon": "Longsword"})
-            check("a target that is not here starts no fight", status == 400 and not combat.load_state(c).get("active_encounter") and not sent)
+            check("a target that is not here starts no fight", status == 400 and not tracker.load_state(c).get("active_encounter") and not sent)
             status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "legolas", "weapon": "Longsword"})
-            check("a party member is no target", status == 400 and not combat.load_state(c).get("active_encounter"))
+            check("a party member is no target", status == 400 and not tracker.load_state(c).get("active_encounter"))
             status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "orlo-tin", "weapon": "Longsword"})
             check("an attack on a bystander asks for confirmation and starts nothing yet", status == 409 and r.get("confirm") and "bystander" in r["error"]
-                  and not combat.load_state(c).get("active_encounter") and not sent)
+                  and not tracker.load_state(c).get("active_encounter") and not sent)
             status, r = await post("/api/action", {"who": "aragorn", "action": "attack", "target": "orlo-tin", "weapon": "Longsword", "confirm": True})
-            enc = combat.load_state(c)["active_encounter"]
+            enc = tracker.load_state(c)["active_encounter"]
             a = stage_arena.load(c, enc["arena"])
             check("the server starts the fight with the party in the order and the target as the foe",
                   status == 200 and {"aragorn", "legolas"} <= set(enc["participants"]) and list(enc["monsters"]) == ["orlo-tin"]
                   and all(o["initiative"] for o in enc["initiative_order"]))
-            check("the bystander is drawn in as a faction of its own, at war with the party", enc["teams"] == {"orlo-tin": "neutral"} and combat.enemies(combat.load_state(c), "aragorn", "orlo-tin"))
+            check("the bystander is drawn in as a faction of its own, at war with the party", enc["teams"] == {"orlo-tin": "neutral"} and tracker.enemies(tracker.load_state(c), "aragorn", "orlo-tin"))
             check("a melee weapon starts the target next to the attacker",
                   stage_arena.cheb(board.pos(a, "aragorn"), board.pos(a, "orlo-tin")) == 1)
             check("the DM is told, with the stat block assumption", sent and "[Aragorn attacked Orlo Tin and combat started]" in sent[-1]

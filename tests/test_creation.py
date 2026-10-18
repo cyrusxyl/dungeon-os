@@ -12,7 +12,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from dnd_cli import character, combat, creation
+from dnd_cli import character, creation
+from dnd_cli.combat import records
 from dnd_cli.errors import RulesError
 from stage import actors
 from test_rules import campaign  # the committed example campaign, copied to a temp dir
@@ -234,7 +235,7 @@ def test_options() -> None:
     check("look block", look["bodies"] == ["male", "female", "muscular"] and "green" in look["eyes"]
           and look["races"]["drow"] == {"skins": ["blue", "black", "lavender"], "default_skin": "blue"}
           and len(look["hair"]) == 10 and look["hair"][1] == {"id": "hair_long", "name": "Long"}
-          and 5 <= len(look["hair_colors"]) <= 10 and list(o["skills"]) == list(combat.SKILLS) and len(o["abilities"]) == 6)
+          and 5 <= len(look["hair_colors"]) <= 10 and list(o["skills"]) == list(records.SKILLS) and len(o["abilities"]) == 6)
 
 
 def test_campaign_config() -> None:

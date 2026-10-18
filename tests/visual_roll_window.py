@@ -30,7 +30,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import uvicorn  # noqa: E402
 import websockets  # noqa: E402
 
-from dnd_cli import combat, effects  # noqa: E402
+from dnd_cli import effects  # noqa: E402
+from dnd_cli.combat import resolve, rolls, tracker  # noqa: E402
 from stage import beat  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import Fixed, campaign, fight  # noqa: E402
@@ -95,12 +96,12 @@ async def turn_over(c: Path) -> None:
 
 async def scenarios(page: Page, c: Path) -> None:
     idle(c)
-    state = combat.load_state(c)
+    state = tracker.load_state(c)
     await asyncio.sleep(1)
 
     print("advantage: one die drops, one is kept")
     effects.add(c, "aragorn", "advantage")
-    combat.check(c, state, ["aragorn"], "athletics", dc=14, rng=Fixed(6, 17))
+    resolve.check(c, state, ["aragorn"], "athletics", dc=14, rng=Fixed(6, 17))
     await asyncio.sleep(0.5)
     count = "[document.querySelectorAll('.die-dropped').length, document.querySelectorAll('.die-kept').length]"
     check("the dice are still rolling after 0.5 s", await page.eval(count) == [0, 0])
@@ -125,7 +126,7 @@ async def scenarios(page: Page, c: Path) -> None:
     effects.add(c, "aragorn", "bless")
     effects.add(c, "aragorn", "guidance")
     await turn_over(c)
-    beat.append(c, [{"type": "roll_request", "who": "aragorn", "what": "dex-save", "dc": 13, **combat.roll_preview(c, state, "aragorn", "dex-save")}])
+    beat.append(c, [{"type": "roll_request", "who": "aragorn", "what": "dex-save", "dc": 13, **rolls.roll_preview(c, state, "aragorn", "dex-save")}])
     await asyncio.sleep(1.5)
     await page.shot("request-save")
     dialog = (await page.eval("document.querySelector('[role=dialog]')?.innerText || ''")).lower()
@@ -139,7 +140,7 @@ async def scenarios(page: Page, c: Path) -> None:
 
     print("a hidden DC is not in the page")
     beat.append(c, [{"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 17, "hide": True,
-                     **combat.roll_preview(c, state, "aragorn", "athletics")}])
+                     **rolls.roll_preview(c, state, "aragorn", "athletics")}])
     await asyncio.sleep(1.5)
     dialog = (await page.eval("document.querySelector('[role=dialog]')?.innerText || ''")).lower()
     check("the request window is open", "athletics" in dialog, dialog)
@@ -155,7 +156,7 @@ async def scenarios(page: Page, c: Path) -> None:
 
     print("Roll waits until the player has read the story")
     beat.append(c, [{"type": "narrate", "text": "First line."}, {"type": "narrate", "text": "Second line."},
-                    {"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 12, **combat.roll_preview(c, state, "aragorn", "athletics")}])
+                    {"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 12, **rolls.roll_preview(c, state, "aragorn", "athletics")}])
     await asyncio.sleep(1.5)
     await page.shot("request-unread")
     status = await page.eval("document.body.innerText")
@@ -195,7 +196,7 @@ async def combat_turn(page: Page, c: Path) -> None:
 
     print("a combat: the turn bar, and Your turn")
     state = fight(c)
-    combat.save_state(c, state)
+    tracker.save_state(c, state)
     await turn_over(c)
     await page.shot("combat-your-turn")
     bar = await page.eval("document.querySelector('[aria-label=\"Turn order\"]')?.innerText || ''")
@@ -213,7 +214,7 @@ async def combat_turn(page: Page, c: Path) -> None:
     check("then a target is picked", await click_starting(page, "Goblin 1"))
     await asyncio.sleep(1.5)
     await page.shot("attack-rolled")
-    used = combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {})
+    used = tracker.load_state(c)["active_encounter"]["resources"].get("aragorn", {})
     check("the action is spent", used.get("action") is True)
     await asyncio.sleep(8)
     await turn_over(c)
@@ -225,7 +226,7 @@ async def combat_turn(page: Page, c: Path) -> None:
     await asyncio.sleep(1)
     await turn_over(c)
     await page.shot("legolas-turn")
-    check("the tracker moved to the next character", combat.load_state(c)["active_encounter"]["current_turn"] == "legolas")
+    check("the tracker moved to the next character", tracker.load_state(c)["active_encounter"]["current_turn"] == "legolas")
     check("the first character has Your turn no more", await page.eval("[...document.querySelectorAll('section')].filter(s => /Your turn/.test(s.innerText)).length") == 1)
 
 

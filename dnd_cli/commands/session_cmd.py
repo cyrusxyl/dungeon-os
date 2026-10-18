@@ -46,10 +46,10 @@ def brief(campaign_dir: Path, fetch=None) -> str:
     out = [f"# Session brief: {campaign_dir.name}", "", "## State (state.json)",
            json.dumps(shown, separators=(",", ":"))]
     if (state.get("active_encounter") or {}).get("type") == "combat":
-        from dnd_cli import combat
+        from dnd_cli.combat import encounters
 
         # The tracker's short status, not its full creature records.
-        out += ["", "## Combat in progress (uv run dnd-cli encounter status)"] + combat.status(campaign_dir, state)
+        out += ["", "## Combat in progress (uv run dnd-cli encounter status)"] + encounters.status(campaign_dir, state)
 
     out += ["", "## Party (characters/*.json; full sheet: uv run dnd-cli character show <id>)"]
     sheets = sorted((campaign_dir / "characters").glob("*.json"))

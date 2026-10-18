@@ -24,7 +24,7 @@ import uvicorn  # noqa: E402
 import visual_roll_window as v  # noqa: E402
 import websockets  # noqa: E402
 
-from dnd_cli import combat  # noqa: E402
+from dnd_cli.combat import encounters, tracker  # noqa: E402
 from stage import actors, arena, beat, board, scenes, state as stage_state  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import GOBLIN, Fixed, campaign  # noqa: E402
@@ -48,7 +48,7 @@ def main() -> int:
     if not (REPO / "stage" / "web" / "dist" / "index.html").exists():
         print("skipped: build the web UI first (npm run build in stage/web)")
         return 0
-    combat.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
+    encounters.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
     tmp = Path(tempfile.mkdtemp(prefix="visual-"))
     c = campaign(tmp)
     for name in ("ilvuur", "qorlia"):
@@ -98,12 +98,12 @@ def main() -> int:
                 await page.shot("teams-scene")
 
                 print("the fight")
-                state = combat.load_state(c)
+                state = tracker.load_state(c)
                 stage = stage_state.replay(beat.log_path(c))
-                combat.start(c, state, [], None, rng=Fixed(20, 1, 1, 1, 1, 1), stage=stage["actors"])
+                encounters.start(c, state, [], None, rng=Fixed(20, 1, 1, 1, 1, 1), stage=stage["actors"])
                 board.start(c, state, [], stage)
                 state["active_encounter"]["current_turn"] = "aragorn"
-                combat.save_state(c, state)
+                tracker.save_state(c, state)
                 arena_id = state["active_encounter"]["arena"]
                 a = arena.load(c, arena_id)
                 by = a["bystanders"]["mara-shop"]

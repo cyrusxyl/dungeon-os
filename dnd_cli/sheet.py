@@ -13,7 +13,7 @@ from __future__ import annotations
 import random
 
 from dnd_cli import dice, item as items, resources
-from dnd_cli.combat import ABILITIES, SKILLS, ability, level_for_xp
+from dnd_cli.combat.records import ABILITIES, SKILLS, ability, level_for_xp
 from dnd_cli.errors import RulesError
 from dnd_cli.dice import prof_for_level
 

@@ -15,7 +15,7 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from dnd_cli import combat  # noqa: E402
+from dnd_cli.combat import records  # noqa: E402
 from stage import arena, board, crawl, scenes, state as stage_state  # noqa: E402
 from tests.test_rules import GOBLIN, campaign, fight  # noqa: E402
 
@@ -357,7 +357,7 @@ def fight_with_boss(tmp: Path) -> tuple[Path, dict]:
     c = campaign(tmp)
     state = fight(c)
     enc = state["active_encounter"]
-    enc["monsters"]["boss"] = combat.monster_record(GOBLIN, "boss")
+    enc["monsters"]["boss"] = records.monster_record(GOBLIN, "boss")
     enc["participants"].append("boss")
     enc["initiative_order"].append({"name": "boss", "initiative": 16, "bonus": 0})
     return c, state

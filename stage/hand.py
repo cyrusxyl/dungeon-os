@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from dnd_cli import abilities, actions, character, combat
+from dnd_cli import abilities, actions, character
+from dnd_cli.combat import records, rolls, tracker
 from dnd_cli.api import api_get
 from stage import arena, board, items
 
@@ -47,7 +48,7 @@ def _target_info(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, v
     for foe in board.standing_foes(campaign_dir, state, a):
         if visible is not None and board.pos(a, foe) not in visible:
             continue
-        rec = combat.combatant(campaign_dir, state, foe)
+        rec = records.combatant(campaign_dir, state, foe)
         item = {"id": foe, "name": rec["name"], "dist_ft": arena.cheb(here, board.pos(a, foe)) * board.TILE_FT, "ok": True, "why": None}
         try:
             if ab["kind"] == "shove":
@@ -73,8 +74,8 @@ def _spent(turn: dict, cost: str) -> str | None:
 def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
     """The hand of a character: every ability with `why` (the reason it is off, or None) and, for one that needs a target, `targets`."""
     sheet = character.load(campaign_dir, cid)
-    rec = combat.pc_record(sheet, cid)
-    turn = combat.turn_used(state, cid)
+    rec = records.pc_record(sheet, cid)
+    turn = tracker.turn_used(state, cid)
     mine_turn = state["active_encounter"].get("current_turn") == cid
     visible = board.visible_cells(campaign_dir, state, a)
     out: list[dict] = []
@@ -139,7 +140,7 @@ def preview(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str,
 
 
 def is_known(state: dict, a: dict, cid: str, vis: set | None) -> bool:
-    return combat.team_of(state, cid) == combat.PARTY or vis is None or board.pos(a, cid) in vis
+    return tracker.team_of(state, cid) == tracker.PARTY or vis is None or board.pos(a, cid) in vis
 
 
 def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, target: str | None = None, aim=None, rng=None,
@@ -176,7 +177,7 @@ def act(campaign_dir: Path, state: dict, a: dict, cid: str, ability_id: str, tar
     if done.get("roll"):
         raise board.BoardError(f"{ab['name']} is not on the board yet.")
     for line in done["lines"]:
-        combat.stage_feed(line)
+        rolls.stage_feed(line)
     return done["lines"]
 
 

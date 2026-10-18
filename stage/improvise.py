@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from dnd_cli import combat
+from dnd_cli.combat import records
 from stage import arena, board
 
 # The first matching verb wins. Each rule: (words, ruling builder name).
@@ -43,7 +43,7 @@ def verb_of(text: str) -> str:
 def suggest(campaign_dir: Path, state: dict, cid: str, text: str, obj: dict | None) -> dict:
     """The default ruling: cost, roll, effect and whether the object is used up. Never a refusal: when the rules say
     nothing, the suggestion is a plain check and the DM sets the DC."""
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     tags = set(obj["board"]["tags"]) if obj else set()
     verb = verb_of(text)
     if verb == "throw":
@@ -93,7 +93,7 @@ def prompt(campaign_dir: Path, state: dict, a: dict, cid: str, text: str, object
     obj = find_object(a, object_id) if object_id else None
     if object_id and obj is None:
         raise board.BoardError(f"there is no object {object_id!r} on the board.")
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     where = ""
     if obj:
         tags = ", ".join(obj["board"]["tags"]) or "no tags"

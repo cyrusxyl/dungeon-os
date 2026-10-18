@@ -25,7 +25,7 @@ import uvicorn  # noqa: E402
 import visual_roll_window as v  # noqa: E402
 import websockets  # noqa: E402
 
-from dnd_cli import combat  # noqa: E402
+from dnd_cli.combat import tracker  # noqa: E402
 from stage import arena, beat, board, scenes, state as stage_state  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import campaign, fight  # noqa: E402
@@ -86,7 +86,7 @@ def main() -> int:
 
                 stage = stage_state.replay(beat.log_path(c))
                 board.start(c, state, [], stage)
-                combat.save_state(c, state)
+                tracker.save_state(c, state)
                 arena_id = state["active_encounter"]["arena"]
                 a = arena.load(c, arena_id)
                 blocked = arena.blocked_cells(a)

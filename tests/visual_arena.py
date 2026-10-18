@@ -28,7 +28,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import uvicorn  # noqa: E402
 import websockets  # noqa: E402
 
-from dnd_cli import character, combat  # noqa: E402
+from dnd_cli import character  # noqa: E402
+from dnd_cli.combat import tracker  # noqa: E402
 from stage import arena, beat, board  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import campaign, fight  # noqa: E402
@@ -69,7 +70,7 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     check("the canvas has the isometric size of the room, drawn twice as large", await page.eval(f"[{canvas}.width, {canvas}.height]") == [n * 2 for n in iso_size(first)])
     check("the turn bar still shows the order", "Aragorn" in await page.eval("document.querySelector('[aria-label=\"Turn order\"]')?.innerText || ''"))
 
-    state = combat.load_state(c)
+    state = tracker.load_state(c)
     a = arena.load(c, arena_id)
     ax, ay = board.pos(a, "aragorn")
     dist, _ = board.reachable(c, state, a, "aragorn")
@@ -94,7 +95,7 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     a = arena.load(c, arena_id)
     ax, ay = board.pos(a, "aragorn")
     free = next(cell for cell in ((ax + 1, ay), (ax + 1, ay + 1), (ax, ay + 1), (ax - 1, ay), (ax, ay - 1)) if cell not in arena.blocked_cells(a)
-                and cell not in board.occupied(c, combat.load_state(c), a))
+                and cell not in board.occupied(c, tracker.load_state(c), a))
     a["units"]["goblin#1"] = {"x": free[0], "y": free[1]}
     arena.save(c, arena_id, a)
     beat.append(c, [{"type": "arena_updated", "arena": arena_id}])
@@ -109,7 +110,7 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     await page.eval(f"[...document.querySelectorAll('[aria-label^=\"Targets for\"] button')].find(b => b.textContent.trim() === 'Cancel')?.click()")
     await asyncio.sleep(0.4)
     check("Cancel closes the list and spends nothing", not await page.eval("Boolean(document.querySelector('[aria-label^=\"Targets for\"]'))")
-          and not combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action"))
+          and not tracker.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action"))
     inner = await page.eval(f"{hand}.innerText")
     check("a pinned potion is in the hand, a rope with no profile is not", "Potion of healing" in inner and "Rope" not in inner)
     await page.eval(f"[...{hand}.querySelectorAll('button')].find(b => b.textContent.includes('Items'))?.click()")
@@ -133,7 +134,7 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     await click_cell(page, canvas, a, free)
     await asyncio.sleep(1.5)
     await page.shot("arena-attacked")
-    check("a click on a creature attacked it: the action is spent", combat.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action") is True)
+    check("a click on a creature attacked it: the action is spent", tracker.load_state(c)["active_encounter"]["resources"].get("aragorn", {}).get("action") is True)
 
     check("after the attack the weapon says the action is used", "The action is used." in await page.eval(f"{hand}?.innerText || ''"))
 
@@ -158,9 +159,9 @@ async def foe_turns(page: Page, c: Path, arena_id: str) -> None:
     await page.click("End turn")
     await asyncio.sleep(1)
     check("End turn passes the turn to the next character, then to the creatures",
-          combat.load_state(c)["active_encounter"]["current_turn"] in ("goblin#1", "goblin#2", "aragorn"))
+          tracker.load_state(c)["active_encounter"]["current_turn"] in ("goblin#1", "goblin#2", "aragorn"))
     for _ in range(40):
-        enc = combat.load_state(c)["active_encounter"]
+        enc = tracker.load_state(c)["active_encounter"]
         if enc["current_turn"] == "aragorn" and enc["round"] == 2:
             break
         await asyncio.sleep(0.5)
@@ -181,11 +182,11 @@ async def aim_checks(page: Page, c: Path, arena_id: str) -> None:
             sheet["spellcasting"] = {"ability": "intelligence", "spell_save_dc": 13, "spell_attack_bonus": 5, "spells_known": ["fireball"],
                                      "spell_slots": {"3": {"max": 1, "remaining": 1}}}
         character.save(c, who, sheet)
-    state = combat.load_state(c)
+    state = tracker.load_state(c)
     for rec in state["active_encounter"]["monsters"].values():
         rec["hp"] = {"current": 200, "max": 200}
     state["active_encounter"]["resources"]["aragorn"] = {}
-    combat.save_state(c, state)
+    tracker.save_state(c, state)
     beat.append(c, [{"type": "arena_updated", "arena": arena_id}, {"type": "dm_status", "status": "idle"}])
     await page.call("Page.reload")  # the roll windows of the creatures' turns are queued: a reload starts clean
     await asyncio.sleep(3)
@@ -202,11 +203,11 @@ async def aim_checks(page: Page, c: Path, arena_id: str) -> None:
           await page.eval("document.documentElement.scrollWidth <= window.innerWidth + 1 && document.querySelector('[aria-label=\"Your hand\"]').getBoundingClientRect().right <= window.innerWidth + 1"))
     sheet = character.load(c, "aragorn")
     check("the first tap shows the area and does not cast", "same cell again" in await page.eval("document.body.innerText")
-          and sheet["spellcasting"]["spell_slots"]["3"]["remaining"] == 1 and not combat.turn_used(combat.load_state(c), "aragorn")["action"])
+          and sheet["spellcasting"]["spell_slots"]["3"]["remaining"] == 1 and not tracker.turn_used(tracker.load_state(c), "aragorn")["action"])
     await tap_cell(page, canvas, a, cell)
     await asyncio.sleep(1.5)
     check("a tap on the same cell casts: the slot and the action are spent", character.load(c, "aragorn")["spellcasting"]["spell_slots"]["3"]["remaining"] == 0
-          and combat.turn_used(combat.load_state(c), "aragorn")["action"])
+          and tracker.turn_used(tracker.load_state(c), "aragorn")["action"])
 
 
 async def dark_room(page: Page, c: Path, arena_id: str) -> None:
@@ -214,7 +215,7 @@ async def dark_room(page: Page, c: Path, arena_id: str) -> None:
     a["spec"]["light"] = "dark"
     a["seen"] = ["0" * a["w"] for _ in range(a["h"])]
     arena.save(c, arena_id, a)
-    board.refresh_sight(c, combat.load_state(c), a)
+    board.refresh_sight(c, tracker.load_state(c), a)
     arena.save(c, arena_id, a)
     beat.append(c, [{"type": "arena_updated", "arena": arena_id}])
     await asyncio.sleep(1.5)
@@ -248,12 +249,12 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="visual-arena-"))
     c = campaign(tmp)
     state = fight(c)
-    combat.save_state(c, state)
+    tracker.save_state(c, state)
     sheet = character.load(c, "aragorn")
     sheet["inventory"] = [{"name": "Potion of healing", "quantity": 2}, {"name": "Rope", "quantity": 1}]
     character.save(c, "aragorn", sheet)
     board.start(c, state, ["layout=open", "seed=3"], {})
-    combat.save_state(c, state)
+    tracker.save_state(c, state)
     arena_id = state["active_encounter"]["arena"]
     port, debug = free_port(), free_port()
     app = create_app(campaign_dir=c, dm_command=["sleep", "3600"])

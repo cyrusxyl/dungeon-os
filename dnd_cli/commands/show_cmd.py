@@ -126,13 +126,14 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
     for e in events:
         if e["type"] != "roll_request":
             continue
-        from dnd_cli import character, combat
+        from dnd_cli import character
+        from dnd_cli.combat import rolls, tracker
 
         try:
             if not character.character_path(campaign_dir, e["who"]).exists():
                 raise RulesError(f"@roll is for player characters; {e['who']!r} has no sheet. "
                                         "Roll for others with `uv run dnd-cli check`.")
-            e.update(combat.roll_preview(campaign_dir, combat.load_state(campaign_dir), e["who"], e["what"]))
+            e.update(rolls.roll_preview(campaign_dir, tracker.load_state(campaign_dir), e["who"], e["what"]))
         except (RulesError, character.CharacterError) as err:
             print(f"Error: @roll {e['who']} {e['what']}: {err}", file=sys.stderr)
             return 1

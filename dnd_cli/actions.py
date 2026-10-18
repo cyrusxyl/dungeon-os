@@ -17,7 +17,9 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from dnd_cli import character, combat, dice, effects, item as items, resources
+from dnd_cli import character, dice, effects, item as items, resources
+from dnd_cli.combat import encounters, records, resolve, rolls, tracker, wounds
+from dnd_cli.combat.smite import smite_hit, smite_levels
 from dnd_cli.errors import RulesError
 
 ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX"]
@@ -48,13 +50,13 @@ def _plain(name: str):
 def _second_wind(ctx: dict) -> tuple[list[str], int]:
     level = ctx["sheet"].get("level", 1)
     total, groups = dice.roll(f"1d10+{level}", ctx["rng"])
-    combat.stage_roll(f"Second Wind 1d10+{level}", total, groups)
-    return [combat.heal(ctx["campaign_dir"], ctx["state"], ctx["cid"], total)], 1
+    rolls.stage_roll(f"Second Wind 1d10+{level}", total, groups)
+    return [wounds.heal(ctx["campaign_dir"], ctx["state"], ctx["cid"], total)], 1
 
 
 def _action_surge(ctx: dict) -> tuple[list[str], int]:
-    if combat.in_combat(ctx["state"], ctx["cid"]):
-        combat.spend_turn(ctx["state"], ctx["cid"], "action", False)
+    if tracker.in_combat(ctx["state"], ctx["cid"]):
+        tracker.spend_turn(ctx["state"], ctx["cid"], "action", False)
         return [f"{ctx['cid']} Action Surge: the action is free again."], 1
     return [f"{ctx['cid']} uses Action Surge."], 1
 
@@ -62,19 +64,19 @@ def _action_surge(ctx: dict) -> tuple[list[str], int]:
 def _lay_on_hands(ctx: dict) -> tuple[list[str], int]:
     """Heal `target` (default: self) from the pool: `amount` points, never above their max HP."""
     cid, target = ctx["cid"], ctx["target"] or ctx["cid"]
-    if target not in combat.party(ctx["campaign_dir"], ctx["state"]):
-        raise RulesError(f"Lay on Hands needs an ally: {', '.join(combat.party(ctx['campaign_dir'], ctx['state']))}.")
+    if target not in tracker.party(ctx["campaign_dir"], ctx["state"]):
+        raise RulesError(f"Lay on Hands needs an ally: {', '.join(tracker.party(ctx['campaign_dir'], ctx['state']))}.")
     left = ctx["spec"]["left"]
     amount = ctx["amount"] if ctx["amount"] is not None else left
     if not 1 <= amount <= left:
         raise RulesError(f"Lay on Hands: pick 1 to {left} points.")
-    hp = combat.combatant(ctx["campaign_dir"], ctx["state"], target)["hp"]
+    hp = records.combatant(ctx["campaign_dir"], ctx["state"], target)["hp"]
     missing = hp["max"] - hp["current"]
     if missing <= 0:
         raise RulesError(f"{target} is at full HP.")
     healed = min(amount, missing)  # the pool pays only for the points that heal
     return [f"{cid} Lay on Hands: {healed} points from the pool ({left - healed} left).",
-            combat.heal(ctx["campaign_dir"], ctx["state"], target, healed)], healed
+            wounds.heal(ctx["campaign_dir"], ctx["state"], target, healed)], healed
 
 
 # Every class feature that costs something (audit.COSTED) has one entry here. `card` False: no standing card, and `how` says
@@ -88,7 +90,7 @@ FEATURES: dict[str, dict] = {
     "Divine Sense": {"cost": "action", "combat": False, "info": "Sense celestials, fiends and undead nearby", "run": _plain("Divine Sense")},
     "Lay on Hands": {"cost": "action", "combat": False, "target": "ally", "amount": True, "run": _lay_on_hands,
                      "info": "Touch an ally or yourself and heal up to the points left in your pool"},
-    "Divine Smite": {"card": False, "how": "a rider on a melee hit: the card offers it after the hit (combat.smite_hit)"},
+    "Divine Smite": {"card": False, "how": "a rider on a melee hit: the card offers it after the hit (combat/smite.py `smite_hit`)"},
     "Bardic Inspiration": {"card": False, "how": "given to an ally from the + Bonus menu (offers)"},
     "Ki": {"card": False, "how": "counted by hand on the resource pips"},
     "Font of Magic": {"card": False, "how": "counted by hand on the resource pips"},
@@ -108,12 +110,12 @@ def _slug(name: str) -> str:
 
 def _blocked(campaign_dir: Path, state: dict, cid: str, cost: str | None, only_combat: bool = False) -> str | None:
     """Why `cid` cannot spend `cost` now, or None."""
-    if not combat.in_combat(state, cid):
+    if not tracker.in_combat(state, cid):
         return "Only in a combat" if only_combat else None
     enc = state["active_encounter"]
     if enc.get("current_turn") != cid:
         return "Not your turn"
-    if cost and combat.turn_used(state, cid)[cost]:
+    if cost and tracker.turn_used(state, cid)[cost]:
         return f"The {'bonus action' if cost == 'bonus' else cost} is used"
     return None
 
@@ -121,7 +123,7 @@ def _blocked(campaign_dir: Path, state: dict, cid: str, cost: str | None, only_c
 def _enemies(state: dict) -> list[str]:
     enc = state.get("active_encounter") or {}
     return [c for c in enc.get("participants", []) if c in (enc.get("monsters") or {})
-            and enc["monsters"][c]["hp"]["current"] > 0 and combat.hostile_to_party(state, c)]  # a companion is not an enemy
+            and enc["monsters"][c]["hp"]["current"] > 0 and tracker.hostile_to_party(state, c)]  # a companion is not an enemy
 
 
 def card_features(sheet: dict) -> list[str]:
@@ -154,7 +156,7 @@ def spec_for(sheet: dict, action: str) -> dict:
         if level is not None:
             if not 1 <= level <= 9:
                 raise RulesError(f"smite: slot level must be 1 to 9, not {level}.")
-            if combat.smite_levels(sheet).get(level, 0) <= 0:
+            if smite_levels(sheet).get(level, 0) <= 0:
                 raise RulesError(f"smite: no level {level} spell slot left.")
         return _smite_spec(level)
     if action.startswith("feature:"):
@@ -185,7 +187,7 @@ def why_not(campaign_dir: Path, state: dict, cid: str, sheet: dict, spec: dict, 
     if spec.get("feature") and spec["left"] <= 0:
         return "No uses left"
     if "smite" in spec:
-        slots, pend = smite or (combat.smite_levels(sheet), pending_smite(state, cid))
+        slots, pend = smite or (smite_levels(sheet), pending_smite(state, cid))
         if not pend:
             return "No hit to smite"
         if spec["smite"] is not None and slots.get(spec["smite"], 0) <= 0:
@@ -199,7 +201,7 @@ def listing(campaign_dir: Path, state: dict, cid: str, sheet: dict, present: tup
     After a melee hit that a paladin may smite, the Divine Smite choices come first: one per slot level, and No smite.
     Out of a fight, Attack is on when `present` has a creature: the player picks it, and the fight starts.
     """
-    slots, pend = combat.smite_levels(sheet), pending_smite(state, cid)
+    slots, pend = smite_levels(sheet), pending_smite(state, cid)
     specs = []
     if pend:
         specs += [_smite_spec(lvl) for lvl in sorted(slots)] + [_smite_spec(None)]
@@ -235,18 +237,18 @@ def perform(campaign_dir: Path, state: dict, cid: str, action: str, target: str 
     if "smite" in spec:
         pend = pending_smite(state, cid)
         if spec["smite"] is None:
-            combat.encounter(state).pop("pending_smite", None)
+            tracker.encounter(state).pop("pending_smite", None)
             return {"lines": [f"{cid} does not smite."]}
-        return {"lines": combat.smite_hit(campaign_dir, state, cid, pend["target"], spec["smite"], bool(pend.get("crit")), rng)}
+        return {"lines": smite_hit(campaign_dir, state, cid, pend["target"], spec["smite"], bool(pend.get("crit")), rng)}
     if spec.get("target") == "enemy" and target not in _enemies(state):
         raise RulesError(f"{spec['label']} needs an enemy that is standing: {', '.join(_enemies(state))}.")
     cost = spec["cost"]
     if spec["id"] == "attack":
         name = weapon or next(a["name"] for a in attacks(sheet))
         # The attack spends the action itself (and a hidden or dodging creature changes the roll).
-        return {"lines": combat.attack(campaign_dir, state, cid, name, target, rng=rng, cost=cost)}
-    if cost and combat.in_combat(state, cid):
-        combat.spend_turn(state, cid, cost)
+        return {"lines": resolve.attack(campaign_dir, state, cid, name, target, rng=rng, cost=cost)}
+    if cost and tracker.in_combat(state, cid):
+        tracker.spend_turn(state, cid, cost)
     if "roll" in spec:
         note = (f"Shove {target}: the DM compares it with the target's Athletics or Acrobatics, and a hit pushes or knocks it prone."
                 if spec["id"] == "shove" else
@@ -254,8 +256,8 @@ def perform(campaign_dir: Path, state: dict, cid: str, action: str, target: str 
                 f"(`encounter condition {cid} add hidden`).")
         return {"lines": [], "roll": {"what": spec["roll"], "note": note, "title": spec["label"]}}
     if "stance" in spec:
-        if combat.in_combat(state, cid):
-            combat.condition(state, cid, "add", spec["stance"], rounds=1)
+        if tracker.in_combat(state, cid):
+            encounters.condition(state, cid, "add", spec["stance"], rounds=1)
         return {"lines": [f"{cid} takes the {spec['label']} action."]}
     return {"lines": _feature(campaign_dir, state, cid, sheet, spec, rng, target, amount)}
 
@@ -268,8 +270,8 @@ def _feature(campaign_dir: Path, state: dict, cid: str, sheet: dict, spec: dict,
     sheet = character.load(campaign_dir, cid)  # a heal wrote the sheet
     resources.spend(sheet, name, uses)
     character.save(campaign_dir, cid, sheet)
-    if spec["cost"] and combat.in_combat(state, cid):
-        combat.spend_turn(state, cid, spec["cost"])
+    if spec["cost"] and tracker.in_combat(state, cid):
+        tracker.spend_turn(state, cid, spec["cost"])
     return lines
 
 
@@ -281,7 +283,7 @@ def offers(campaign_dir: Path, state: dict, target: str, sheets: dict[str, dict]
     `sheets`: the sheets the caller has already read, by id; a member not in it is loaded from the file."""
     out = []
     held = effects.active(campaign_dir, target)
-    for src in combat.party(campaign_dir, state):
+    for src in tracker.party(campaign_dir, state):
         if not character.character_path(campaign_dir, src).exists():
             continue
         sheet = (sheets or {}).get(src) or character.load(campaign_dir, src)
@@ -318,7 +320,7 @@ def grant(campaign_dir: Path, state: dict, src: str, target: str, effect: str) -
     if effect == "bardic-inspiration":
         resources.spend(sheet, "Bardic Inspiration")
     character.save(campaign_dir, src, sheet)
-    if combat.in_combat(state, src):
-        combat.spend_turn(state, src, offer["cost"])
+    if tracker.in_combat(state, src):
+        tracker.spend_turn(state, src, offer["cost"])
     effects.add(campaign_dir, target, effect)
     return f"{src} gives {effect} to {target}."

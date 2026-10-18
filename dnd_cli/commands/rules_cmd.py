@@ -1,14 +1,15 @@
 """Rules commands: encounter, attack, save, check, rest, and character item/gold/equip/xp/level-up.
 
 Each prints one short line per result, so the DM spends its tokens on the
-story, not on arithmetic. Logic lives in dnd_cli/combat.py and dnd_cli/sheet.py.
+story, not on arithmetic. Logic lives in dnd_cli/combat/ and dnd_cli/sheet.py.
 """
 
 from __future__ import annotations
 
 import json
 
-from dnd_cli import audit, character, combat, effects, loot, sheet
+from dnd_cli import audit, character, effects, loot, sheet
+from dnd_cli.combat import encounters, records, resolve, rolls, tracker, wounds
 from dnd_cli import item as items
 from dnd_cli.api import fetch as _api
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
@@ -28,9 +29,9 @@ def _out(lines: list[str]) -> int:
 def _with_state(campaign, fn) -> int:
     """Load state.json, run fn(campaign_dir, state) -> lines, save state, print."""
     def go(campaign_dir):
-        state = combat.load_state(campaign_dir)
+        state = tracker.load_state(campaign_dir)
         lines = fn(campaign_dir, state)
-        combat.save_state(campaign_dir, state)
+        tracker.save_state(campaign_dir, state)
         return _out(lines)
     return run_stage(campaign, go, *ERRORS)
 
@@ -43,14 +44,14 @@ def execute_encounter(campaign, action: str, args) -> int:
         if action == "start":
             pcs = None if args.pcs in (None, "all") else [p for p in args.pcs.split(",") if p]
             on_stage = stage_state.replay(log_path(campaign_dir))
-            lines = combat.start(campaign_dir, state, args.specs, pcs, stage=on_stage["actors"])
+            lines = encounters.start(campaign_dir, state, args.specs, pcs, stage=on_stage["actors"])
             if args.no_arena:
                 return lines
             lines += board.start(campaign_dir, state, args.arena or [], on_stage)
             notify_stage(campaign_dir, {"type": "arena", "arena": state["active_encounter"]["arena"]})
             return lines
         if action == "add":
-            lines = combat.add(campaign_dir, state, args.specs)
+            lines = encounters.add(campaign_dir, state, args.specs)
             if arena_id := board.arena_id_of(state):
                 a = arena.load(campaign_dir, arena_id)
                 if board.sync_units(campaign_dir, state, a):
@@ -60,26 +61,26 @@ def execute_encounter(campaign, action: str, args) -> int:
         if action == "move":
             return _move(campaign_dir, state, args)
         if action == "next":
-            return combat.next_turn(campaign_dir, state)
+            return encounters.next_turn(campaign_dir, state)
         if action == "status":
-            return combat.status(campaign_dir, state)
+            return encounters.status(campaign_dir, state)
         if action in ("damage", "heal"):
             amount, rolled = _amount(args.amount, action)
-            line = (combat.damage(campaign_dir, state, args.target, amount, args.type or "") if action == "damage"
-                    else combat.heal(campaign_dir, state, args.target, amount))
+            line = (wounds.damage(campaign_dir, state, args.target, amount, args.type or "") if action == "damage"
+                    else wounds.heal(campaign_dir, state, args.target, amount))
             # No roll shows for this, so the players get a line in the log. A creature's HP stays behind the screen.
-            rec = combat.combatant(campaign_dir, state, args.target)
-            combat.stage_feed(line if rec["kind"] == "pc" else f"{rec['name']} {'takes damage' if action == 'damage' else 'is healed'}.")
+            rec = records.combatant(campaign_dir, state, args.target)
+            rolls.stage_feed(line if rec["kind"] == "pc" else f"{rec['name']} {'takes damage' if action == 'damage' else 'is healed'}.")
             return [rolled + line] if rolled else [line]
         if action == "condition":
-            return [combat.condition(state, args.target, args.op, args.name, args.rounds, args.save)]
+            return [encounters.condition(state, args.target, args.op, args.name, args.rounds, args.save)]
         if action == "use":
-            combat.spend_turn(state, args.target, args.kind, not args.free)
+            tracker.spend_turn(state, args.target, args.kind, not args.free)
             return [f"{args.target}: {args.kind} {'free' if args.free else 'used'}."]
         if action == "end":
             on_board = board.arena_id_of(state)
             left = board.outcome(campaign_dir, state, arena.load(campaign_dir, on_board)) if on_board else {}  # before the encounter is cleared
-            lines = combat.end(campaign_dir, state, award_xp=not args.no_xp, resolved=args.resolved)
+            lines = encounters.end(campaign_dir, state, award_xp=not args.no_xp, resolved=args.resolved)
             if on_board:
                 notify_stage(campaign_dir, {"type": "arena_end", **left})
             return lines
@@ -106,7 +107,7 @@ def _move(campaign_dir, state: dict, args) -> list[str]:
     arena.save(campaign_dir, arena_id, a)
     notify_stage(campaign_dir, {"type": "arena_updated", "arena": arena_id})
     x, y = board.pos(a, args.who)
-    lines = result["lines"] + [f"{args.who} walks to {x},{y} ({board.tiles_left(state, combat.combatant(campaign_dir, state, args.who)) * board.TILE_FT} ft left)."]
+    lines = result["lines"] + [f"{args.who} walks to {x},{y} ({board.tiles_left(state, records.combatant(campaign_dir, state, args.who)) * board.TILE_FT} ft left)."]
     if result["pending"]:
         lines.append(f"The walk stops: {result['pending']['who']}'s player is asked for a reaction. The stage finishes the walk.")
     return lines
@@ -119,7 +120,7 @@ def _amount(text: str, label: str) -> tuple[int, str]:
     from dnd_cli import dice
 
     total, groups = dice.roll(text)
-    combat.stage_roll(f"{label} {text}", total, groups)
+    rolls.stage_roll(f"{label} {text}", total, groups)
     return total, f"{text} = {total}: "
 
 
@@ -135,7 +136,7 @@ def execute_attack(campaign, args) -> int:
             return board.attack(campaign_dir, state, a, args.attacker, args.weapon, args.target, cost=cost,
                                 adv=args.adv, dis=args.dis, bonus=args.bonus, secret=args.secret, catch_up=args.cost != "reaction",
                                 smite=args.smite)
-        return combat.attack(
+        return resolve.attack(
             campaign_dir, state, args.attacker, args.weapon, args.target, adv=args.adv, dis=args.dis,
             damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret, cost=cost,
             catch_up=args.cost != "reaction", smite=args.smite)
@@ -145,9 +146,9 @@ def execute_attack(campaign, args) -> int:
 def execute_save(campaign, args) -> int:
     # The last target that is an ability name is the ability: `save goblin#1 dex --dc 13`.
     targets, ability = args.targets, args.ability
-    if ability is None and len(targets) > 1 and targets[-1].lower() in (*combat.ABILITIES, *combat.SHORT):
+    if ability is None and len(targets) > 1 and targets[-1].lower() in (*records.ABILITIES, *records.SHORT):
         targets, ability = targets[:-1], targets[-1]
-    return _with_state(campaign, lambda c, s: combat.save(
+    return _with_state(campaign, lambda c, s: resolve.save(
         c, s, targets, ability, args.dc, damage_expr=args.damage, damage_type=args.type or "",
         half=args.half, source=args.source, adv=args.adv, dis=args.dis, secret=args.secret, hide_dc=args.hide_dc))
 
@@ -158,8 +159,8 @@ def execute_check(campaign, args) -> int:
     names, what = args.who[:-1], args.who[-1]  # the last word is what is rolled
 
     def fn(campaign_dir, state):
-        who = combat.party(campaign_dir, state) if names == ["all"] else names
-        return combat.check(campaign_dir, state, who, what, dc=args.dc, adv=args.adv, dis=args.dis,
+        who = tracker.party(campaign_dir, state) if names == ["all"] else names
+        return resolve.check(campaign_dir, state, who, what, dc=args.dc, adv=args.adv, dis=args.dis,
                             passive=args.passive, secret=args.secret, hide_dc=args.hide_dc)
     return _with_state(campaign, fn)
 
@@ -193,7 +194,7 @@ def execute_effect(campaign, op: str, who: str | None, name: str | None) -> int:
 
 def execute_rest(campaign, kind: str, who: list[str], spend: list[str]) -> int:
     def fn(campaign_dir, state):
-        names = combat.party(campaign_dir, state) if not who or who == ["all"] else who
+        names = tracker.party(campaign_dir, state) if not who or who == ["all"] else who
         dice_for = {n: int(k) for n, _, k in (s.partition(":") for s in spend)}
         lines = []
         for name in names:
@@ -299,8 +300,8 @@ def execute_gold(campaign, name: str, delta: str) -> int:
 
 def execute_xp(campaign, names: list[str], amount: int) -> int:
     def go(campaign_dir):
-        state = combat.load_state(campaign_dir)
-        who = combat.party(campaign_dir, state) if names == ["all"] else names
+        state = tracker.load_state(campaign_dir)
+        who = tracker.party(campaign_dir, state) if names == ["all"] else names
         lines = []
         for n in who:
             data = character.load(campaign_dir, n)
@@ -316,7 +317,7 @@ def _asi(text: str | None) -> dict:
         abil, sign, n = part.partition("+")
         if not sign or not n.isdigit():
             raise RulesError(f"--asi {text!r}: write it like str+2 or str+1,dex+1.")
-        out[combat.ability(abil)] = out.get(combat.ability(abil), 0) + int(n)
+        out[records.ability(abil)] = out.get(records.ability(abil), 0) + int(n)
     if sum(out.values()) > 2:
         raise RulesError("an ability score improvement adds at most 2 points (a half-feat adds 1).")
     return out

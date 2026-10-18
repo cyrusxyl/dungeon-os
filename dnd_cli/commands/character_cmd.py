@@ -4,7 +4,7 @@ import json
 import sys
 
 from dnd_cli import character
-from dnd_cli.combat import stage_feed
+from dnd_cli.combat.rolls import stage_feed
 from dnd_cli.commands.show_cmd import run_stage
 
 

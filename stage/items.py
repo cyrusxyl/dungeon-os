@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dnd_cli import character, combat, dice, item as items
+from dnd_cli import character, dice, item as items
+from dnd_cli.combat import records, tracker, wounds
 from stage import arena, board
 
 
@@ -27,10 +28,10 @@ def ally_targets(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dic
     """Who a healing item can go to: the user and each friend next to them."""
     here, out = board.pos(a, cid), []
     for other in a["units"]:
-        if combat.team_of(state, other) != combat.team_of(state, cid):
+        if tracker.team_of(state, other) != tracker.team_of(state, cid):
             continue
         dist = arena.cheb(here, board.pos(a, other)) * board.TILE_FT
-        out.append({"id": other, "name": combat.combatant(campaign_dir, state, other)["name"], "dist_ft": dist, "ok": dist <= board.TILE_FT,
+        out.append({"id": other, "name": records.combatant(campaign_dir, state, other)["name"], "dist_ft": dist, "ok": dist <= board.TILE_FT,
                     "why": None if dist <= board.TILE_FT else "Not next to you."})
     return out
 
@@ -57,10 +58,10 @@ def heal(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, target: s
         raise board.BoardError("Not next to you.")
     board.spend_ability(campaign_dir, state, cid, ab)
     amount, _ = dice.roll(ab["heal"], rng)
-    name = combat.combatant(campaign_dir, state, cid)["name"]
-    who = combat.combatant(campaign_dir, state, target)["name"]
+    name = records.combatant(campaign_dir, state, cid)["name"]
+    who = records.combatant(campaign_dir, state, target)["name"]
     board.note(a, f"{name} used {ab['name']} on {'themselves' if target == cid else who}")
-    return [f"{cid} uses {ab['name']} on {target}.", combat.heal(campaign_dir, state, target, amount)]
+    return [f"{cid} uses {ab['name']} on {target}.", wounds.heal(campaign_dir, state, target, amount)]
 
 
 def pick_up(campaign_dir: Path, state: dict, a: dict, cid: str, pick_id: str) -> list[str]:
@@ -74,5 +75,5 @@ def pick_up(campaign_dir: Path, state: dict, a: dict, cid: str, pick_id: str) ->
     character.save(campaign_dir, cid, sh)
     a["items"].remove(obj)
     state["active_encounter"].setdefault("resources", {}).setdefault(cid, {})["object"] = True
-    board.note(a, f"{combat.combatant(campaign_dir, state, cid)['name']} picked up {obj['name']}")
+    board.note(a, f"{records.combatant(campaign_dir, state, cid)['name']} picked up {obj['name']}")
     return [f"{cid} picks up {obj['name']}."]

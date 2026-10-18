@@ -15,7 +15,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from dnd_cli import character, combat  # noqa: E402
+from dnd_cli import character  # noqa: E402
+from dnd_cli.combat import encounters, records, tracker  # noqa: E402
 from stage import board, hand, improvise  # noqa: E402
 from tests.test_board import dark, setup  # noqa: E402
 from tests.test_rules import Fixed  # noqa: E402
@@ -65,7 +66,7 @@ def test_listing() -> None:
         check("a bow reaches it", by_id(hand_["attack:Longbow"]["targets"])["goblin#2"]["ok"])
         check("a character that is not on turn has every ability off", all(hand.listing(c, state, a, "legolas")[i]["why"] for i in range(3)))
         check("on turn, nothing is off at the start but shove needs a creature next to it", sword["why"] is None and hand_["dash"]["why"] is None)
-        combat.spend_turn(state, "aragorn", "action")
+        tracker.spend_turn(state, "aragorn", "action")
         spent = by_id(hand.listing(c, state, a, "aragorn"))
         check("a spent action turns off attacks and Dash, not a bonus action", spent["attack:Longsword"]["why"] == "The action is used." and spent["dash"]["why"]
               and spent["feature:Second Wind"]["why"] is None)
@@ -88,14 +89,14 @@ def test_spells() -> None:
         check("a cone has no range: any other cell is a direction", hand.preview(c, state, a, "aragorn", "spell:burning-hands", (6, 3))["ok"]
               and not hand.preview(c, state, a, "aragorn", "spell:burning-hands", (2, 3))["ok"])
         lines = hand.act(c, state, a, "aragorn", "spell:fireball", aim=(6, 3), rng=Fixed(10, 3, 3, 3, 3, 3, 3, 3, 3, 12, 12))
-        check("a fireball is cast: it uses the action and a level 3 slot, and the creatures save", combat.turn_used(state, "aragorn")["action"]
+        check("a fireball is cast: it uses the action and a level 3 slot, and the creatures save", tracker.turn_used(state, "aragorn")["action"]
               and character.load(c, "aragorn")["spellcasting"]["spell_slots"]["3"]["remaining"] == 0 and sum("save" in ln for ln in lines) >= 2)
         check("with the action used it is off", by_id(hand.listing(c, state, a, "aragorn"))["spell:fireball"]["why"] == "The action is used.")
         state["active_encounter"]["resources"]["aragorn"] = {}
         msg = raises(lambda: hand.act(c, state, a, "aragorn", "spell:fireball", aim=(6, 3)))
-        check("a spell with no slot is refused, and costs nothing", msg == "No spell slot left." and not combat.turn_used(state, "aragorn")["action"])
+        check("a spell with no slot is refused, and costs nothing", msg == "No spell slot left." and not tracker.turn_used(state, "aragorn")["action"])
         msg = raises(lambda: hand.act(c, state, a, "aragorn", "spell:fire-bolt", target="boss", rng=Fixed(15, 6)))
-        check("a cantrip attack on a creature in sight works and spends the action", msg is None and combat.turn_used(state, "aragorn")["action"])
+        check("a cantrip attack on a creature in sight works and spends the action", msg is None and tracker.turn_used(state, "aragorn")["action"])
         state["active_encounter"]["resources"]["aragorn"] = {}
         check("a spell attack needs a target, an area needs an aim", "target" in (raises(lambda: hand.act(c, state, a, "aragorn", "spell:fire-bolt")) or "")
               and "aim" in (raises(lambda: hand.act(c, state, a, "aragorn", "spell:burning-hands")) or ""))
@@ -115,7 +116,7 @@ def test_actions() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
         lines = hand.act(c, state, a, "aragorn", "shove", target="goblin#1", rng=Fixed(20, 1))
-        check("a won shove pushes the creature 5 ft away and uses the bonus action", board.pos(a, "goblin#1") == (4, 3) and combat.turn_used(state, "aragorn")["bonus"]
+        check("a won shove pushes the creature 5 ft away and uses the bonus action", board.pos(a, "goblin#1") == (4, 3) and tracker.turn_used(state, "aragorn")["bonus"]
               and any("pushed 5 ft" in ln for ln in lines))
         state["active_encounter"]["resources"]["aragorn"] = {}
         check("a shove at a creature that is not next to you is refused", "ft away" in (raises(lambda: hand.act(c, state, a, "aragorn", "shove", target="goblin#2")) or ""))
@@ -138,16 +139,16 @@ def test_actions() -> None:
         c, state, a = setup(Path(tmp), at={"goblin#1": (8, 3), "goblin#2": (9, 5)})
         state["active_encounter"]["current_turn"] = "legolas"
         lines = hand.act(c, state, a, "legolas", "hide", rng=Fixed(20))
-        check("hide: stealth against the best passive Perception; a success is hidden", combat.has_condition(state, "legolas", "hidden") and combat.turn_used(state, "legolas")["action"], str(lines))
+        check("hide: stealth against the best passive Perception; a success is hidden", tracker.has_condition(state, "legolas", "hidden") and tracker.turn_used(state, "legolas")["action"], str(lines))
         check("the DC and the roll stay on the stage: the lines say only what the story needs", lines == ["Legolas slips out of sight."])
         state["active_encounter"]["resources"]["legolas"] = {}
-        combat.condition(state, "legolas", "remove", "hidden")
+        encounters.condition(state, "legolas", "remove", "hidden")
         hand.act(c, state, a, "legolas", "hide", rng=Fixed(1))
-        check("a failed hide leaves the character in the open", not combat.has_condition(state, "legolas", "hidden"))
+        check("a failed hide leaves the character in the open", not tracker.has_condition(state, "legolas", "hidden"))
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = setup(Path(tmp), at={"goblin#1": (8, 3), "goblin#2": (9, 5)})
         hand.act(c, state, a, "aragorn", "dodge")
-        check("a stance from the hand is the condition, and spends the action", combat.has_condition(state, "aragorn", "dodging") and combat.turn_used(state, "aragorn")["action"])
+        check("a stance from the hand is the condition, and spends the action", tracker.has_condition(state, "aragorn", "dodging") and tracker.turn_used(state, "aragorn")["action"])
         check("an ability that is off refuses with the reason", raises(lambda: hand.act(c, state, a, "aragorn", "dash")) == "The action is used")
         check("an unknown ability is refused", "no ability" in (raises(lambda: hand.act(c, state, a, "aragorn", "nope")) or ""))
         check("out of turn is refused", "turn" in (raises(lambda: hand.act(c, state, a, "legolas", "dash")) or ""))
@@ -200,21 +201,21 @@ def test_items() -> None:
         heal_to = by_id(ab["item:Potion of healing"]["targets"])
         check("a potion goes to the user or a friend next to them", heal_to["aragorn"]["ok"] and heal_to["legolas"]["ok"])
         lines = hand.act(c, state, a, "aragorn", "item:Potion of healing", target="legolas", rng=Fixed(3, 4))
-        check("a potion for a friend heals them with its dice and costs the action", "legolas heals 9" in lines[1] and combat.turn_used(state, "aragorn")["action"])
+        check("a potion for a friend heals them with its dice and costs the action", "legolas heals 9" in lines[1] and tracker.turn_used(state, "aragorn")["action"])
         check("the potion is used up one at a time", next(i for i in character.load(c, "aragorn")["inventory"] if i["name"] == "Potion of healing")["quantity"] == 1)
         state["active_encounter"]["resources"]["aragorn"] = {}
         far = raises(lambda: hand.act(c, state, a, "aragorn", "item:Potion of healing", target="goblin#1"))
-        check("a potion does not go to a foe, and a refusal costs nothing", far is not None and not combat.turn_used(state, "aragorn")["action"]
+        check("a potion does not go to a foe, and a refusal costs nothing", far is not None and not tracker.turn_used(state, "aragorn")["action"]
               and next(i for i in character.load(c, "aragorn")["inventory"] if i["name"] == "Potion of healing")["quantity"] == 1)
         hand.act(c, state, a, "aragorn", "item:Potion of healing", target="aragorn", rng=Fixed(1, 1))
         check("the last potion leaves the sheet", not any(i["name"] == "Potion of healing" for i in character.load(c, "aragorn")["inventory"]) and character.load(c, "aragorn")["hp"]["current"] == 6)
         state["active_encounter"]["resources"]["aragorn"] = {}
         out = raises(lambda: hand.act(c, state, a, "aragorn", "item:Alchemist's fire", target="goblin#2"))
         check("a thrown item that is out of range is refused and kept", out and "ft away" in out and any(i["name"] == "Alchemist's fire" for i in character.load(c, "aragorn")["inventory"]))
-        before = combat.combatant(c, state, "goblin#1")["hp"]["current"]
+        before = records.combatant(c, state, "goblin#1")["hp"]["current"]
         lines = hand.act(c, state, a, "aragorn", "item:Alchemist's fire", target="goblin#1", rng=Fixed(15, 3))
-        check("a thrown item is a ranged attack with its damage; it is gone", combat.combatant(c, state, "goblin#1")["hp"]["current"] < before
-              and not any(i["name"] == "Alchemist's fire" for i in character.load(c, "aragorn")["inventory"]) and combat.turn_used(state, "aragorn")["action"])
+        check("a thrown item is a ranged attack with its damage; it is gone", records.combatant(c, state, "goblin#1")["hp"]["current"] < before
+              and not any(i["name"] == "Alchemist's fire" for i in character.load(c, "aragorn")["inventory"]) and tracker.turn_used(state, "aragorn")["action"])
 
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = setup(Path(tmp), at={"goblin#1": (8, 3), "goblin#2": (9, 5)})
@@ -224,7 +225,7 @@ def test_items() -> None:
         check("only the objects next to the character can be picked up", {"pickup:item#1", "pickup:item#2"} <= set(ab) and "pickup:item#3" not in ab and ab["pickup:item#1"]["cost"] == "free")
         hand.act(c, state, a, "aragorn", "pickup:item#1")
         check("a pick-up puts it on the sheet and takes it off the board", [i["name"] for i in character.load(c, "aragorn")["inventory"]] == ["Bottle"] and [i["id"] for i in a["items"]] == ["item#2", "item#3"])
-        check("a pick-up costs no action", not any(combat.turn_used(state, "aragorn").values()))
+        check("a pick-up costs no action", not any(tracker.turn_used(state, "aragorn").values()))
         check("a second pick-up in a turn is refused", "free object interaction" in (raises(lambda: hand.act(c, state, a, "aragorn", "pickup:item#2")) or ""))
         check("the free interaction is back on the next turn", (state["active_encounter"]["resources"].__setitem__("aragorn", {}) or True)
               and hand.act(c, state, a, "aragorn", "pickup:item#2") == ["aragorn picks up Stone."])

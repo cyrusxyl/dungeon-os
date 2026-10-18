@@ -55,7 +55,8 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from core.ids import ID_RE
-from dnd_cli import actions, character, combat, creation, effects, resources, saves
+from dnd_cli import actions, character, creation, effects, resources, saves
+from dnd_cli.combat import encounters, records, resolve, rolls, tracker
 from dnd_cli import item as items
 from dnd_cli import campaign as camp
 from dnd_cli.api import api_get, fetch
@@ -624,10 +625,10 @@ def with_rules(stage: Stage, fn, keep=None):
     with RULES_LOCK:
         os.environ["DUNGEON_STAGE_LOG"] = str(stage.log_path)
         try:
-            state = combat.load_state(stage.campaign_dir)
+            state = tracker.load_state(stage.campaign_dir)
             out = fn(state)
             if keep is None or keep(out):
-                combat.save_state(stage.campaign_dir, state)
+                tracker.save_state(stage.campaign_dir, state)
             return out
         finally:
             del os.environ["DUNGEON_STAGE_LOG"]
@@ -1099,7 +1100,7 @@ def create_app(
 
         if who and not whisper:
             # In a combat, only the player whose turn it is may speak or act; a whisper to the DM is always allowed.
-            enc = combat.load_state(stage.campaign_dir).get("active_encounter") or {}
+            enc = tracker.load_state(stage.campaign_dir).get("active_encounter") or {}
             turn = enc.get("current_turn") if enc.get("type") == "combat" else None
             if turn and character.character_path(stage.campaign_dir, turn).exists():
                 if who != turn:
@@ -1441,7 +1442,7 @@ def create_app(
         beat.append(stage.campaign_dir, [{"type": "arena", "arena": done["arena"]}])
         name = stage.char_name(who)
         tname = next((c["name"] for c in present_creatures(stage) if c["id"] == target), str(target))
-        band = combat.health_band(combat.combatant(stage.campaign_dir, combat.load_state(stage.campaign_dir), done["foe"]))
+        band = records.health_band(records.combatant(stage.campaign_dir, tracker.load_state(stage.campaign_dir), done["foe"]))
         await stage.submit(f"[{name} attacked {tname} and combat started] " + " ".join(done["lines"]) + (f" {done['note']}" if done["note"] else "")
                            + f" {tname} now looks {band}. The fight is on a board: narrate the blow and the start of the fight in one beat, "
                            "with no numbers. The stage runs the turns from here.")
@@ -1451,7 +1452,7 @@ def create_app(
         stage = need()
 
         def build():
-            state = combat.load_state(stage.campaign_dir)
+            state = tracker.load_state(stage.campaign_dir)
             arena_id = board.arena_id_of(state)
             a = arena.load(stage.campaign_dir, arena_id) if arena_id else None
             hidden = board.hidden_foes(stage.campaign_dir, state, a) if a else set()
@@ -1497,9 +1498,9 @@ def create_app(
             amount = as_amount(body.get("amount"))
         except RulesError as e:
             return error(str(e), 400)
-        if board.arena_id_of(combat.load_state(stage.campaign_dir)):
+        if board.arena_id_of(tracker.load_state(stage.campaign_dir)):
             return await board_action(stage, who, body)
-        if str(body.get("action")) == "attack" and (combat.load_state(stage.campaign_dir).get("active_encounter") or {}).get("type") != "combat":
+        if str(body.get("action")) == "attack" and (tracker.load_state(stage.campaign_dir).get("active_encounter") or {}).get("type") != "combat":
             side = stage.state["actors"].get(str(target), {}).get("side")
             if side in ("bystander", "neutral") and not body.get("confirm"):  # a fight with someone the party is not at war with: ask first
                 return JSONResponse({"error": board.confirm_why(side, beat.title(str(target))), "confirm": True}, status_code=409)
@@ -1513,16 +1514,16 @@ def create_app(
         name = character.load(stage.campaign_dir, who).get("name", who)
         if roll := done.get("roll"):
             # Hide and Shove: the player rolls in the roll window like for any check the DM asks for.
-            state = combat.load_state(stage.campaign_dir)
-            preview = combat.roll_preview(stage.campaign_dir, state, who, roll["what"])
+            state = tracker.load_state(stage.campaign_dir)
+            preview = rolls.roll_preview(stage.campaign_dir, state, who, roll["what"])
             await stage._local_event({"type": "roll_request", "who": who, "what": roll["what"], "hide": True,
                                       "note": roll["note"], **preview, "title": roll["title"]})
             return JSONResponse({"roll": True})
         look = ""
         if target and str(body.get("action")) == "attack":
             # The player sees no numbers: the story must show how hard the blow was and how the creature looks now.
-            state = combat.load_state(stage.campaign_dir)
-            band = combat.health_band(combat.combatant(stage.campaign_dir, state, str(target)))
+            state = tracker.load_state(stage.campaign_dir)
+            band = records.health_band(records.combatant(stage.campaign_dir, state, str(target)))
             look = (f" {target} now looks {band}: describe the blow and its wound so the player can tell how much damage "
                     "it did and how much the creature may have left, with no numbers.")
         await stage.submit(f"[{name} acts from the character card] " + " ".join(done["lines"]) + look
@@ -1582,7 +1583,7 @@ def create_app(
             if done.get("roll"):
                 raise board.BoardError(f"{action} is not on the board yet.")
             for line in done["lines"]:
-                combat.stage_feed(line)
+                rolls.stage_feed(line)
             return {"lines": done["lines"]}
         return await board_run(stage, go)
 
@@ -1594,18 +1595,18 @@ def create_app(
         own(request, stage, who)
         def end_and_skip(st):
             """End the turn, then end the turn of each player who is away, so the order never waits for them."""
-            out = combat.end_turn(stage.campaign_dir, st, who)
+            out = encounters.end_turn(stage.campaign_dir, st, who)
             for _ in st["active_encounter"].get("participants", []):
                 cur = st["active_encounter"]["current_turn"]
                 if cur not in stage.seats.away or cur not in stage.seats.owners:
                     break
-                out += [f"{stage.char_name(cur)} is away: turn skipped."] + combat.end_turn(stage.campaign_dir, st, cur)
+                out += [f"{stage.char_name(cur)} is away: turn skipped."] + encounters.end_turn(stage.campaign_dir, st, cur)
             return out
         try:
             lines = await run_in_threadpool(with_rules, stage, end_and_skip)
         except RulesError as e:
             return error(str(e), 400)
-        state = combat.load_state(stage.campaign_dir)
+        state = tracker.load_state(stage.campaign_dir)
         now = state["active_encounter"]["current_turn"]
         name = stage.char_name(who)
         if arena_id := board.arena_id_of(state):
@@ -1641,7 +1642,7 @@ def create_app(
 
     def roll_for(stage: Stage, req: dict, skip: list[str]) -> list[str]:
         """The roll the DM asked for, made with the same rules code as `dnd-cli check`; the stage shows it."""
-        return with_rules(stage, lambda st: combat.check(stage.campaign_dir, st, [req["who"]], req["what"], dc=req.get("dc"),
+        return with_rules(stage, lambda st: resolve.check(stage.campaign_dir, st, [req["who"]], req["what"], dc=req.get("dc"),
                                                     hide_dc=bool(req.get("hide")), skip=skip))
 
     async def api_roll(request: Request):
@@ -1773,7 +1774,7 @@ def create_app(
         arena_id = request.path_params["arena_id"]
 
         def build():
-            state = combat.load_state(stage.campaign_dir)
+            state = tracker.load_state(stage.campaign_dir)
             a = arena.load(stage.campaign_dir, arena_id)
             if a is None or board.arena_id_of(state) != arena_id:
                 return None
@@ -1841,10 +1842,10 @@ def create_app(
             return error("Say what the character tries.", 400)
 
         def build() -> str:
-            state = combat.load_state(stage.campaign_dir)
+            state = tracker.load_state(stage.campaign_dir)
             _, a = board.running(stage.campaign_dir, state)
             board.require_turn(state, who)
-            if combat.turn_used(state, who)["action"]:
+            if tracker.turn_used(state, who)["action"]:
                 raise board.BoardError("the action is used.")
             return improvise.prompt(stage.campaign_dir, state, a, who, text, body.get("object"))
         try:
@@ -1861,7 +1862,7 @@ def create_app(
         own(request, stage, who)
 
         def go():
-            state = combat.load_state(stage.campaign_dir)
+            state = tracker.load_state(stage.campaign_dir)
             _, a = board.running(stage.campaign_dir, state)
             return build(state, a, who)
         try:
@@ -1873,8 +1874,8 @@ def create_app(
         stage = need()
 
         def build(state, a, who):
-            rec = combat.combatant(stage.campaign_dir, state, who)
-            return {"who": who, "abilities": hand.listing(stage.campaign_dir, state, a, who), "turn": combat.turn_used(state, who),
+            rec = records.combatant(stage.campaign_dir, state, who)
+            return {"who": who, "abilities": hand.listing(stage.campaign_dir, state, a, who), "turn": tracker.turn_used(state, who),
                     "feet_left": board.tiles_left(state, rec) * board.TILE_FT, "current": state["active_encounter"].get("current_turn")}
         return await hand_read(request, build)
 

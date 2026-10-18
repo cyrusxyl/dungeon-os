@@ -13,7 +13,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from dnd_cli import combat, dice, sheet as sheets  # noqa: E402
+from dnd_cli import dice, sheet as sheets  # noqa: E402
+from dnd_cli.combat import records  # noqa: E402
 from dnd_cli import item as items  # noqa: E402
 from dnd_cli.errors import RulesError  # noqa: E402
 from dnd_cli.item import Item  # noqa: E402
@@ -129,8 +130,8 @@ def test_link() -> None:
     check("a renamed attack is still the attack of its row", [a["name"] for a in atk] == ["Ember", "Unarmed Strike"] and atk[0]["equipped"])
     items.get(sh, "Flame Rapier").unequip(sh)
     check("unequip finds the attack by the link, not the name", not sh["weapons"][0]["equipped"] and not items.attacks(sh)[0]["equipped"])
-    check("wielded: the equipped one, else the first, else none", combat.wielded([{"name": "a"}, {"name": "b", "equipped": True}])["name"] == "b"
-          and combat.wielded([{"name": "a"}, {"name": "b"}])["name"] == "a" and combat.wielded([]) is None)
+    check("wielded: the equipped one, else the first, else none", records.wielded([{"name": "a"}, {"name": "b", "equipped": True}])["name"] == "b"
+          and records.wielded([{"name": "a"}, {"name": "b"}])["name"] == "a" and records.wielded([]) is None)
 
     sh["inventory"][0]["equipped"] = True
     sh["weapons"][0]["equipped"] = True

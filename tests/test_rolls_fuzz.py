@@ -14,7 +14,8 @@ import random
 import tempfile
 from pathlib import Path
 
-from dnd_cli import combat, effects
+from dnd_cli import effects
+from dnd_cli.combat import resolve, wounds
 from test_rules import campaign, fight, staged
 
 ROUNDS = 400
@@ -94,7 +95,7 @@ def main() -> int:
         for i in range(ROUNDS):
             state = fight(c)
             for pc in PCS:
-                combat.heal(c, state, pc, 100)
+                wounds.heal(c, state, pc, 100)
                 for eid in effects.PRESETS:
                     effects.remove(c, pc, eid)
                 for eid in rng.sample(POOL, rng.randint(0, 4)):
@@ -109,15 +110,15 @@ def main() -> int:
                 target = "goblin#1" if who in PCS else rng.choice(PCS)
                 flags["target_is_pc"] = target in PCS
                 weapon = {"aragorn": "longsword", "legolas": "longbow"}.get(who, "scimitar")
-                run = lambda: combat.attack(c, state, who, weapon, target, **args)
+                run = lambda: resolve.attack(c, state, who, weapon, target, **args)
             else:
                 who = rng.choice(PCS + ["goblin#1"])
                 what = rng.choice(["athletics", "perception", "stealth", "str", "dex-save"]) if kind == "check" else "dex"
                 if kind == "check":
                     kind = "save" if what.endswith("-save") else "check"
-                    run = lambda: combat.check(c, state, [who], what, dc=flags["dc"], hide_dc=flags["hide"], **args)
+                    run = lambda: resolve.check(c, state, [who], what, dc=flags["dc"], hide_dc=flags["hide"], **args)
                 else:
-                    run = lambda: combat.save(c, state, [who], what, flags["dc"], hide_dc=flags["hide"], **args)
+                    run = lambda: resolve.save(c, state, [who], what, flags["dc"], hide_dc=flags["hide"], **args)
             before = effects.active(c, who)
             events = staged(c, run)
             after = effects.active(c, who)
