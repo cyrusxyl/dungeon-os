@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dnd_cli import actions, combat, dice, effects, resources
+from dnd_cli import actions, combat, dice, effects, item as items, resources
 from stage import beat
 from stage.files import read_json
 
@@ -29,9 +29,7 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict, present: lis
     mods = {a: dice.mod(scores.get(a, 10)) for a in combat.ABILITIES}
     prof = sheet.get("proficiency_bonus", 2)
     saves = sheet.get("saving_throws", {})
-    inventory = [{"name": i.get("name"), "quantity": i.get("quantity", 1), "weight": i.get("weight", 0),
-                  "equipped": bool(i.get("equipped")), "description": i.get("description", ""), "rarity": i.get("rarity"), "effects": i.get("effects", [])}
-                 for i in sheet.get("inventory", [])]
+    inventory = [i.view() for i in items.items(sheet)]
     spell = sheet.get("spellcasting") or {}
     return {
         "id": cid,

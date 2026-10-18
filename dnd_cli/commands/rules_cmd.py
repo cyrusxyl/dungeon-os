@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 
 from dnd_cli import audit, character, combat, effects, loot, sheet
+from dnd_cli import item as items
 from dnd_cli.api import api_get
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from dnd_cli.dice import DiceError
@@ -213,11 +214,11 @@ def _edit_sheet(campaign, name: str, fn) -> int:
 def _wear(data: dict, name: str, on: bool) -> list[str]:
     """Equip or put away an item. A weapon or armor with a base takes the stats of that base: a weapon becomes an attack
     (under the item's name, so its perks find it), armor sets the AC and takes off the armor it replaces."""
-    row = sheet.get_item(data, name)
-    if on and row.get("base") and row.get("type") in ("weapon", "armor"):
-        return sheet.equip(data, _api(f"equipment/{loot.api_index(row['base'])}"), True, row["name"])
-    lines = [sheet.set_equipped(data, name, on)]
-    if on and any("weapon" in effects.PRESETS[e] for e in row.get("effects", [])) and not row.get("base"):
+    it = items.get(data, name)
+    if not on:
+        return it.unequip(data)
+    lines = it.equip(data, _api(f"equipment/{loot.api_index(it.base)}") if it.needs_base else None)
+    if not it.base and any("weapon" in effects.PRESETS[e] for e in it.perks if e in effects.PRESETS):
         lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
                      "`loot force \"<item>\" --to <who> --base <Longsword>`.")
     return lines

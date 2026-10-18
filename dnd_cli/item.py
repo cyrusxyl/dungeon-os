@@ -65,9 +65,14 @@ class Item:
         return self.row.get("effects", [])
 
     @property
+    def base(self) -> str | None:
+        """The base item it is made from (Longsword, Plate Armor), if any."""
+        return self.row.get("base")
+
+    @property
     def needs_base(self) -> bool:
         """True when equipping takes the stats of a base item from the 5e API (a weapon or armor with a `base`)."""
-        return bool(self.row.get("base")) and self.row.get("type") in GEAR_TYPES
+        return bool(self.base) and self.row.get("type") in GEAR_TYPES
 
     def profile(self) -> dict | None:
         """What it does on the board: the row's own profile, else the table's, else none."""
