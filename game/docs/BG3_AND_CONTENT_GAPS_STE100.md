@@ -32,7 +32,7 @@ Rules shared by all three:
 | Conditions | 15 | Complete |
 | Monsters in `dnd-cli` | `mind-flayer`, `githyanki-warrior`, `intellect-devourer` all fail. `owlbear` works. | BG3 core creatures |
 
-Local stage data (`stage/data/`): `items.json` 6 items, `traits.json` 3 traits, `races.json` 11 looks (no githyanki, no wood elf), `class_looks.json` 12 classes, `monsters.json` 121, `presets.json` 23.
+Local rule data (`core/data/`): `items.json` 6 items, `traits.json` 3 traits. Local stage data (`stage/data/`): `races.json` 11 looks (no githyanki, no wood elf), `class_looks.json` 12 classes, `monsters.json` 121, `presets.json` 23.
 
 ## 3. Gaps by layer
 Rank: B = blocks BG3 companions or campaign. N = nice to have.

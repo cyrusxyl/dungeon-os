@@ -52,8 +52,8 @@ Not built:
 
 ## Rules that apply everywhere
 
-1. **The engine runs on the server.** Pathing, sight, foe turns, reactions and fog are Python in `stage/`, next to `crawl.py`. They call `dnd_cli/combat.py`. The browser draws only what the server sends. This keeps the crawl rule: hidden stays hidden. A foe in the dark is not in the data the browser gets.
-2. **One rules core.** `combat.py` owns HP, rolls, initiative, conditions and XP. The board must call it. It must not copy it.
+1. **The engine runs on the server.** Pathing, sight, foe turns, reactions and fog are Python in `stage/`, next to `crawl.py`. They call `dnd_cli/combat/`. The browser draws only what the server sends. This keeps the crawl rule: hidden stays hidden. A foe in the dark is not in the data the browser gets.
+2. **One rules core.** The package `dnd_cli/combat/` owns HP, rolls, initiative, conditions and XP. The board must call it. It must not copy it.
 3. **One ability format.** A card, a list row, a foe action and a spell all use the same data (section 3). The skin is a choice of the player.
 4. **The DM gives no positions.** The DM gives words (`cover@foes`, `layout=chokepoint`). The stage computes the layout. This is the same rule as the site command.
 5. **The engine never refuses an improvised action.** It gives a default ruling or it asks the DM (section 6).
@@ -371,7 +371,7 @@ Two settings change how a fight feels. A host can change both during play.
 |---|---|
 | `GET /api/arena` | The seen part of the arena, the units in sight, the turn, the intents. |
 | `POST /api/arena/move` | `{to: [x, y]}`: walks, spends speed, returns the new view and the reasons it stopped. |
-| `POST /api/arena/act` | `{ability, target}` or `{ability, at: [x, y]}`: runs the ability through `combat.py`. |
+| `POST /api/arena/act` | `{ability, target}` or `{ability, at: [x, y]}`: runs the ability through `dnd_cli/combat/`. |
 | `POST /api/arena/react` | `{id, take: true\|false}`: answers a reaction question. |
 | `POST /api/arena/improvise` | `{who, text, object?}`: sends the text and the engine suggestion to the DM. |
 | `GET /api/arena/hand?who=` | The hand of a character: abilities with the reason each is off, the pips, the feet left. |
