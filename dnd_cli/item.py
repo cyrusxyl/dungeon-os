@@ -67,6 +67,10 @@ class Item:
         """True when equipping takes the stats of a base item from the 5e API (a weapon or armor with a `base`)."""
         return bool(self.base) and self.row.get("type") in ("weapon", "armor")
 
+    def has_weapon_effects(self, presets: dict) -> bool:
+        """True when one of its effects is a weapon effect. `presets` is the effects.PRESETS mapping (this module does not import it)."""
+        return any("weapon" in presets.get(e, {}) for e in self.perks)
+
     def profile(self) -> dict | None:
         """What it does on the board: the row's own profile, else the table's, else none."""
         p = self.row.get("profile") or table().get(self.name.lower())
@@ -100,12 +104,17 @@ class Item:
 
     # -- changes -------------------------------------------------------------
 
-    def equip(self, sheet: dict, base: dict | None = None, proficient: bool = True) -> list[str]:
+    def equip(self, sheet: dict, base: dict | None = None, proficient: bool = True, presets: dict | None = None) -> list[str]:
         """Wear or wield it. With the 5e data of its base (`needs_base`), a weapon becomes an attack under the item's name
-        and armor sets the AC and takes off the armor it replaces. Without, it only gets the flag."""
+        and armor sets the AC and takes off the armor it replaces. Without, it only gets the flag. With `presets`, it also
+        warns when weapon effects have no base to work on."""
         if base is not None and self.needs_base:
             return equip_base(sheet, base, proficient, self.name)
-        return [self._flag(sheet, True)]
+        lines = [self._flag(sheet, True)]
+        if presets and not self.base and self.has_weapon_effects(presets):
+            lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
+                         "`character item <campaign> <who> add \"<item>\" --base <Longsword>`.")
+        return lines
 
     def unequip(self, sheet: dict) -> list[str]:
         """Put it away. Its effects end. A weapon stays an attack that the character can use, like any weapon that is not wielded."""

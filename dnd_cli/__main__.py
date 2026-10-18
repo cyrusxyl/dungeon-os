@@ -261,18 +261,13 @@ def create_parser():
     p.add_argument("item")
     p.add_argument("--qty", type=int, default=1)
     p.add_argument("--profile", default=None, help='for op profile: what the item does in a fight, as JSON: {"kind": "heal", "heal": "2d4"} or {"kind": "throw", "range_ft": 20, "damage": ["1d6", "fire"]}')
+    p.add_argument("--not-proficient", action="store_true", help="For op equip: no proficiency bonus on the attack")
     p.add_argument("--canon", action="store_true", help="Also record the item as given this session (canon Part E)")
 
     p = character_sub.add_parser("gold", help="Change gold: gold <campaign> <name> +N|-N")
     p.add_argument("campaign")
     p.add_argument("name")
     p.add_argument("delta")
-
-    p = character_sub.add_parser("equip", help="Equip a weapon, armor or shield by API index; recomputes attack or AC")
-    p.add_argument("campaign")
-    p.add_argument("name")
-    p.add_argument("index", help="Equipment index, e.g. longsword, chain-mail, shield")
-    p.add_argument("--not-proficient", action="store_true")
 
     p = character_sub.add_parser("xp", help="Add XP: xp <campaign> <name...|all> --amount N")
     p.add_argument("campaign")
@@ -764,11 +759,10 @@ def main():
             elif cc == "restore-slots":
                 return character_cmd.execute_restore_slots(args.campaign, args.name, args.level)
             if cc == "item":
-                return rules_cmd.execute_item(args.campaign, args.name, args.op, args.item, args.qty, args.canon, args.profile)
+                return rules_cmd.execute_item(args.campaign, args.name, args.op, args.item, args.qty, args.canon, args.profile,
+                                              not args.not_proficient)
             if cc == "gold":
                 return rules_cmd.execute_gold(args.campaign, args.name, args.delta)
-            if cc == "equip":
-                return rules_cmd.execute_equip(args.campaign, args.name, args.index, not args.not_proficient)
             if cc == "xp":
                 return rules_cmd.execute_xp(args.campaign, args.names, args.amount)
             if cc == "new":

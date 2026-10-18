@@ -42,7 +42,7 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
 - **Rules commands do the arithmetic** (one short line per result, dice shown on the stage; `--secret` hides a roll):
   - Combat: `uv run dnd-cli encounter start goblin:3`, `attack <who> <weapon> <target>`, `save <targets> <ability> --dc N`, `encounter next|status|damage|heal|condition|end` — the `combat` skill.
   - Checks: `uv run dnd-cli check <who...|all> <skill|ability|death> --dc N` (group checks, `--passive`) — the `exploration` skill.
-  - Sheets: `uv run dnd-cli character item|gold|equip|xp|level-up ...`, `uv run dnd-cli rest long|short`.
+  - Sheets: `uv run dnd-cli character item|gold|xp|level-up ...`, `uv run dnd-cli rest long|short`.
   - World: `uv run dnd-cli state time +2h` (or `"Day 3, 18:00"`), `state set weather=Rain party_status=Resting`, `quest add|progress|done|fail|show`, `npc set|note|attitude`, `faction <name> +N`. Do not edit `state.json`, quest files or NPC files by hand for these.
   - Any other roll: `uv run roll 1d20+5 -v` from your working directory (`game/`).
 - **Command form (all tools)**: Run one `uv run ...` command per Bash call, on one line. Do not prefix it with `cd ... &&`, do not chain commands with `&&`, and never break a line with `\`. A compound command or a backslash line break stops the game for a permission prompt; a plain `uv run` command does not. Several commands in a row are several Bash calls.

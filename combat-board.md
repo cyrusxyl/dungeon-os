@@ -311,7 +311,7 @@ The character sheet keeps the whole inventory. The hand shows only what a player
 2. A small hand-written table for the common consumables: healing potions, alchemist's fire, acid, oil, holy water, antitoxin, caltrops, ball bearings.
 3. A DM ruling. The DM can save an approved improvised ruling as the profile of an item. The next use runs without the DM.
 
-**Engine calls.** `character item <name> remove` for use, `character equip` for a weapon change, `encounter heal` and `encounter damage` and `encounter condition` for the effect. The board adds no second inventory.
+**Engine calls.** `character item <name> remove` for use, `character item <name> equip` for a weapon change, `encounter heal` and `encounter damage` and `encounter condition` for the effect. The board adds no second inventory.
 
 **The Item layer** (`dnd_cli/item.py`). The sheet is the save file: the DM reads it, fixes it by hand, and git diffs it. The engine reads a row through one `Item` and no module reads the keys of a row itself. Rules:
 

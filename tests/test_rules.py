@@ -889,7 +889,7 @@ def test_gear(c: Path) -> None:
         d = character.load(c, "aragorn")
         inv.add(d, "+1 Rapier of Frost", 1, type="weapon", base="Rapier", effects=["magic-weapon-1", "frost-edge"])
         inv.add(d, "+1 Plate Armor", 1, type="armor", base="Plate Armor", effects=["magic-armor-1"])
-        _wear = rules_cmd._wear
+        _wear = rules_cmd._equip
         _wear(d, "+1 Rapier of Frost", True)
         w = next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")
         check("equipping a loot weapon makes an attack under its name, from the stats of its base", asked == ["equipment/rapier"] and w["equipped"]
@@ -901,10 +901,14 @@ def test_gear(c: Path) -> None:
         character.save(c, "aragorn", d)
         r = effects.weapon(c, "aragorn", "", "+1 Rapier of Frost")
         check("the perks of the item reach the attack of the same name", r["dmg"] == 1 and r["extra"] == [["1d4", "cold"]])
-        _wear(d, "+1 Rapier of Frost", False)
+        inv.get(d, "+1 Rapier of Frost").unequip(d)
         check("putting the weapon away keeps the attack, not wielded", next(w for w in d["weapons"] if w["name"] == "+1 Rapier of Frost")["equipped"] is False)
         inv.add(d, "Flame Tongue", 1, type="weapon", effects=["flame-edge"])
         check("a weapon with effects and no base warns the DM", any("Warning" in line for line in _wear(d, "Flame Tongue", True)))
+        asked.clear()
+        _wear(d, "rapier", True)
+        check("an item not in the inventory is made from the 5e item of that name", asked == ["equipment/rapier"]
+              and any(i["name"] == "Rapier" and i["equipped"] for i in d["inventory"]))
     finally:
         rules_cmd._api = orig
         character.save(c, "aragorn", before)

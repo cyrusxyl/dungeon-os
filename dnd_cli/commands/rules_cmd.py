@@ -211,28 +211,27 @@ def _edit_sheet(campaign, name: str, fn) -> int:
     return run_stage(campaign, go, *ERRORS)
 
 
-def _wear(data: dict, name: str, on: bool) -> list[str]:
-    """Equip or put away an item. A weapon or armor with a base takes the stats of that base: a weapon becomes an attack
-    (under the item's name, so its perks find it), armor sets the AC and takes off the armor it replaces."""
-    it = items.get(data, name)
-    if not on:
-        return it.unequip(data)
-    lines = it.equip(data, _api(f"equipment/{loot.api_index(it.base)}") if it.needs_base else None)
-    if not it.base and any("weapon" in effects.PRESETS.get(e, {}) for e in it.perks):
-        lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
-                     "`loot force \"<item>\" --to <who> --base <Longsword>`.")
-    return lines
+def _equip(data: dict, name: str, proficient: bool) -> list[str]:
+    """Wear or wield an item. One that is not in the inventory is made from the 5e API item of that name or index."""
+    found = items.find(data, name)
+    if not found:
+        return items.equip_base(data, _api(f"equipment/{loot.api_index(name)}"), proficient)
+    return found.equip(data, _api(f"equipment/{loot.api_index(found.base)}") if found.needs_base else None,
+                       proficient, effects.PRESETS)
 
 
-def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool, profile: str | None = None) -> int:
+def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool, profile: str | None = None,
+                 proficient: bool = True) -> int:
     def fn(campaign_dir, data):
         if op == "profile":
             try:
                 return [items.set_profile(data, item, json.loads(profile or ""))]
             except json.JSONDecodeError:
                 raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
-        if op in ("equip", "unequip"):
-            return _wear(data, item, op == "equip")
+        if op == "equip":
+            return _equip(data, item, proficient)
+        if op == "unequip":
+            return items.get(data, item).unequip(data)
         if op == "remove":
             return [items.remove(data, item, qty)]
         lines = [items.add(data, item, qty)]
@@ -288,10 +287,6 @@ def _api(endpoint: str) -> dict:
         raise combat.RulesError(f"no {endpoint} in the 5e API. Find the index with: uv run dnd-cli search "
                                 f"{endpoint.split('/')[0]} --name {endpoint.split('/')[-1].split('-')[0]}")
     return data
-
-
-def execute_equip(campaign, name: str, index: str, proficient: bool) -> int:
-    return _edit_sheet(campaign, name, lambda c, data: items.equip_base(data, _api(f"equipment/{index}"), proficient))
 
 
 def execute_xp(campaign, names: list[str], amount: int) -> int:
