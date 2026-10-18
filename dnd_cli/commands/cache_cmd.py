@@ -1,7 +1,7 @@
 """Cache management commands"""
 
-import sys
 from dnd_cli.cache import clear_cache, get_cache_info
+from dnd_cli.cache_warmup import warmup_all_resources, warmup_cache
 
 
 def execute_clear(resource: str = None) -> int:
@@ -33,3 +33,11 @@ def execute_info() -> int:
             print(f"    Size: {stats['size']:,} bytes")
 
     return 0
+
+
+def execute_warmup(resource: str | None, force: bool) -> int:
+    """Pre-cache full resource data; 'all' or no resource warms the common ones."""
+    if not resource or resource == "all":
+        warmup_all_resources(force=force)
+        return 0
+    return 1 if warmup_cache(resource, force=force)[1] else 0

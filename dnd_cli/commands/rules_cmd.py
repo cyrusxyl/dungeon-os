@@ -142,15 +142,23 @@ def execute_attack(campaign, args) -> int:
 
 
 def execute_save(campaign, args) -> int:
+    # The last target that is an ability name is the ability: `save goblin#1 dex --dc 13`.
+    targets, ability = args.targets, args.ability
+    if ability is None and len(targets) > 1 and targets[-1].lower() in (*combat.ABILITIES, *combat.SHORT):
+        targets, ability = targets[:-1], targets[-1]
     return _with_state(campaign, lambda c, s: combat.save(
-        c, s, args.targets, args.ability, args.dc, damage_expr=args.damage, damage_type=args.type or "",
+        c, s, targets, ability, args.dc, damage_expr=args.damage, damage_type=args.type or "",
         half=args.half, source=args.source, adv=args.adv, dis=args.dis, secret=args.secret, hide_dc=args.hide_dc))
 
 
 def execute_check(campaign, args) -> int:
+    if len(args.who) < 2:
+        raise combat.RulesError("usage: check <who...|all> <skill|ability|death> [--dc N]")
+    names, what = args.who[:-1], args.who[-1]  # the last word is what is rolled
+
     def fn(campaign_dir, state):
-        who = combat.party(campaign_dir, state) if args.who == ["all"] else args.who
-        return combat.check(campaign_dir, state, who, args.what, dc=args.dc, adv=args.adv, dis=args.dis,
+        who = combat.party(campaign_dir, state) if names == ["all"] else names
+        return combat.check(campaign_dir, state, who, what, dc=args.dc, adv=args.adv, dis=args.dis,
                             passive=args.passive, secret=args.secret, hide_dc=args.hide_dc)
     return _with_state(campaign, fn)
 
@@ -264,12 +272,7 @@ def execute_item_profile(args) -> int:
 
 
 def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str) -> int:
-    try:
-        print("\n".join(loot.lines(loot.roll(cr, kind, seed, creature_type))))
-    except combat.RulesError as e:
-        print(f"Error: {e}")
-        return 1
-    return 0
+    return _out(loot.lines(loot.roll(cr, kind, seed, creature_type)))
 
 
 def execute_gold(campaign, name: str, delta: str) -> int:

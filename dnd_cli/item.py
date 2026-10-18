@@ -113,7 +113,7 @@ class Item:
         lines = [self._flag(sheet, True)]
         if presets and not self.base and self.has_weapon_effects(presets):
             lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
-                         "`character item <campaign> <who> add \"<item>\" --base <Longsword>`.")
+                         "`character item <who> add \"<item>\" --base <Longsword>`.")
         return lines
 
     def unequip(self, sheet: dict) -> list[str]:

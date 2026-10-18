@@ -598,14 +598,14 @@ def test_cli_guards(c: Path) -> None:
         check("validate --fix offline: warning, no fixed claim, exit 1, sheet untouched",
               rc == 1 and "warning: cannot check" in err.getvalue() and "fixed:" not in out.getvalue()
               and path.read_bytes() == before and path.stat().st_mtime_ns == mtime)
-        sys.argv = ["dnd-cli", "character", "use", str(c), "aragorn", "Second Wind", "--amount", "-2"]
+        sys.argv = ["dnd-cli", "character", "use", "aragorn", "Second Wind", "--amount", "-2", "--campaign", str(c)]
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             rc = main()
         check("use --amount -2 is refused, no uses given back", rc == 1 and "--amount" in err.getvalue() and path.read_bytes() == before)
 
         def run(*argv: str) -> tuple[int, str, str]:
-            sys.argv = ["dnd-cli", "character", "item", str(c), "aragorn", *argv]
+            sys.argv = ["dnd-cli", "character", "item", "aragorn", *argv, "--campaign", str(c)]
             out, err = io.StringIO(), io.StringIO()
             with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
                 return main(), out.getvalue(), err.getvalue()
