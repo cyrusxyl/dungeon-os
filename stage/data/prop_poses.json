@@ -1,0 +1,2055 @@
+{
+ "_comment": "Isometric pose of every scene prop (see isometric-view.md). pose 'upright': draw the picture as is, feet on the tile centre. pose 'bands': cut the picture into bands from the top down. first: 'V' (vertical, stands up) or 'H' (horizontal, lies flat); the bands alternate. splits: the row where each band ends (one fewer than bands). bands: [size, thickness] per band. A vertical band: size = height scale, thickness = depth it goes back. A horizontal band: size = depth scale forward, thickness = how far it drops down. width: scale of the picture along its own axis. Tuned by eye in the prop tuner, 2026-10-17.",
+ "bookshelf": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   17
+  ],
+  "bands": [
+   [
+    0.65,
+    0
+   ],
+   [
+    1.0,
+    11
+   ]
+  ],
+  "width": 1.0
+ },
+ "cabinet": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   3
+  ],
+  "bands": [
+   [
+    5.0,
+    0
+   ],
+   [
+    1.0,
+    15
+   ]
+  ],
+  "width": 0.8
+ },
+ "throne": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   47,
+   67
+  ],
+  "bands": [
+   [
+    1.4,
+    2
+   ],
+   [
+    0.9,
+    14
+   ],
+   [
+    1.0,
+    2
+   ]
+  ],
+  "width": 0.85
+ },
+ "chest": {
+  "pose": "upright"
+ },
+ "bed": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   12,
+   73
+  ],
+  "bands": [
+   [
+    1.0,
+    2
+   ],
+   [
+    0.8,
+    14
+   ],
+   [
+    1.0,
+    11
+   ]
+  ],
+  "width": 1.0
+ },
+ "table_desk": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   51
+  ],
+  "bands": [
+   [
+    0.78,
+    0
+   ],
+   [
+    1.0,
+    40
+   ]
+  ],
+  "width": 0.65
+ },
+ "bench_long": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   15,
+   19
+  ],
+  "bands": [
+   [
+    0.95,
+    2
+   ],
+   [
+    2.0,
+    4
+   ],
+   [
+    0.95,
+    14
+   ]
+  ],
+  "width": 1.0
+ },
+ "altar_stone": {
+  "pose": "upright"
+ },
+ "piano": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   37,
+   46,
+   57
+  ],
+  "bands": [
+   [
+    1.5,
+    23
+   ],
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    6
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "altar_cloth": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   53
+  ],
+  "bands": [
+   [
+    0.75,
+    9
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 0.5
+ },
+ "rug_red": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    0.75,
+    0
+   ]
+  ],
+  "width": 0.75
+ },
+ "rug_stripes": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    1.75,
+    0
+   ]
+  ],
+  "width": 0.95
+ },
+ "brazier": {
+  "pose": "upright"
+ },
+ "brazier_unlit": {
+  "pose": "upright"
+ },
+ "window_arched": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "window_square": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "window_small": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "window_tall": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "door_wood": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "door_plank": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "door_inner": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "door_iron": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "painting_king": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "painting_flowers": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "banner": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 0.9
+ },
+ "tapestry": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 0.9
+ },
+ "bust": {
+  "pose": "upright"
+ },
+ "pedestal": {
+  "pose": "upright"
+ },
+ "bed_blue": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   18,
+   73
+  ],
+  "bands": [
+   [
+    1.0,
+    1
+   ],
+   [
+    1.0,
+    15
+   ],
+   [
+    1.0,
+    15
+   ]
+  ],
+  "width": 1.0
+ },
+ "bunk_bed": {
+  "pose": "upright"
+ },
+ "table_long": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   85
+  ],
+  "bands": [
+   [
+    0.9,
+    5
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 0.6
+ },
+ "stool": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   20
+  ],
+  "bands": [
+   [
+    1.0,
+    6
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 0.8
+ },
+ "chair": {
+  "pose": "upright"
+ },
+ "stool_round": {
+  "pose": "upright"
+ },
+ "dresser": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   11
+  ],
+  "bands": [
+   [
+    1.92,
+    0
+   ],
+   [
+    1.0,
+    19
+   ]
+  ],
+  "width": 1.0
+ },
+ "mirror": {
+  "pose": "upright"
+ },
+ "plant": {
+  "pose": "upright"
+ },
+ "plant_tall": {
+  "pose": "upright"
+ },
+ "jar": {
+  "pose": "upright"
+ },
+ "jar_dark": {
+  "pose": "upright"
+ },
+ "fireplace": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   21,
+   28
+  ],
+  "bands": [
+   [
+    1.0,
+    2
+   ],
+   [
+    1.35,
+    4
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "barrel": {
+  "pose": "upright"
+ },
+ "barrel_pile": {
+  "pose": "upright"
+ },
+ "bucket": {
+  "pose": "upright"
+ },
+ "basin": {
+  "pose": "upright"
+ },
+ "stove": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    10
+   ]
+  ],
+  "width": 1.0
+ },
+ "pots": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "rope_fence": {
+  "pose": "upright"
+ },
+ "boulder": {
+  "pose": "upright"
+ },
+ "stones": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "bush": {
+  "pose": "upright"
+ },
+ "pine": {
+  "pose": "upright"
+ },
+ "oak": {
+  "pose": "upright"
+ },
+ "rocks": {
+  "pose": "upright"
+ },
+ "mushroom": {
+  "pose": "upright"
+ },
+ "statue": {
+  "pose": "upright"
+ },
+ "statue_angel": {
+  "pose": "upright"
+ },
+ "statue_hero": {
+  "pose": "upright"
+ },
+ "statue_evil": {
+  "pose": "upright"
+ },
+ "statue_dragon": {
+  "pose": "upright"
+ },
+ "idol": {
+  "pose": "upright"
+ },
+ "column_broken": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    1
+   ]
+  ],
+  "width": 1.0
+ },
+ "altar_holy": {
+  "pose": "upright"
+ },
+ "hearth": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   52,
+   56,
+   86
+  ],
+  "bands": [
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    4
+   ],
+   [
+    1.0,
+    1
+   ]
+  ],
+  "width": 1.0
+ },
+ "chests": {
+  "pose": "upright"
+ },
+ "tree": {
+  "pose": "upright"
+ },
+ "mushrooms": {
+  "pose": "upright"
+ },
+ "reeds": {
+  "pose": "upright"
+ },
+ "gravestone_cross": {
+  "pose": "upright"
+ },
+ "gravestone_double": {
+  "pose": "upright"
+ },
+ "grave_plot": {
+  "pose": "upright"
+ },
+ "grave_cross_gold": {
+  "pose": "upright"
+ },
+ "grave_cross_stone": {
+  "pose": "upright"
+ },
+ "grave_cross_wood": {
+  "pose": "upright"
+ },
+ "tombstone_cross": {
+  "pose": "upright"
+ },
+ "tombstone": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 0.65
+ },
+ "tombstone_round": {
+  "pose": "upright"
+ },
+ "tombstone_flat": {
+  "pose": "upright"
+ },
+ "tombstone_cracked": {
+  "pose": "upright"
+ },
+ "grave_open": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    3
+   ]
+  ],
+  "width": 1.0
+ },
+ "tomb_slab": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   14
+  ],
+  "bands": [
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    15
+   ]
+  ],
+  "width": 1.0
+ },
+ "cross_monument": {
+  "pose": "upright"
+ },
+ "sundial": {
+  "pose": "upright"
+ },
+ "pedestal_stone": {
+  "pose": "upright"
+ },
+ "birdbath": {
+  "pose": "upright"
+ },
+ "statue_maiden": {
+  "pose": "upright"
+ },
+ "statue_kneeling": {
+  "pose": "upright"
+ },
+ "statue_wolf": {
+  "pose": "upright"
+ },
+ "statue_hooded": {
+  "pose": "upright"
+ },
+ "statue_monk": {
+  "pose": "upright"
+ },
+ "monument": {
+  "pose": "upright"
+ },
+ "fountain_stone": {
+  "pose": "upright"
+ },
+ "fountain_stone_tall": {
+  "pose": "upright"
+ },
+ "well_roofed": {
+  "pose": "upright"
+ },
+ "sign_blank": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_weapons": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_pottery": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_bakery": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_purse": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_books": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_tavern": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_inn": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_jeweler": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "sign_smith": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "lantern": {
+  "pose": "upright"
+ },
+ "lantern_unlit": {
+  "pose": "upright"
+ },
+ "torch_wall": {
+  "pose": "upright"
+ },
+ "torch_unlit": {
+  "pose": "upright"
+ },
+ "signpost": {
+  "pose": "upright"
+ },
+ "noticeboard": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    2
+   ]
+  ],
+  "width": 1.2
+ },
+ "laundry": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "stall_blue": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   56
+  ],
+  "bands": [
+   [
+    1.0,
+    15
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "stall_brown": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   56
+  ],
+  "bands": [
+   [
+    1.0,
+    15
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "handcart": {
+  "pose": "upright"
+ },
+ "wagon": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   26
+  ],
+  "bands": [
+   [
+    1.66,
+    0
+   ],
+   [
+    1.0,
+    42
+   ]
+  ],
+  "width": 0.6
+ },
+ "wagon_stall": {
+  "pose": "upright"
+ },
+ "vendor_cart": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    20
+   ]
+  ],
+  "width": 1.0
+ },
+ "stool_wood": {
+  "pose": "upright"
+ },
+ "chair_plain": {
+  "pose": "upright"
+ },
+ "trunk_big": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   48
+  ],
+  "bands": [
+   [
+    1.0,
+    11
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "table_plank": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   30
+  ],
+  "bands": [
+   [
+    1.0,
+    5
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "banner_white": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "banner_blue": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "banner_green": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "banner_red": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "banner_gold": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "banner_black": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "gallows": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    2
+   ]
+  ],
+  "width": 1.0
+ },
+ "stage_platform": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   54,
+   59,
+   66
+  ],
+  "bands": [
+   [
+    1.0,
+    7
+   ],
+   [
+    1.0,
+    20
+   ],
+   [
+    1.0,
+    4
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 0.85
+ },
+ "guillotine": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    2
+   ]
+  ],
+  "width": 1.0
+ },
+ "pillory": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    1
+   ]
+  ],
+  "width": 0.7
+ },
+ "scarecrow": {
+  "pose": "upright"
+ },
+ "twisted_tree": {
+  "pose": "upright"
+ },
+ "outhouse": {
+  "pose": "upright"
+ },
+ "hay_trough": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   22
+  ],
+  "bands": [
+   [
+    1.1,
+    13
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 0.65
+ },
+ "water_trough": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   2,
+   2,
+   16
+  ],
+  "bands": [
+   [
+    1.0,
+    0
+   ],
+   [
+    0.6,
+    0
+   ],
+   [
+    1.0,
+    11
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 0.65
+ },
+ "hay_roll": {
+  "pose": "upright"
+ },
+ "hay_mound": {
+  "pose": "upright"
+ },
+ "hay_bales": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   28
+  ],
+  "bands": [
+   [
+    1.0,
+    33
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "hay_pile": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   20
+  ],
+  "bands": [
+   [
+    1.0,
+    5
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 0.95
+ },
+ "cart_hay": {
+  "pose": "upright"
+ },
+ "cart": {
+  "pose": "upright"
+ },
+ "plough": {
+  "pose": "upright"
+ },
+ "shed_open": {
+  "pose": "upright"
+ },
+ "firewood": {
+  "pose": "upright"
+ },
+ "chopping_block": {
+  "pose": "upright"
+ },
+ "anvil_stump": {
+  "pose": "upright"
+ },
+ "anvil": {
+  "pose": "upright"
+ },
+ "anvil_big": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   8
+  ],
+  "bands": [
+   [
+    1.3,
+    0
+   ],
+   [
+    1.0,
+    6
+   ]
+  ],
+  "width": 0.8
+ },
+ "crate_slats": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   9
+  ],
+  "bands": [
+   [
+    1.4,
+    0
+   ],
+   [
+    1.0,
+    13
+   ]
+  ],
+  "width": 1.0
+ },
+ "campfire": {
+  "pose": "upright"
+ },
+ "campfire_out": {
+  "pose": "upright"
+ },
+ "cauldron": {
+  "pose": "upright"
+ },
+ "tripod": {
+  "pose": "upright"
+ },
+ "firepit_stew": {
+  "pose": "upright"
+ },
+ "tent_pavilion": {
+  "pose": "upright"
+ },
+ "tent_open": {
+  "pose": "upright"
+ },
+ "tent_small": {
+  "pose": "upright"
+ },
+ "weapon_rack": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.47,
+    3
+   ]
+  ],
+  "width": 0.95
+ },
+ "bow_rack": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    2
+   ]
+  ],
+  "width": 1.0
+ },
+ "target_hay": {
+  "pose": "upright"
+ },
+ "archery_target": {
+  "pose": "upright"
+ },
+ "quiver": {
+  "pose": "upright"
+ },
+ "bookshelf_low": {
+  "pose": "upright"
+ },
+ "dish_shelf": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   16
+  ],
+  "bands": [
+   [
+    1.0,
+    47
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "cupboard": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   17
+  ],
+  "bands": [
+   [
+    1.0,
+    46
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "drawers": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   17
+  ],
+  "bands": [
+   [
+    1.0,
+    46
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "spear_rack": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    1
+   ]
+  ],
+  "width": 1.0
+ },
+ "helmets_shelf": {
+  "pose": "upright"
+ },
+ "armor_shelf": {
+  "pose": "upright"
+ },
+ "chest_tall": {
+  "pose": "upright"
+ },
+ "wall_clock": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   3
+  ],
+  "bands": [
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "table_round": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   22
+  ],
+  "bands": [
+   [
+    1.0,
+    1
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "table_horns": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   22
+  ],
+  "bands": [
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "still": {
+  "pose": "upright"
+ },
+ "table_candle": {
+  "pose": "upright"
+ },
+ "stove_kitchen": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   16,
+   38
+  ],
+  "bands": [
+   [
+    1.0,
+    22
+   ],
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "counter_sink": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   18
+  ],
+  "bands": [
+   [
+    1.0,
+    32
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 1.0
+ },
+ "sacks": {
+  "pose": "upright"
+ },
+ "barrel_tall": {
+  "pose": "upright"
+ },
+ "wall_sword": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "wall_bow": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "wall_axe": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "wall_shield": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "hanging_pots": {
+  "pose": "upright"
+ },
+ "crystal": {
+  "pose": "upright"
+ },
+ "crystal_cluster": {
+  "pose": "upright"
+ },
+ "chest_pearls": {
+  "pose": "upright"
+ },
+ "chest_gold": {
+  "pose": "upright"
+ },
+ "chest_gems": {
+  "pose": "upright"
+ },
+ "demon_statue": {
+  "pose": "upright"
+ },
+ "statue_cloaked": {
+  "pose": "upright"
+ },
+ "obelisk": {
+  "pose": "upright"
+ },
+ "pentagram": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    1.25,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "pentagram_big": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    1.5,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "summoning_circle": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    1.2,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "window_barred": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "window_barred_lit": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    0
+   ]
+  ],
+  "width": 1.0
+ },
+ "rubble": {
+  "pose": "upright"
+ },
+ "column_ruined": {
+  "pose": "upright"
+ },
+ "pillar_stub": {
+  "pose": "upright"
+ },
+ "coffin": {
+  "pose": "upright"
+ },
+ "bones": {
+  "pose": "upright"
+ },
+ "armor_suit": {
+  "pose": "upright"
+ },
+ "bed_skeleton": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   10,
+   41
+  ],
+  "bands": [
+   [
+    1.0,
+    1
+   ],
+   [
+    1.0,
+    15
+   ],
+   [
+    1.0,
+    15
+   ]
+  ],
+  "width": 1.0
+ },
+ "tombstone_large": {
+  "pose": "upright"
+ },
+ "railing_gold": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [
+   7,
+   37,
+   38
+  ],
+  "bands": [
+   [
+    1.0,
+    0
+   ],
+   [
+    1.0,
+    4
+   ],
+   [
+    1.0,
+    1
+   ],
+   [
+    1.0,
+    7
+   ]
+  ],
+  "width": 1.0
+ },
+ "pillars_gold": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    8
+   ]
+  ],
+  "width": 1.0
+ },
+ "rock_tall": {
+  "pose": "upright"
+ },
+ "boulder_dark": {
+  "pose": "upright"
+ },
+ "ruin_brick": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    11
+   ]
+  ],
+  "width": 1.0
+ },
+ "ruin_brick_small": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    6
+   ]
+  ],
+  "width": 1.0
+ },
+ "ruin_pillars": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    8
+   ]
+  ],
+  "width": 1.0
+ },
+ "menhir": {
+  "pose": "upright"
+ },
+ "boulder_big": {
+  "pose": "upright"
+ },
+ "rock_tan": {
+  "pose": "upright"
+ },
+ "rock_tan_flat": {
+  "pose": "upright"
+ },
+ "stone_head": {
+  "pose": "upright"
+ },
+ "pillar_stone": {
+  "pose": "upright"
+ },
+ "pillar_vines": {
+  "pose": "upright"
+ },
+ "cactus": {
+  "pose": "upright"
+ },
+ "corn": {
+  "pose": "upright"
+ },
+ "bridge_arched": {
+  "pose": "upright"
+ },
+ "bridge_rail": {
+  "pose": "upright"
+ },
+ "sink_pump": {
+  "pose": "bands",
+  "first": "V",
+  "splits": [
+   10,
+   18
+  ],
+  "bands": [
+   [
+    1.0,
+    1
+   ],
+   [
+    1.0,
+    4
+   ],
+   [
+    1.0,
+    4
+   ]
+  ],
+  "width": 0.9
+ },
+ "pine_snow": {
+  "pose": "upright"
+ },
+ "pine_snow_wide": {
+  "pose": "upright"
+ },
+ "pine_snow_small": {
+  "pose": "upright"
+ },
+ "fountain_blue": {
+  "pose": "upright"
+ },
+ "fountain_sparkling": {
+  "pose": "upright"
+ },
+ "fountain_blood": {
+  "pose": "upright"
+ },
+ "fountain_dry": {
+  "pose": "upright"
+ },
+ "sarcophagus": {
+  "pose": "upright"
+ },
+ "sarcophagus_open": {
+  "pose": "upright"
+ },
+ "chest_iron": {
+  "pose": "upright"
+ },
+ "chest_iron_open": {
+  "pose": "upright"
+ },
+ "crate_large": {
+  "pose": "upright"
+ },
+ "statue_wraith": {
+  "pose": "upright"
+ },
+ "statue_naga": {
+  "pose": "upright"
+ },
+ "statue_mermaid": {
+  "pose": "upright"
+ },
+ "statue_centaur": {
+  "pose": "upright"
+ },
+ "statue_archer": {
+  "pose": "upright"
+ },
+ "statue_sword": {
+  "pose": "upright"
+ },
+ "statue_orb": {
+  "pose": "upright"
+ },
+ "statue_princess": {
+  "pose": "upright"
+ },
+ "statue_twins": {
+  "pose": "upright"
+ },
+ "statue_cat": {
+  "pose": "upright"
+ },
+ "statue_dwarf": {
+  "pose": "upright"
+ },
+ "statue_imp": {
+  "pose": "upright"
+ },
+ "statue_hydra": {
+  "pose": "upright"
+ },
+ "statue_golden": {
+  "pose": "upright"
+ },
+ "statue_golden_shield": {
+  "pose": "upright"
+ },
+ "statue_iron_golem": {
+  "pose": "upright"
+ },
+ "altar_skulls": {
+  "pose": "upright"
+ },
+ "altar_flames": {
+  "pose": "upright"
+ },
+ "altar_sword": {
+  "pose": "upright"
+ },
+ "altar_gold": {
+  "pose": "upright"
+ },
+ "altar_blue": {
+  "pose": "upright"
+ },
+ "altar_nature": {
+  "pose": "upright"
+ },
+ "altar_void": {
+  "pose": "upright"
+ },
+ "altar_candles": {
+  "pose": "upright"
+ },
+ "altar_white": {
+  "pose": "upright"
+ },
+ "trap_pressure": {
+  "pose": "upright"
+ },
+ "trap_spikes": {
+  "pose": "upright"
+ },
+ "trap_arrows": {
+  "pose": "upright"
+ },
+ "trap_blades": {
+  "pose": "upright"
+ },
+ "trap_net": {
+  "pose": "upright"
+ },
+ "trap_rune": {
+  "pose": "upright"
+ },
+ "trap_alarm": {
+  "pose": "upright"
+ },
+ "mold": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    0.9,
+    1
+   ]
+  ],
+  "width": 1.0
+ },
+ "grate_floor": {
+  "pose": "bands",
+  "first": "H",
+  "splits": [],
+  "bands": [
+   [
+    1.0,
+    1
+   ]
+  ],
+  "width": 1.0
+ },
+ "gold_hoard": {
+  "pose": "upright"
+ },
+ "gold_coins": {
+  "pose": "upright"
+ },
+ "smoke": {
+  "pose": "upright"
+ },
+ "smoke_black": {
+  "pose": "upright"
+ },
+ "fire_cloud": {
+  "pose": "upright"
+ },
+ "frost_cloud": {
+  "pose": "upright"
+ },
+ "poison_cloud": {
+  "pose": "upright"
+ },
+ "acid_cloud": {
+  "pose": "upright"
+ },
+ "pine_small": {
+  "pose": "upright"
+ },
+ "stump": {
+  "pose": "upright"
+ },
+ "barrels_three": {
+  "pose": "upright"
+ },
+ "stove_pot": {
+  "pose": "upright"
+ },
+ "stove_pipe": {
+  "pose": "upright"
+ }
+}

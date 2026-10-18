@@ -530,7 +530,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
     <section className="flex min-h-0 min-w-0 flex-col gap-2 sm:gap-3">
       {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
       {showScene && (
-        <div className={`relative border-4 border-[var(--border)] bg-black ${wide ? 'min-h-48 flex-1' : 'aspect-[320/192] w-full'}`}>
+        <div className={`relative border-4 border-[var(--border)] bg-black ${wide ? 'min-h-48 flex-1' : state.explore && !state.arena ? 'aspect-[320/192] w-full' : 'aspect-[4/3] w-full'}`}>
           <SceneTitle state={state} />
           {sceneView}
         </div>

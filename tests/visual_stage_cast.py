@@ -34,8 +34,8 @@ from test_rules import campaign  # noqa: E402
 check, REPO = v.check, v.REPO
 LOOKS = {"aragorn": "knight", "legolas": "bandit", "pc-priest": "priest", "pc-wizard": "wizard", "ilvuur": "thug", "qorlia": "noble",
          "sharael": "noble", "arbiter": "priest", "sentry": "guard", "guard": "guard"}
-FIGURES = "[...document.querySelectorAll('img')].filter((i) => i.src.includes('/full.png'))"
-RINGS = "document.querySelectorAll('div.rounded-\\\\[50\\\\%\\\\]').length"
+# The stage draws the room on one canvas; it lists its actors in `data-cast`: id, side, cell, seated, on a prop.
+CAST = "JSON.parse(document.querySelector('canvas[data-cast]')?.dataset.cast || '[]')"
 
 
 def show(c: Path, text: str) -> str:
@@ -100,7 +100,7 @@ def main() -> int:
                 print("a companion joins and comes to the next scene by itself")
                 show(c, "@join ilvuur\n@join qorlia\n@scene court\n@narrate The court is silent.")
                 await asyncio.sleep(2)
-                check("the party and both companions are drawn", await page.eval(f"{FIGURES}.length") == 6, str(await page.eval(f"{FIGURES}.length")))
+                check("the party and both companions are drawn", len(await page.eval(CAST)) == 6, str(await page.eval(CAST)))
                 out = show(c, "@scene court")
                 check("the readback lists the companions with their side", "ilvuur (ally)" in out and "qorlia (ally)" in out, out)
 
@@ -108,22 +108,24 @@ def main() -> int:
                 show(c, "@enter sharael\n@enter arbiter on back_center\n@enter goblin#1\n@enter goblin#2\n@enter guard\n@enter sentry\n@narrate Steel is drawn.")
                 await asyncio.sleep(2.5)
                 await page.shot("cast-12")
-                check("twelve figures are drawn", await page.eval(f"{FIGURES}.length") == 12, str(await page.eval(f"{FIGURES}.length")))
-                spots = await page.eval(f"{FIGURES}.map((i) => i.parentElement.style.left + ',' + i.parentElement.style.top)")
-                check("no two figures stand on the same spot", len(set(spots)) == 12, str(spots))
-                seat = await page.eval(f"(() => {{ const a = {FIGURES}.find((i) => i.src.includes('arbiter')).parentElement.getBoundingClientRect(); "
-                                       f"return {FIGURES}.filter((i) => !i.src.includes('arbiter')).filter((i) => {{ const r = i.parentElement.getBoundingClientRect(); "
-                                       "return Math.abs((r.left + r.right) / 2 - (a.left + a.right) / 2) < a.width / 4 }).length })()")
-                check("no one stands in front of the seated arbiter", seat == 0, str(seat))
-                check("the arbiter is drawn seated", await page.eval(f"{FIGURES}.some((i) => i.src.includes('arbiter') && i.src.includes('pose=sit'))"))
-                check("every figure but the seated one has a ring", await page.eval(RINGS) == 11, str(await page.eval(RINGS)))
-                colors = await page.eval("[...document.querySelectorAll('div.rounded-\\\\[50\\\\%\\\\]')].map((d) => d.style.background)")
-                check("green, yellow and red rings are all there", len({c_ for c_ in colors}) == 3, str(colors))
+                cast = await page.eval(CAST)
+                check("twelve figures are drawn", len(cast) == 12, str(cast))
+                cells = [tuple(f["cell"]) for f in cast]
+                check("no two figures stand on the same cell", len(set(cells)) == 12, str(cells))
+                arbiter = next(f for f in cast if f["id"] == "arbiter")
+                ax, ay = arbiter["cell"]
+                front = {(ax + 1, ay), (ax, ay + 1), (ax + 1, ay + 1)}
+                check("no one stands in front of the seated arbiter", not any(tuple(f["cell"]) in front for f in cast if f["id"] != "arbiter"), str(front))
+                check("the arbiter is seated on a prop", arbiter["sit"] and arbiter["onProp"])
+                standing = [f for f in cast if not f["sit"]]
+                check("every figure but the seated one has a ring (it stands on the floor or on a prop)", len(standing) == 11, str(len(standing)))
+                check("green, yellow and red rings are all there",
+                      {"g" if f["side"] in ("party", "ally") else f["side"] for f in standing} == {"g", "neutral", "hostile"}, str({f["side"] for f in standing}))
 
                 print("a companion sneaks out of the next scene")
                 out = show(c, "@scene court -ilvuur")
                 await asyncio.sleep(1.5)
-                check("the companion is left out of the scene", "ilvuur" not in out and await page.eval(f"{FIGURES}.length") == 11, out)
+                check("the companion is left out of the scene", "ilvuur" not in out and len(await page.eval(CAST)) == 11, out)
                 await page.shot("cast-sneak")
 
         asyncio.run(run())

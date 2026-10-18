@@ -4,131 +4,143 @@ import { Button } from '@/components/ui/8bit/button'
 import { Hand } from '@/components/Hand'
 import type { Ability, ArenaUnit, ArenaView as View, Cell, Preview } from '@/lib/arena'
 import { useHand, useSkin } from '@/lib/hand'
+import { buildBase, byDepth, diamond, facing, frameAt, geometry, groundCentre, pick as pickCell, roomCentre, S, unitDepth, type Base, type Facing, type Geometry, type Style } from '@/lib/iso'
+import { type PropsInfo, usePropsInfo } from '@/lib/propAtlas'
+import { propThing, sceneBase, sceneStyle, type Thing } from '@/lib/roomDraw'
 import { BAND_FILL } from '@/lib/party'
-import { deviceHeaders, postJson, type StageState, useIntegerScale, useJson } from '@/lib/stage'
-import { T, useImages, variant } from '@/lib/tiles'
+import { deviceHeaders, postJson, type StageState, useFitScale, useJson } from '@/lib/stage'
+import { T, useImages, variant, type ImageLoader } from '@/lib/tiles'
 
-type Image = (url: string) => HTMLImageElement | undefined
 
-function drawTiles(ctx: CanvasRenderingContext2D, view: View, image: Image) {
-  const atlas = image(`/asset/arena/${view.id}.png`)
+/** What a unit looked like last time: where it stood, which way it faces, and the last picture that loaded for that way. */
+type Seen = { x: number; y: number; face: Facing; img?: HTMLImageElement }
+
+const WALK = 'rgba(95, 168, 224, 0.16)'
+const WALK_EDGE = 'rgba(95, 168, 224, 0.55)'
+const AIM_OK = 'rgba(224, 90, 60, 0.28)'
+const AIM_NO = 'rgba(120, 120, 120, 0.22)'
+
+const inside = (view: View, x: number, y: number) => x >= 0 && y >= 0 && x < view.w && y < view.h
+const seenNow = (view: View, x: number, y: number) => !view.visible || view.visible[y]?.[x] === '1'
+
+/** The part of the room that does not move: floor and back walls. It is rebuilt only when the room or the fog changes. */
+function baseFor(prev: { sig: string; base: Base } | null, view: View, g: Geometry, image: ImageLoader, props: PropsInfo | undefined, atlas: HTMLImageElement | undefined): { sig: string; base: Base } {
+  const scene = view.room
+  const tiles = image(scene ? `/asset/arena/${view.id}/room.png` : `/asset/arena/${view.id}.png`)
   const hazard = image(`/asset/icon/${view.hazard}.png`)
-  const tile = (col: number, row: number, px: number, py: number) => atlas && ctx.drawImage(atlas, col * T, row * T, T, T, px, py, T, T)
-  for (let y = 0; y < view.h; y++) {
-    for (let x = 0; x < view.w; x++) {
-      const c = view.grid[y][x]
-      const px = x * T
-      const py = y * T
-      if (c === ' ') continue // never seen (fog): stays black
-      if (c === '#') {
-        tile(variant(x, y, view.tiles.walls), 0, px, py)
-        continue
-      }
-      tile(view.tiles.pattern ? (x % 2) + (y % 2) * 2 : variant(x, y, view.tiles.floors), 1, px, py)
-      if (c === 'd') tile(1, 2, px, py)
-      if (c === '~' && hazard) ctx.drawImage(hazard, 0, 0, T, T, px, py, T, T)
-    }
+  const sig = [view.id, view.grid.join('|'), view.visible?.join('|') ?? '', tiles ? 1 : 0, hazard ? 1 : 0, scene && props && atlas ? 1 : 0].join('#')
+  if (prev?.sig === sig) return prev
+  const tex = (col: number, row: number) => (tiles ? { img: tiles, sx: col * T, sy: row * T } : undefined)
+  const extra: Partial<Style> = {
+    floorOver: (_x, _y, c) => (c === 'd' ? tex(1, 2) : c === '~' && hazard ? { img: hazard, sx: 0, sy: 0 } : undefined),
+    dim: view.visible ? (x, y) => view.grid[y][x] !== ' ' && view.visible![y][x] === '0' : undefined,
   }
+  if (scene) return { sig, base: sceneBase(scene, view.grid, g, sceneStyle(scene, tiles, extra), props, atlas) }
+  const style: Style = {
+    floor: (x, y) => tex(view.tiles.pattern ? (x % 2) + (y % 2) * 2 : variant(x, y, view.tiles.floors), 1),
+    wall: (x, y) => tex(variant(x, y, view.tiles.walls), 0),
+    ...extra,
+  }
+  return { sig, base: buildBase(g, view.grid, style) }
 }
 
-/** A picture stands on its cell, centered, feet at the bottom edge; a tall one overlaps the cell above. */
-function stand(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, alpha = 1) {
-  ctx.globalAlpha = alpha
-  ctx.drawImage(img, x * T + (T - img.width) / 2, (y + 1) * T - img.height)
+function unitFace(seen: Map<string, Seen>, u: ArenaUnit): Seen {
+  const was = seen.get(u.id)
+  if (!was) return { x: u.x, y: u.y, face: 'down' }
+  if (was.x === u.x && was.y === u.y) return was
+  return { ...was, x: u.x, y: u.y, face: facing(u.x - was.x, u.y - was.y) }
+}
+
+function drawUnit(ctx: CanvasRenderingContext2D, g: Geometry, u: ArenaUnit, image: ImageLoader, seen: Map<string, Seen>) {
+  const now = unitFace(seen, u)
+  const url = (f: Facing) => `/asset/actor/${encodeURIComponent(u.id)}/full.png?d=${f}`
+  const img = image(url(now.face)) ?? now.img // while a new facing loads, keep the last picture
+  seen.set(u.id, { ...now, img: img ?? now.img })
+  const [cx, cy] = groundCentre(g, u.x, u.y)
+  ctx.setTransform(S, 0, 0, S, 0, 0)
+  ctx.globalAlpha = u.down ? 0.35 : 1
+  if (img) {
+    const [fx, fy] = frameAt(g, u.x, u.y, img.width, img.height)
+    ctx.drawImage(img, fx, fy)
+  } else {
+    ctx.fillStyle = u.pc ? '#5fa8e0' : '#e5534f'
+    ctx.beginPath()
+    ctx.ellipse(cx, cy - 10, 9, 12, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#000'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(u.name.charAt(0), cx, cy - 6)
+  }
   ctx.globalAlpha = 1
 }
 
-function drawUnit(ctx: CanvasRenderingContext2D, u: ArenaUnit, image: Image, current: boolean) {
-  const img = image(`/asset/actor/${encodeURIComponent(u.id)}/full.png`)
-  const alpha = u.down ? 0.35 : 1
-  if (img) {
-    stand(ctx, img, u.x, u.y, alpha)
-  } else {
-    ctx.globalAlpha = alpha
-    ctx.fillStyle = u.pc ? '#5fa8e0' : '#e5534f'
-    ctx.fillRect(u.x * T + 6, u.y * T + 6, T - 12, T - 12)
-    ctx.fillStyle = '#000'
-    ctx.font = 'bold 14px sans-serif'
+/** Health bar and intent label, drawn after all sprites so that a unit in front never covers them. */
+function drawMarks(ctx: CanvasRenderingContext2D, g: Geometry, u: ArenaUnit, seen: Map<string, Seen>) {
+  const [cx, cy] = groundCentre(g, u.x, u.y)
+  ctx.setTransform(S, 0, 0, S, 0, 0)
+  if (u.intent && !u.down) {
+    const top = cy - Math.max(40, (seen.get(u.id)?.img?.height ?? 64) - 8) - 2
+    const text = u.intent.text
+    ctx.font = '8px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(u.name.charAt(0), u.x * T + T / 2, u.y * T + T / 2 + 5)
-    ctx.globalAlpha = 1
+    const w = Math.min(ctx.measureText(text).width + 6, T * 3)
+    ctx.fillStyle = u.intent.kind === 'dm' ? 'rgba(20,50,90,0.85)' : 'rgba(60,10,10,0.85)'
+    ctx.fillRect(cx - w / 2, top - 10, w, 10)
+    ctx.fillStyle = u.intent.kind === 'move' ? '#c9a96e' : '#ffd6d3'
+    ctx.fillText(text, cx, top - 2, T * 3 - 6)
   }
-  if (current) {
-    ctx.strokeStyle = '#c9a96e'
-    ctx.lineWidth = 2
-    ctx.strokeRect(u.x * T + 1, u.y * T + 1, T - 2, T - 2)
-  }
-  if (u.intent && !u.down) drawIntent(ctx, u)
   const fill = u.hp ? (u.hp.current / (u.hp.max || 1)) * 100 : BAND_FILL[u.health]
   ctx.fillStyle = '#000'
-  ctx.fillRect(u.x * T + 3, u.y * T + T - 5, T - 6, 4)
+  ctx.fillRect(cx - 13, cy + 7, 26, 4)
   ctx.fillStyle = u.pc ? '#6fcf6f' : '#e05050'
-  ctx.fillRect(u.x * T + 4, u.y * T + T - 4, Math.round(((T - 8) * fill) / 100), 2)
+  ctx.fillRect(cx - 12, cy + 8, Math.round((24 * fill) / 100), 2)
 }
 
-/** A small label over a creature: what it will do on its turn. */
-function drawIntent(ctx: CanvasRenderingContext2D, u: ArenaUnit) {
-  const text = u.intent!.text
-  ctx.font = '8px sans-serif'
-  ctx.textAlign = 'center'
-  const w = Math.min(ctx.measureText(text).width + 6, T * 3)
-  const x = u.x * T + T / 2
-  const y = u.y * T - 2
-  ctx.fillStyle = u.intent!.kind === 'dm' ? 'rgba(20,50,90,0.85)' : 'rgba(60,10,10,0.85)'
-  ctx.fillRect(x - w / 2, y - 10, w, 10)
-  ctx.fillStyle = u.intent!.kind === 'move' ? '#c9a96e' : '#ffd6d3'
-  ctx.fillText(text, x, y - 2, T * 3 - 6)
-}
-
-function draw(ctx: CanvasRenderingContext2D, view: View, hover: [number, number] | null, image: Image, aim: Preview | null) {
+function draw(
+  ctx: CanvasRenderingContext2D,
+  view: View,
+  g: Geometry,
+  base: Base,
+  hover: Cell | null,
+  image: ImageLoader,
+  aim: Preview | null,
+  props: PropsInfo | undefined,
+  atlas: HTMLImageElement | undefined,
+  seen: Map<string, Seen>,
+) {
   ctx.imageSmoothingEnabled = false
-  ctx.fillStyle = '#000'
-  ctx.fillRect(0, 0, view.w * T, view.h * T)
-  drawTiles(ctx, view, image)
-  if (!aim) {
-    ctx.fillStyle = 'rgba(95, 168, 224, 0.28)'
-    for (const [x, y] of view.walk) ctx.fillRect(x * T, y * T, T, T)
-  }
-  if (aim) {
-    ctx.fillStyle = aim.ok ? 'rgba(224, 90, 60, 0.38)' : 'rgba(120, 120, 120, 0.3)'
-    for (const [x, y] of aim.cells) ctx.fillRect(x * T, y * T, T, T)
-  }
-  if (hover) {
-    ctx.strokeStyle = '#fff'
-    ctx.lineWidth = 1
-    ctx.strokeRect(hover[0] * T + 0.5, hover[1] * T + 0.5, T - 1, T - 1)
-  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.drawImage(base.canvas, 0, 0)
+
+  // Overlays lie on the floor: range, aim area, the creatures an aim covers, the hover and the turn.
+  if (!aim) for (const [x, y] of view.walk) diamond(ctx, g, x, y, WALK, WALK_EDGE)
+  if (aim) for (const [x, y] of aim.cells) diamond(ctx, g, x, y, aim.ok ? AIM_OK : AIM_NO, aim.ok ? 'rgba(224, 90, 60, 0.7)' : undefined)
+  if (aim) for (const u of view.units) if (aim.units.includes(u.id)) diamond(ctx, g, u.x, u.y, undefined, '#ffd24a', 2)
+  const current = view.units.find((u) => u.id === view.current)
+  if (current) diamond(ctx, g, current.x, current.y, undefined, '#c9a96e', 2)
+  if (hover) diamond(ctx, g, hover[0], hover[1], undefined, '#fff', 1)
+  ctx.setTransform(S, 0, 0, S, 0, 0)
+  ctx.fillStyle = '#7fb2d6'
   for (const item of view.items) {
-    ctx.fillStyle = '#7fb2d6'
+    const [cx, cy] = groundCentre(g, item.x, item.y)
     ctx.beginPath()
-    ctx.arc(item.x * T + T / 2, item.y * T + T / 2, 5, 0, Math.PI * 2)
+    ctx.ellipse(cx, cy, 5, 3, 0, 0, Math.PI * 2)
     ctx.fill()
   }
-  // Props and creatures in depth order: one lower on the screen stands in front.
-  const things = [
-    ...view.props.map((p) => ({ y: p.y, prop: p, unit: undefined })),
-    ...view.units.map((u) => ({ y: u.y + 0.5, prop: undefined, unit: u })),
-  ].sort((a, b) => a.y - b.y)
-  for (const t of things) {
-    if (t.unit) {
-      drawUnit(ctx, t.unit, image, t.unit.id === view.current)
-    } else if (t.prop) {
-      const img = image(`/asset/prop/${t.prop.kind}.png`)
-      if (img) stand(ctx, img, t.prop.x, t.prop.y)
+
+  const centre = roomCentre(view.grid)
+  // Flat props, the low walls, props and creatures, back to front.
+  const things: Thing[] = base.rims.map((r) => ({ depth: r.depth, draw: () => r.draw(ctx) }))
+  if (props && atlas) {
+    for (const p of view.props) {
+      const thing = propThing(ctx, g, props, atlas, p, centre, !seenNow(view, p.x, p.y))
+      if (thing) things.push(thing)
     }
   }
-  if (aim) {
-    ctx.strokeStyle = '#ffd24a'
-    ctx.lineWidth = 2
-    for (const u of view.units) if (aim.units.includes(u.id)) ctx.strokeRect(u.x * T + 2, u.y * T + 2, T - 4, T - 4)
-  }
-  if (view.visible) {
-    // The shade over what the party has seen but cannot see now.
-    ctx.fillStyle = 'rgba(8, 6, 14, 0.62)'
-    for (let y = 0; y < view.h; y++) {
-      for (let x = 0; x < view.w; x++) if (view.grid[y][x] !== ' ' && view.visible[y][x] === '0') ctx.fillRect(x * T, y * T, T, T)
-    }
-  }
+  for (const u of view.units) things.push({ depth: unitDepth(u.x, u.y), draw: () => drawUnit(ctx, g, u, image, seen) })
+  for (const t of byDepth(things)) t.draw()
+  for (const u of view.units) drawMarks(ctx, g, u, seen)
 }
 
 /** The seconds left to answer a reaction question, counted down on this screen. The server decides when the time is up. */
@@ -171,9 +183,13 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const view = useJson<View>(`/api/arena/${encodeURIComponent(arenaId)}`, state.versions?.[`arena:${arenaId}`] ?? 0)
-  // Half steps (1, 1.5, 2...): a small board fills the frame, and each source pixel is still drawn whole or half.
-  const scale = Math.max(1, useIntegerScale(box, ((view?.w ?? 16) * T) / 2, ((view?.h ?? 10) * T) / 2) / 2)
+  const g = geometry(view?.w ?? 16, view?.h ?? 10)
+  const scale = useFitScale(box, g.width, g.height)
   const [image, tick] = useImages()
+  const props = usePropsInfo()
+  const atlas = props ? image(props.atlas) : undefined
+  const base = useRef<{ sig: string; base: Base } | null>(null)
+  const seen = useRef(new Map<string, Seen>())
   const [hover, setHover] = useState<[number, number] | null>(null)
   const [note, setNote] = useState('')
   const busy = useRef(false)
@@ -190,8 +206,10 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
 
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d')
-    if (ctx && view) draw(ctx, view, hover, image, aimed ? aim : null)
-  }, [view, hover, image, tick, aim, aimed])
+    if (!ctx || !view) return
+    base.current = baseFor(base.current, view, g, image, props, atlas)
+    draw(ctx, view, g, base.current.base, hover, image, aimed ? aim : null, props, atlas, seen.current)
+  }, [view, hover, image, tick, aim, aimed, props, atlas]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!aimedId || !hover || !actingAs) return
     let live = true
@@ -218,9 +236,11 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
     )
   }
 
-  const cellAt = (e: React.MouseEvent<HTMLCanvasElement>): [number, number] => {
+  /** The cell under the pointer, or null off the room. */
+  const cellAt = (e: React.MouseEvent<HTMLCanvasElement>): Cell | null => {
     const rect = e.currentTarget.getBoundingClientRect()
-    return [Math.floor(((e.clientX - rect.left) / rect.width) * view.w), Math.floor(((e.clientY - rect.top) / rect.height) * view.h)]
+    const [x, y] = pickCell(g, ((e.clientX - rect.left) / rect.width) * g.width, ((e.clientY - rect.top) / rect.height) * g.height)
+    return inside(view, x, y) ? [x, y] : null
   }
   const call = async (path: string, body: Record<string, unknown>) => {
     if (busy.current) return
@@ -249,7 +269,9 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   }
   const click = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canWalk || !actingAs) return
-    const [x, y] = cellAt(e)
+    const cell = cellAt(e)
+    if (!cell) return
+    const [x, y] = cell
     if (aimed) {
       // Look before the cast: the first tap on a cell (a phone has no hover) shows what it covers; a tap on the same cell casts.
       if (aim?.at?.[0] === x && aim.at[1] === y && aim.ok) return act(aimed, undefined, undefined, [x, y])
@@ -271,17 +293,17 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
       <div ref={box} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
         <canvas
           ref={canvas}
-          width={view.w * T}
-          height={view.h * T}
+          width={g.width * S}
+          height={g.height * S}
           onClick={click}
           onMouseMove={(e) => {
-            const [x, y] = cellAt(e)
-            setHover((prev) => (prev && prev[0] === x && prev[1] === y ? prev : [x, y])) // one redraw per cell crossed
+            const cell = cellAt(e)
+            setHover((prev) => (prev?.[0] === cell?.[0] && prev?.[1] === cell?.[1] ? prev : cell)) // one redraw per cell crossed
           }}
           onMouseLeave={() => setHover(null)}
           aria-label="The board of the fight. Click a blue cell to walk. Click a creature to attack it."
           className={`pixelated shrink-0 ${canWalk ? 'cursor-pointer' : 'cursor-default'}`}
-          style={{ width: view.w * T * scale, height: view.h * T * scale }}
+          style={{ width: g.width * scale, height: g.height * scale }}
         />
         <div className="pointer-events-none absolute top-2 left-2 flex flex-col gap-1">
           <span className="pixel-font bg-black/60 px-2 py-1 text-[10px] text-[var(--gold)]">

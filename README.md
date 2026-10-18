@@ -14,8 +14,8 @@ uv run dungeon-os --no-browser --host 0.0.0.0 --port 3842 --allow-host 192.168.1
 ```
 
 The visual stage runs the DM (`claude` by default) in a terminal that the
-stage server owns, and shows the game in a pixel-art web page: the room, the
-characters in it, a dialogue box with portraits, dice rolls, choice buttons,
+stage server owns, and shows the game in a pixel-art web page: the room (a
+2:1 isometric view), the characters in it, a dialogue box with portraits, dice rolls, choice buttons,
 the party panel, and a Log of the story so far. The DM drives it with
 `dnd-cli show beat`, `dnd-cli actor set` and `dnd-cli scene set` (see the
 `stage` skill in `game/.claude/skills/`). Looks of characters and places are
@@ -43,8 +43,11 @@ wandering-monster checks run in the stage; the DM is called only when the
 party finds something. Design: `dungeon-crawl.md`.
 
 A fight runs on a board by default: `dnd-cli encounter start goblin:3`. Use `--no-arena` for a fight with no board.
-The stage builds a room from the place where the party is. The room has cover,
-hazards, light and fog.
+The stage builds a room from the place where the party is. A fight in a scene is
+fought in the room of that scene, with each character on the cell where the scene
+shows them. A fight in a site, or in an empty field, is fought in a new room of one
+of 17 shapes. The room has cover, hazards, light and fog. The scene and the board
+use one isometric renderer (`isometric-view.md`).
 
 Players walk and attack on the table screen or on their phones. The phone shows
 the hand of the character. The hand has weapons, spells and the common actions,

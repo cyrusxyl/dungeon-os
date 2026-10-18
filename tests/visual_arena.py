@@ -36,12 +36,27 @@ from visual_roll_window import Page, check, click_starting, free_port  # noqa: E
 import visual_roll_window as base  # noqa: E402
 
 
+def iso_size(a: dict) -> tuple[int, int]:
+    """The logical size of the isometric canvas of an arena (see lib/iso.ts `geometry`)."""
+    return (a["w"] + a["h"]) * 32 + 16, 118 + (a["w"] + a["h"]) * 16 + 36
+
+
 async def click_cell(page: Page, canvas: str, a: dict, cell) -> None:
-    """A click on a board cell. The rectangle is read each time: the hand below the board changes the canvas size."""
+    """A click on the ground centre of a board cell. The rectangle is read each time: the hand below the board changes the canvas size."""
     rect = await page.eval(f"(() => {{ const r = {canvas}.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }})()")
-    size = rect[2] / a["w"]
+    width, height = iso_size(a)
+    lx, ly = a["h"] * 32 + 8 + (cell[0] - cell[1]) * 32, 118 + (cell[0] + cell[1]) * 16 + 16
     for kind in ("mousePressed", "mouseReleased"):
-        await page.call("Input.dispatchMouseEvent", type=kind, x=rect[0] + (cell[0] + 0.5) * size, y=rect[1] + (cell[1] + 0.5) * size, button="left", clickCount=1)
+        await page.call("Input.dispatchMouseEvent", type=kind, x=rect[0] + lx / width * rect[2], y=rect[1] + ly / height * rect[3], button="left", clickCount=1)
+
+
+async def tap_cell(page: Page, canvas: str, a: dict, cell) -> None:
+    """A tap on the ground centre of a cell with no pointer move before it, as on a phone: the click goes straight to the board.
+    (A mouse press moves the pointer first, which starts the area preview: if the preview answers before the release, the tap would cast.)"""
+    width, height = iso_size(a)
+    lx, ly = a["h"] * 32 + 8 + (cell[0] - cell[1]) * 32, 118 + (cell[0] + cell[1]) * 16 + 16
+    await page.eval(f"(() => {{ const c = {canvas}, r = c.getBoundingClientRect(); c.dispatchEvent(new MouseEvent('click', "
+                    f"{{ bubbles: true, clientX: r.left + {lx} / {width} * r.width, clientY: r.top + {ly} / {height} * r.height }})); }})()")
 
 
 async def board_checks(page: Page, c: Path, arena_id: str) -> None:
@@ -50,8 +65,8 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     await page.shot("arena-start")
     canvas = "document.querySelector('canvas[aria-label^=\"The board\"]')"
     check("the board is on the stage", await page.eval(f"Boolean({canvas})"))
-    check("the canvas has the arena's size", await page.eval(f"[{canvas}.width, {canvas}.height]") == [16 * 32, 10 * 32] or
-          await page.eval(f"{canvas}.width") % 32 == 0)
+    first = arena.load(c, arena_id)
+    check("the canvas has the isometric size of the room, drawn twice as large", await page.eval(f"[{canvas}.width, {canvas}.height]") == [n * 2 for n in iso_size(first)])
     check("the turn bar still shows the order", "Aragorn" in await page.eval("document.querySelector('[aria-label=\"Turn order\"]')?.innerText || ''"))
 
     state = combat.load_state(c)
@@ -180,7 +195,7 @@ async def aim_checks(page: Page, c: Path, arena_id: str) -> None:
     check("an area spell asks for a cell on the board", "to aim Fireball" in await page.eval("document.body.innerText"))
     a = arena.load(c, arena_id)
     cell = board.pos(a, "goblin#1")
-    await click_cell(page, canvas, a, cell)
+    await tap_cell(page, canvas, a, cell)
     await asyncio.sleep(1.2)
     await page.shot("arena-aim")
     check("a long hand does not widen the page: nothing scrolls sideways and the party panel stays on screen",
@@ -188,7 +203,7 @@ async def aim_checks(page: Page, c: Path, arena_id: str) -> None:
     sheet = character.load(c, "aragorn")
     check("the first tap shows the area and does not cast", "same cell again" in await page.eval("document.body.innerText")
           and sheet["spellcasting"]["spell_slots"]["3"]["remaining"] == 1 and not combat.turn_used(combat.load_state(c), "aragorn")["action"])
-    await click_cell(page, canvas, a, cell)
+    await tap_cell(page, canvas, a, cell)
     await asyncio.sleep(1.5)
     check("a tap on the same cell casts: the slot and the action are spent", character.load(c, "aragorn")["spellcasting"]["spell_slots"]["3"]["remaining"] == 0
           and combat.turn_used(combat.load_state(c), "aragorn")["action"])
@@ -206,6 +221,21 @@ async def dark_room(page: Page, c: Path, arena_id: str) -> None:
     await page.shot("arena-dark")
     view = await page.eval(f"fetch('/api/arena/{arena_id}', {{headers: {{'X-Device': localStorage.getItem('dungeon-device')}}}}).then(r => r.json()).then(v => JSON.stringify({{blank: v.grid.join('').split(' ').length - 1, units: v.units.length}}))")
     check("a fight in the dark: part of the map is blank and the board still shows", json.loads(view)["blank"] > 0 and await page.eval("Boolean(document.querySelector('canvas'))"))
+
+
+async def phone_checks(page: Page, c: Path, arena_id: str) -> None:
+    """A room in the isometric view is wider than a phone: it must scale to the screen, not scroll."""
+    await page.call("Emulation.setDeviceMetricsOverride", width=360, height=740, deviceScaleFactor=2, mobile=True)
+    await page.eval("localStorage.setItem('dungeon-hand', JSON.stringify({ scene: true, layout: 'auto' }))")  # a phone hides the scene until asked
+    await page.call("Page.reload")
+    await asyncio.sleep(3)
+    await page.shot("arena-phone")
+    canvas = "document.querySelector('canvas[aria-label^=\"The board\"]')"
+    wide = await page.eval(f"{canvas}.getBoundingClientRect().width") or 0
+    check("on a phone the board scales to the screen", 0 < wide <= 360, str(wide))
+    check("on a phone nothing scrolls sideways", await page.eval("document.documentElement.scrollWidth <= window.innerWidth + 1"))
+    await page.eval("localStorage.removeItem('dungeon-hand')")
+    await page.call("Emulation.setDeviceMetricsOverride", width=1500, height=950, deviceScaleFactor=1, mobile=False)
 
 
 def main() -> int:
@@ -259,6 +289,7 @@ def main() -> int:
                 await foe_turns(page, c, arena_id)
                 await aim_checks(page, c, arena_id)
                 await dark_room(page, c, arena_id)
+                await phone_checks(page, c, arena_id)
         asyncio.run(run())
     finally:
         chrome.terminate()

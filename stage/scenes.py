@@ -9,7 +9,8 @@ A scene spec is plain data, written by `dnd-cli scene set` to
 The DM never gives a pixel position. A template fills the room and names a
 default prop for some slots. The spec can change the wall or floor style,
 replace or empty a slot, and add extra props into a zone; the composer finds
-the spot. The stage is 10 x 6 tiles of 32 px (320 x 192).
+the spot. The browser draws a scene as a small isometric room (10 wide, 8 deep) on the renderer of the combat board:
+`room()` gives its cells, props and wall decor, `room_png()` its floor and wall pictures.
 """
 
 from __future__ import annotations
@@ -17,25 +18,44 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import random
+import re
 from functools import cache, lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image
 
+from stage import rooms
 from stage.assets import ASSETS_DIR, ensure_dcss, ensure_tiles
 from stage.creatures import recolor
 from stage.files import read_json, write_json
 
 T = 32
-COLS, ROWS = 10, 6
-W, H = COLS * T, ROWS * T
+ROWS = 6  # the rows of floor tiles the templates' `rows` count; a wall is WALL_ROWS of them high
 WALL_ROWS = 3
 CATALOG_PATH = Path(__file__).resolve().parent / "data" / "scenery.json"
+POSES_PATH = CATALOG_PATH.with_name("prop_poses.json")
+ATLAS_WIDTH = 1024
+# Names of props that stand as they are in the isometric view. Only a fallback, for a prop with no pose record.
+UPRIGHT = re.compile(
+    "tree|pine|oak|bush|stump|plant|barrel|jar|bucket|mushroom|rock|stones|boulder|crystal|fire|brazier|lantern|torch"
+    "|statue|bust|column|pillar|obelisk|grave|tomb|cross|sign|hay|sack|pots|cauldron|tripod|idol|well|fountain|basin"
+    "|sundial|birdbath|scarecrow|stool|target|anvil|quiver|laundry|rope|reeds|bones|coins|twisted|pentagram|circle"
+    "|banner|monument"
+)
+UPRIGHT_FIRST = re.compile("cloud|smoke|armor|suit|cactus|corn|hoard")
 
-WALL_SLOTS = {"wall_left": 48, "wall_left2": 104, "wall_center": 160, "wall_right2": 216, "wall_right": 272}
-ZONE_X = {"left": 64, "center": 160, "right": 256}
-ZONE_BASELINE = {"back": 120, "mid": 152, "front": 186}
-ZONES = [f"{row}_{col}" for row in ZONE_BASELINE for col in ZONE_X]
+ROOM_W, ROOM_H = 10, 8  # the room of a scene in cells: with walls, the north row (y = 0) and the west column (x = 0) are wall
+# Where a wall slot hangs: the wall (n = north, w = west) and the place along it in cells (the centre of the piece).
+WALL_AT = {"wall_left": ("w", 2.6), "wall_left2": ("n", 2.6), "wall_center": ("n", 5.4), "wall_right2": ("w", 5.6), "wall_right": ("n", 8.3)}
+# How high above the floor a piece of wall decor hangs, in pixels: the first pattern that matches the name wins.
+WALL_LIFT = ((r"door|fireplace|hearth|stove|dresser", 0), (r"window", 14), (r"cabinet", 18), (r"lantern|torch", 10), (r".", 6))
+WALL_FACE = (48, 96)  # the rows of an LPC wall tile (96 high) a wall block of 48 shows: the lower half
+WALL_CAP = 32  # the rows from the top of that tile that cover a wall block
+WALL_SLOTS = ("wall_left", "wall_left2", "wall_center", "wall_right2", "wall_right")
+ZONE_ROWS = ("back", "mid", "front")
+ZONE_AT = {"left": 0.125, "center": 0.5, "right": 0.875}  # where a zone lies across the floor, as a fraction of its width
+ZONES = [f"{row}_{col}" for row in ZONE_ROWS for col in ZONE_AT]
 SLOTS = list(WALL_SLOTS) + ZONES
 
 
@@ -47,12 +67,12 @@ FILLER = {
               "back_right": "barrel_pile", "mid_center": "table_desk", "mid_left": None, "mid_right": None,
               "front_left": "plant", "front_right": "brazier"},
 }
-# DCSS item icons on the desk: (path under assets/dcss/item, x, y of the icon's bottom centre), pasted 1:1.
-FILLER_STUFF = [
-    ("book/dark_brown_old.png", 124, 128), ("book/parchment.png", 125, 121), ("misc/misc_lamp.png", 202, 122),
-    ("food/bread_ration.png", 160, 122), ("scroll/blank_paper.png", 144, 134), ("misc/misc_deck.png", 170, 126),
-    ("potion/golden.png", 182, 134), ("potion/brown.png", 195, 136),
-]
+# DCSS item icons on the desk: (path under assets/dcss/item, prop, x, y of the icon's bottom centre in the prop's own picture).
+FILLER_STUFF = (
+    ("book/dark_brown_old.png", "table_desk", 12, 40), ("book/parchment.png", "table_desk", 13, 33), ("misc/misc_lamp.png", "table_desk", 90, 34),
+    ("food/bread_ration.png", "table_desk", 48, 34), ("scroll/blank_paper.png", "table_desk", 32, 46), ("misc/misc_deck.png", "table_desk", 58, 38),
+    ("potion/golden.png", "table_desk", 70, 46), ("potion/brown.png", "table_desk", 83, 48),
+)
 
 
 class SceneError(ValueError):
@@ -94,6 +114,97 @@ def prop_image(name: str) -> Image.Image:
     if p["sheet"].startswith("dcss:"):
         return _sheet(p["sheet"]).copy()
     return _crop(p["sheet"], p["rect"])
+
+
+@cache
+def _poses() -> dict:
+    return {k: v for k, v in json.loads(POSES_PATH.read_text()).items() if not k.startswith("_")}
+
+
+@cache
+def prop_box(name: str) -> tuple[int, int, int, int]:
+    """The alpha box of a prop picture as (left, top, right, bottom). A clear picture gives a 1 x 1 box."""
+    return prop_image(name).getchannel("A").getbbox() or (0, 0, 1, 1)
+
+
+def prop_pose(name: str) -> dict:
+    """The isometric pose of a prop (see isometric-view.md): {"pose": "upright"} or a band chain.
+
+    Band rows count from the top of the picture cropped to its alpha box, as in the atlas. A prop with no
+    record in `prop_poses.json` gets a guess from its flags, its name and its size.
+    """
+    if name not in catalog()["props"]:
+        raise SceneError(f"prop {name!r} is not in the catalog.")
+    if record := _poses().get(name):
+        return {"width": 1, **record} if record["pose"] == "bands" else dict(record)
+    p = catalog()["props"][name]
+    left, top, right, bottom = prop_box(name)
+    w, h = right - left, bottom - top
+    one = lambda first: {"pose": "bands", "first": first, "splits": [], "bands": [[1, 0]], "width": 1}
+    if p.get("flat"):
+        return one("H")
+    if p.get("on") == "wall":
+        return one("V")
+    if UPRIGHT_FIRST.search(name) or UPRIGHT.search(name) or h >= 1.7 * w:
+        return {"pose": "upright"}
+    thick = max(5, min(20, round(w * 0.3)))
+    if w >= 1.3 * h:
+        split = max(2, round(h * 0.3))
+        return {"pose": "bands", "first": "H", "splits": [split], "width": 1,
+                "bands": [[max(0.5, min(4, round(w * 0.3 / split, 2))), 0], [1, thick]]}
+    return {"pose": "bands", "first": "V", "splits": [], "bands": [[1, thick]], "width": 1}
+
+
+_atlas_stamp = None
+
+
+@lru_cache(maxsize=1)
+def _build_atlas(stamp: int) -> tuple[bytes, dict]:
+    """Every prop picture, cropped to its alpha box, packed in rows on one sheet. Result: (png, {name: entry})."""
+    names = sorted(catalog()["props"], key=lambda n: (-prop_box(n)[3] + prop_box(n)[1], n))
+    sheet_h = 0
+    x = y = row_h = 0
+    entries: dict[str, dict] = {}
+    for name in names:
+        img = prop_image(name)
+        box = prop_box(name)
+        w, h = box[2] - box[0], box[3] - box[1]
+        if x + w > ATLAS_WIDTH:
+            x, y, row_h = 0, y + row_h + 1, 0
+        entries[name] = {"r": [x, y, w, h], "o": [box[0], box[1]], "size": list(img.size)}
+        x += w + 1
+        row_h = max(row_h, h)
+        sheet_h = y + row_h
+    sheet = Image.new("RGBA", (ATLAS_WIDTH, max(1, sheet_h)))
+    for name, e in entries.items():
+        left, top = e["o"]
+        sheet.alpha_composite(prop_image(name).crop((left, top, left + e["r"][2], top + e["r"][3])), tuple(e["r"][:2]))
+    buf = io.BytesIO()
+    sheet.save(buf, "PNG")
+    return buf.getvalue(), entries
+
+
+def prop_atlas() -> tuple[int, bytes, dict]:
+    """(stamp, png, entries). Entry: {"r": [x, y, w, h] in the sheet, "o": [x, y] of the crop in the full
+    picture, "size": [w, h] of the full picture}. Rebuilt when the catalogue file changes."""
+    global _atlas_stamp
+    stamp = CATALOG_PATH.stat().st_mtime_ns
+    if _atlas_stamp not in (None, stamp):
+        for cached in (catalog, prop_image, prop_box, _sheet, _wall_width, _poses, _room_png, _build_atlas, props_info):
+            cached.cache_clear()
+    _atlas_stamp = stamp
+    return (stamp, *_build_atlas(stamp))
+
+
+def props_info() -> dict:
+    """The body of GET /api/props: the atlas address and, for each prop, its rect, crop offset and pose."""
+    return _props_info(prop_atlas()[0])
+
+
+@lru_cache(maxsize=1)
+def _props_info(stamp: int) -> dict:
+    entries = _build_atlas(stamp)[1]
+    return {"atlas": f"/asset/props.png?v={stamp}", "props": {n: {**e, "pose": prop_pose(n)} for n, e in entries.items()}}
 
 
 def surface_tile(name: str, col: int, row: int) -> Image.Image:
@@ -163,7 +274,16 @@ def resolve(spec: dict) -> dict:
         "slots": {**t.get("slots", {}), **spec.get("slots", {})},
         "add": list(spec.get("add", [])),
         "mood": spec.get("mood") or t.get("mood") or "day",
+        "shape": spec.get("shape"), "seed": spec.get("seed"), "size": spec.get("size"),
     }
+    if out["shape"] == "fixed":
+        out["shape"] = None  # the plain 10 x 8 room
+    if out["shape"] is not None and out["shape"] not in rooms.SHAPE_NAMES:
+        raise SceneError(f"shape {out['shape']!r} is not one of fixed, {', '.join(rooms.SHAPE_NAMES)}.")
+    if out["size"] is not None and out["size"] not in rooms.CLASSES:
+        raise SceneError(f"size {out['size']!r} is not one of {', '.join(rooms.CLASSES)}.")
+    if out["shape"] is not None and not isinstance(out["seed"], int):
+        raise SceneError("a shaped room needs a seed (a whole number); `scene set` adds one.")
     surfaces = {**cat["floors"], **cat["grounds"]}
     for w in out["walls"]:
         if w not in cat["walls"]:
@@ -173,10 +293,10 @@ def resolve(spec: dict) -> dict:
             raise SceneError(f"floor {s!r} is not known. Close: {_suggest(s, surfaces)}.")
     if out["mood"] not in cat["moods"]:
         raise SceneError(f"mood {out['mood']!r} is not one of {', '.join(cat['moods'])}.")
-    for slot, prop in out["slots"].items():
+    for slot in out["slots"]:
         if slot not in SLOTS:
             raise SceneError(f"slot {slot!r} is not one of {', '.join(SLOTS)}.")
-    for prop, zone in out["add"]:
+    for _, zone in out["add"]:
         if zone not in ZONES:
             raise SceneError(f"zone {zone!r} is not one of {', '.join(ZONES)}.")
     for prop in [*filter(None, out["slots"].values()), *(p for p, _ in out["add"])]:
@@ -191,65 +311,6 @@ class UnknownProp(SceneError):
         self.prop = prop
 
 
-def _place(img: Image.Image, name: str, slot: str, nudge: int = 0) -> tuple[int, int]:
-    """Top-left corner for a prop image at a slot."""
-    prop = catalog()["props"][name]
-    w, h = img.size
-    if slot in WALL_SLOTS:
-        x = WALL_SLOTS[slot] - w // 2
-        # Doors stand on the floor line; other wall pieces hang near the top.
-        y = WALL_ROWS * T - h if prop.get("on") == "wall" and "door" in name else 12
-        return x, y
-    row, col = slot.split("_")
-    baseline = ZONE_BASELINE[row]
-    if prop.get("flat"):
-        baseline += h // 2 - 16
-    return ZONE_X[col] - w // 2 + nudge, baseline - h
-
-
-def _mood(img: Image.Image, mood: str) -> Image.Image:
-    if mood == "day":
-        return img
-    rgb = img.convert("RGB")
-    if mood == "dusk":
-        rgb = Image.blend(rgb, Image.new("RGB", rgb.size, (255, 130, 60)), 0.18)
-        rgb = Image.blend(rgb, Image.new("RGB", rgb.size, (40, 20, 50)), 0.15)
-    elif mood == "night":
-        rgb = Image.blend(rgb, Image.new("RGB", rgb.size, (18, 24, 64)), 0.5)
-    elif mood == "rain":
-        rgb = Image.blend(rgb, Image.new("RGB", rgb.size, (30, 40, 70)), 0.35)
-        streaks = Image.new("RGBA", rgb.size)
-        d = ImageDraw.Draw(streaks)
-        for i in range(90):
-            x = (i * 37) % (W + 40) - 20
-            y = (i * 53) % H
-            d.line((x, y, x - 4, y + 10), fill=(200, 210, 255, 90))
-        rgb = Image.alpha_composite(rgb.convert("RGBA"), streaks).convert("RGB")
-    elif mood == "snow":
-        rgb = Image.blend(rgb, Image.new("RGB", rgb.size, (150, 175, 215)), 0.22)
-        flakes = Image.new("RGBA", rgb.size)
-        d = ImageDraw.Draw(flakes)
-        for i in range(70):
-            x = (i * 61) % W
-            y = (i * 47) % H
-            d.rectangle((x, y, x + 1, y + 1), fill=(255, 255, 255, 200))
-        rgb = Image.alpha_composite(rgb.convert("RGBA"), flakes).convert("RGB")
-    elif mood == "fog":
-        fog = Image.new("L", rgb.size)
-        d = ImageDraw.Draw(fog)
-        for y in range(H):
-            d.line((0, y, W, y), fill=int(40 + 110 * y / H))
-        rgb = Image.composite(Image.new("RGB", rgb.size, (210, 215, 220)), rgb, fog.point(lambda v: v // 2))
-    elif mood == "torchlit":
-        dark = Image.blend(rgb, Image.new("RGB", rgb.size, (10, 8, 16)), 0.55)
-        light = Image.new("L", rgb.size, 0)
-        ImageDraw.Draw(light).ellipse((W * 0.1, H * 0.05, W * 0.9, H * 1.3), fill=255)
-        light = light.filter(ImageFilter.GaussianBlur(40))
-        warm = Image.blend(rgb, Image.new("RGB", rgb.size, (255, 170, 90)), 0.12)
-        rgb = Image.composite(warm, dark, light)
-    return rgb.convert("RGBA")
-
-
 def _placed(r: dict) -> list[tuple[str, str, int]]:
     """Every prop of a resolved spec as (name, slot, nudge), in drawing order: wall, flat, then back to front."""
     cat = catalog()
@@ -258,7 +319,7 @@ def _placed(r: dict) -> list[tuple[str, str, int]]:
     for name, zone in r["add"]:
         n = per_zone.get(zone, 0) + (1 if r["slots"].get(zone) else 0)
         per_zone[zone] = per_zone.get(zone, 0) + 1
-        nudge = 0 if n == 0 else (36 * ((n + 1) // 2)) * (1 if n % 2 else -1)
+        nudge = 0 if n == 0 else ((n + 1) // 2) * (1 if n % 2 else -1)
         placed.append((name, zone, nudge))
 
     def order(entry):
@@ -267,63 +328,180 @@ def _placed(r: dict) -> list[tuple[str, str, int]]:
             return (0, 0)
         if cat["props"][name].get("flat"):
             return (1, 0)
-        return (2, ZONE_BASELINE[slot.split("_")[0]])
+        return (2, ZONE_ROWS.index(slot.split("_")[0]))
 
     return sorted(placed, key=order)
 
 
-def _spot(img: Image.Image, name: str, slot: str, nudge: int) -> tuple[int, int]:
-    """Where a prop's image is pasted: its top-left corner, kept near the stage."""
-    x, y = _place(img, name, slot, nudge)
-    return max(-img.width // 2, min(W - img.width // 2, x)), y
+ROW_AT = {"back": 1 / 6, "mid": 0.5, "front": 5 / 6}  # and along its depth
+# Where wall slots hang on a room of any shape: the wall and the place along its longest run, as a fraction of the run.
+SHAPED_AT = {"wall_left": ("w", 0.325), "wall_left2": ("n", 0.26), "wall_center": ("n", 0.54), "wall_right2": ("w", 0.7), "wall_right": ("n", 0.83)}
+
+
+def _nearest(floor: list[tuple[int, int]], taken: set, want: tuple[float, float]) -> tuple[int, int]:
+    """The free floor cell nearest a point."""
+    return min((c for c in floor if c not in taken), key=lambda c: (abs(c[0] - want[0]) + abs(c[1] - want[1]), c))
+
+
+def _wall_runs(grid: list[str]) -> dict[str, tuple[int, int, int]]:
+    """The longest run of wall that faces into the room and is not cut low (see isometric-view.md, "Wall cut rule"): north-facing
+    (floor below it) and west-facing (floor to its right). Result: {"n": (row, first x, cells), "w": (column, first y, cells)}."""
+    h, w = len(grid), len(grid[0])
+    at = lambda x, y: grid[y][x] if 0 <= x < w and 0 <= y < h else None  # noqa: E731
+    low = lambda x, y: any(at(x + dx, y + dy) in (".", " ") for dx, dy in ((-1, 0), (0, -1), (-1, -1)))  # noqa: E731
+    best: dict[str, tuple[int, int, int]] = {}
+    for key, cells in (("n", [(y, [x for x in range(w) if at(x, y) == "#" and at(x, y + 1) == "." and not low(x, y)]) for y in range(h)]),
+                       ("w", [(x, [y for y in range(h) if at(x, y) == "#" and at(x + 1, y) == "." and not low(x, y)]) for x in range(w)])):
+        for line, along in cells:
+            run: list[int] = []
+            for v in [*along, None]:
+                if v is not None and run and v == run[-1] + 1:
+                    run.append(v)
+                    continue
+                if run and len(run) > best.get(key, (0, 0, 0))[2]:
+                    best[key] = (line, run[0], len(run))
+                run = [v] if v is not None else []
+    return best
+
+
+def _make_grid(r: dict, walled: bool) -> list[str]:
+    """The rows of the room: the fixed 10 x 8 room (with walls, the north row and the west column are wall), or a shaped one."""
+    if not r.get("shape"):
+        return ["".join("#" if walled and (x == 0 or y == 0) else "." for x in range(ROOM_W)) for y in range(ROOM_H)]
+    for attempt in range(60):
+        made = rooms.mask(r["shape"], random.Random(f"{r['shape']}:{r['seed']}:{attempt}"), r.get("size"))
+        if made:
+            rows = ["".join(row) for row in rooms.grid_of(made[0])]
+            return rows if walled else [row.replace("#", "-") for row in rows]  # an open scene has no wall blocks
+    raise SceneError(f"could not make a {r['shape']} room; try another seed=.")
+
+
+def _lift(name: str) -> int:
+    return next(px for pattern, px in WALL_LIFT if re.search(pattern, name))
+
+
+def _icon(path: str) -> Image.Image:
+    """A DCSS item icon cropped to its alpha box."""
+    icon = Image.open(ensure_dcss() / "item" / path).convert("RGBA")
+    return icon.crop(icon.getchannel("A").getbbox())
+
+
+def room(spec: dict, stuff: tuple = ()) -> dict:
+    """A scene as an isometric room, for the browser (see isometric-view.md).
+
+    The room is 10 x 8 cells. With walls, the north row (y = 0) and the west column (x = 0) are wall `#`; an open scene (a street,
+    a forest) has floor everywhere. A scene with `shape=` has a room of that shape (`stage/rooms.py`), walled all round, with
+    the void `-` outside. Floor props stand on cells by their zone; wall props hang on a wall at a place along it (`t`, in cells,
+    on the wall `line`) and a height (`lift`, px). A prop with a stand point is listed in `stand`: the points are in pixels of
+    the prop's own picture, the cell is the prop's. `stuff` (the desk clutter of the study): (icon path, prop, x, y).
+    """
+    r = resolve(spec)
+    cat = catalog()
+    walled = bool(r["walls"])
+    grid = _make_grid(r, walled)
+    w, h = len(grid[0]), len(grid)
+    floor = [(x, y) for y in range(h) for x in range(w) if grid[y][x] == "."]
+    x0, x1, y0, y1 = min(x for x, _ in floor), max(x for x, _ in floor), min(y for _, y in floor), max(y for _, y in floor)
+    runs = _wall_runs(grid) if walled else {}
+    taken: set[tuple[int, int]] = set()
+    props, decor, standing = [], [], []
+    for name, slot, nudge in _placed(r):
+        if slot in WALL_SLOTS:
+            if not walled:
+                continue
+            wall, frac = SHAPED_AT[slot]
+            if r.get("shape"):
+                if wall not in runs:
+                    continue
+                line, first, count = runs[wall]
+                along = first + frac * count
+            else:
+                (wall, along), line = WALL_AT[slot], 0
+            if cat["props"][name].get("on") == "wall":
+                decor.append({"kind": name, "slot": slot, "wall": wall, "t": along, "line": line, "lift": _lift(name)})
+                continue
+            # Furniture in a wall slot (a cabinet, a dresser) stands on the floor against that wall, in its tuned pose.
+            x, y = _nearest(floor, taken, (int(along), line + 1) if wall == "n" else (line + 1, int(along)))
+            taken.add((x, y))
+            props.append({"kind": name, "slot": slot, "x": x, "y": y, "flat": False})
+            continue
+        row, col = slot.split("_")
+        x, y = _nearest(floor, taken, (x0 + ZONE_AT[col] * (x1 - x0) + nudge, y0 + ROW_AT[row] * (y1 - y0)))
+        flat = bool(cat["props"][name].get("flat"))
+        if not flat:
+            taken.add((x, y))
+        props.append({"kind": name, "slot": slot, "x": x, "y": y, "flat": flat})
+        if stand := cat["props"][name].get("stand"):
+            standing.append({"slot": slot, "prop": name, "mode": stand["mode"], "points": stand["at"], "x": x, "y": y})
+    face, cap = WALL_FACE[1] - WALL_FACE[0], WALL_CAP
+    sheet_h = h * T + 2 * (face + cap)
+    sheet = {"w": max(w, ROOM_W) * T, "h": sheet_h + (T if stuff else 0), "north": [h * T, h * T + face], "west": [h * T + face + cap, h * T + 2 * face + cap],
+             "stuff": sheet_h}
+    placed, x = [], 0
+    for path, prop, px, py in stuff:
+        icon = _icon(path)
+        placed.append({"icon": path, "r": [x, sheet_h, icon.width, icon.height], "on": prop, "at": [px, py]})
+        x += icon.width + 1
+    return {"w": w, "h": h, "grid": grid, "open": not walled, "shaped": bool(r.get("shape")), "mood": r["mood"], "props": props, "decor": decor,
+            "stand": standing, "stuff": placed, "sheet": sheet, "walls": len(r["walls"])}
 
 
 def stand_points(spec: dict) -> list[dict]:
-    """Where an actor can stand or sit on each prop that allows it, in stage pixels.
+    """Where an actor can stand or sit on each prop that allows it. Each entry: {"slot", "prop", "mode", "points", "x", "y"}.
 
-    A prop's `stand` entry in scenery.json gives its mode and its points in the prop image's own pixels:
-    `sit` (the point is the hip: the stage cuts the sprite there, because LPC has no sitting pose) or `on`
-    (the point is the feet). Result: [{"slot", "prop", "mode", "points": [[x, y], ...]}]; the slot is
-    where the prop stands, so the DM writes `@enter <actor> on <slot>`.
+    A prop's `stand` entry in scenery.json gives its mode and its points in the prop picture's own pixels: `sit` (the point is the
+    hip: the stage cuts the sprite there, because LPC has no sitting pose) or `on` (the point is the feet). `x`, `y` is the cell of
+    the prop. The slot is where the prop stands, so the DM writes `@enter <actor> on <slot>`.
     """
+    return room(spec)["stand"]
+
+
+def _wall_strip(r: dict, west: bool) -> list[Image.Image]:
+    """The wall tiles of the north wall (10 of them) or the west wall (8), as LPC tiles of 32 x 96."""
+    walls = r["walls"]
+    if west:
+        return [_wall_tile(walls[0], y, -1, -1) for y in range(ROOM_H)]
+    span = ROOM_W // len(walls)
     out = []
-    for name, slot, nudge in _placed(resolve(spec)):
-        stand = catalog()["props"][name].get("stand")
-        if stand:
-            x, y = _spot(prop_image(name), name, slot, nudge)
-            out.append({"slot": slot, "prop": name, "mode": stand["mode"],
-                        "points": [[x + px, y + py] for px, py in stand["at"]]})
+    for i, style in enumerate(walls):
+        first = i * span
+        last = ROOM_W - 1 if i == len(walls) - 1 else first + span - 1
+        out += [_wall_tile(style, col, first, last) for col in range(first, last + 1)]
     return out
 
 
-def render(spec: dict, stuff: list | tuple = ()) -> Image.Image:
-    """The scene image. `stuff`: item icons pasted over the props, before the mood tint."""
+@lru_cache(maxsize=64)
+def _room_png(spec_json: str, stuff: tuple) -> bytes:
+    spec = json.loads(spec_json)
     r = resolve(spec)
-    cat = catalog()
-    img = Image.new("RGBA", (W, H), (20, 18, 24, 255))
-    walls = r["walls"]
-    first_floor_row = WALL_ROWS if walls else 0
-    for row in range(first_floor_row, ROWS):
-        surface = r["rows"].get(str(row), r["floor"])
-        for col in range(COLS):
-            img.alpha_composite(surface_tile(surface, col, row), (col * T, row * T))
-    if walls:
-        span = COLS // len(walls)
-        for i, style in enumerate(walls):
-            first = i * span
-            last = COLS - 1 if i == len(walls) - 1 else first + span - 1
-            for col in range(first, last + 1):
-                img.alpha_composite(_wall_tile(style, col, first, last), (col * T, 0))
+    made = room(spec, stuff)
+    layout, w, h = made["sheet"], made["w"], made["h"]
+    img = Image.new("RGBA", (layout["w"], layout["h"]))
+    walled = bool(r["walls"])
+    for y in range(h):
+        # The old stage had 6 rows of floor tiles (3 with walls): each row of cells takes the surface of the row it stands for.
+        old = WALL_ROWS + max(0, y - 1) * (ROWS - WALL_ROWS) // (h - 1) if walled else y * ROWS // h
+        surface = r["rows"].get(str(old), r["floor"])
+        for x in range(w):
+            img.alpha_composite(surface_tile(surface, x, y), (x * T, y * T))
+    if walled:
+        for west, (face_y, cap_y) in ((False, layout["north"]), (True, layout["west"])):
+            for i, tile in enumerate(_wall_strip(r, west)):
+                img.alpha_composite(tile.crop((0, WALL_FACE[0], T, WALL_FACE[1])), (i * T, face_y))
+                img.alpha_composite(tile.crop((0, 0, T, WALL_CAP)), (i * T, cap_y))
+    x = 0
+    for path, _prop, _x, _y in stuff:
+        icon = _icon(path)
+        img.alpha_composite(icon, (x, layout["stuff"]))
+        x += icon.width + 1
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
 
-    for name, slot, nudge in _placed(r):
-        pimg = prop_image(name)
-        x, y = _spot(pimg, name, slot, nudge)
-        img.alpha_composite(pimg, (x, y))
-    for path, x, y in stuff:
-        icon = Image.open(ensure_dcss() / "item" / path).convert("RGBA")
-        icon = icon.crop(icon.getchannel("A").getbbox())
-        img.alpha_composite(icon, (x - icon.width // 2, y - icon.height))
-    return _mood(img, r["mood"])
+
+def room_png(spec: dict, stuff: tuple = ()) -> bytes:
+    """The pictures of `room(spec, stuff)`: the floor (10 x 8 tiles), then the wall faces and caps, then the stuff icons."""
+    return _room_png(json.dumps(spec, sort_keys=True), stuff)
 
 
 def scenes_dir(campaign_dir: Path) -> Path:
@@ -339,7 +517,7 @@ def save(campaign_dir: Path, location: str, spec: dict) -> Path:
 
 
 def build(tokens: list[str], current: dict | None) -> dict:
-    """Make a spec from tokens: template= wall= floor= mood= <slot>=<prop|none> +<prop>@<zone> clear=add."""
+    """Make a spec from tokens: template= wall= floor= mood= shape= (a new place gets one from its theme; `fixed` is the plain room) seed= size= <slot>=<prop|none> +<prop>@<zone> clear=add."""
     spec = json.loads(json.dumps(current or {}))
     spec.setdefault("slots", {})
     spec.setdefault("add", [])
@@ -352,10 +530,25 @@ def build(tokens: list[str], current: dict | None) -> dict:
             continue
         key, eq, value = token.partition("=")
         if not eq:
-            raise SceneError(f"{token!r}: use key=value (template=, wall=, floor=, mood=, <slot>=<prop>) or +<prop>@<zone>.")
+            raise SceneError(f"{token!r}: use key=value (template=, wall=, floor=, mood=, shape=, seed=, size=, <slot>=<prop>) or +<prop>@<zone>.")
         key = key.replace("-", "_")
         if key == "template":
             spec = {"template": value, "slots": {}, "add": [], **({"mood": spec["mood"]} if "mood" in spec else {})}
+        elif key == "shape":
+            if value in ("none", "fixed", ""):
+                spec["shape"] = "fixed"
+                spec.pop("seed", None)
+            else:
+                spec["shape"] = value.lower()
+                spec.setdefault("seed", random.randrange(1, 10**6))
+        elif key == "seed":
+            if not value.isdigit():
+                raise SceneError("seed= is a whole number.")
+            spec["seed"] = int(value)
+        elif key == "size":
+            spec["size"] = None if value in ("none", "") else value
+            if spec["size"] is None:
+                spec.pop("size")
         elif key in ("wall", "floor", "mood"):
             spec[key] = value.split(",") if key == "wall" and "," in value else value
         elif key == "clear" and value == "add":
@@ -366,23 +559,10 @@ def build(tokens: list[str], current: dict | None) -> dict:
             raise SceneError(f"unknown setting {key!r}. Slots: {', '.join(SLOTS)}.")
     if "template" not in spec:
         raise SceneError("a new scene needs template=<name>. Templates: " + ", ".join(catalog()["templates"]))
+    if "shape" not in spec and (current is None or any(t.startswith("template=") for t in tokens)):
+        # A new place gets a room of a shape the theme likes, from a seed it keeps. A saved place keeps its room.
+        from stage import arena
+
+        spec["seed"] = random.randrange(1, 10**6)
+        spec["shape"] = arena.pick_shape(arena.arena_data()["scene_looks"].get(spec["template"], "dungeon"), spec["seed"])
     return spec
-
-
-@lru_cache(maxsize=256)
-def _png(spec_json: str) -> bytes:
-    buf = io.BytesIO()
-    render(json.loads(spec_json)).save(buf, "PNG")
-    return buf.getvalue()
-
-
-def png(spec: dict) -> bytes:
-    return _png(json.dumps(spec, sort_keys=True))
-
-
-@cache
-def filler_png() -> bytes:
-    """The DM's study with its desk clutter: the stage's loading screen."""
-    buf = io.BytesIO()
-    render(FILLER, FILLER_STUFF).save(buf, "PNG")
-    return buf.getvalue()

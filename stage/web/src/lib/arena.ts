@@ -1,5 +1,6 @@
 // The board of a fight: what GET /api/arena/<id> returns (stage/board.py `view`).
 import type { Health } from '@/lib/party'
+import type { SceneRoom } from '@/lib/scene'
 
 export type Cell = [number, number]
 
@@ -22,7 +23,11 @@ export interface ArenaView {
   id: string
   w: number
   h: number
-  /** `#` wall, `.` floor, `d` door gap, `~` hazard, ` ` a cell never seen (dim or dark light). */
+  /** The shape of the room: `rect`, `l`, `ring`, `cave` and the others (stage/rooms.py). */
+  shape: string
+  /** A fight in the room of a scene keeps that room (its sheet, its wall decor); null in a room the stage made. */
+  room: SceneRoom | null
+  /** `#` wall, `.` floor, `d` door gap, `~` hazard, `-` outside the room (never drawn), ` ` a cell never seen (dim or dark light). */
   grid: string[]
   /** The cells in sight now (`1`), in dim or dark light; null in a lit room. */
   visible: string[] | null

@@ -1,5 +1,5 @@
 {
-  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees). darkvision_ft: the darkvision of a race word (the longest match wins); a character without one sees only by light. styles: the weights of the foe planner (stage/foes.py). A creature with only ranged attacks plays as a skirmisher.",
+  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees). darkvision_ft: the darkvision of a race word (the longest match wins); a character without one sees only by light. styles: the weights of the foe planner (stage/foes.py). A creature with only ranged attacks plays as a skirmisher. shapes: the odds of each room shape by theme, as weights (see isometric-view.md); a theme with no table uses `default`.",
   "decor": {
     "tavern": {
       "obstacles": [
@@ -153,6 +153,30 @@
     "haunted_woods",
     "battlefield"
   ],
+  "shapes": {
+    "default": {"rect": 3, "hall": 2, "l": 2, "t": 2, "twin": 2, "zigzag": 1, "dogleg": 1},
+    "cave": {"cave": 70, "ellipse": 20, "blob": 10},
+    "lair": {"cave": 5, "blob": 3, "ellipse": 2},
+    "ice_cave": {"cave": 70, "ellipse": 20, "blob": 10},
+    "volcano": {"cave": 70, "ellipse": 20, "blob": 10},
+    "crystal": {"cave": 70, "ellipse": 20, "blob": 10},
+    "hive": {"blob": 4, "cave": 3, "ring": 3},
+    "hell": {"cave": 70, "ellipse": 20, "blob": 10},
+    "tavern": {"rect": 50, "l": 30, "t": 20},
+    "house": {"rect": 50, "l": 30, "t": 20},
+    "manor": {"rect": 50, "l": 30, "t": 20},
+    "tower": {"rect": 3, "octagon": 3, "ring": 2},
+    "temple": {"cross": 3, "octagon": 2, "ring": 2, "nave": 3},
+    "tomb": {"cross": 3, "octagon": 2, "ring": 2, "nave": 3},
+    "crypt": {"twin": 3, "cross": 3, "hall": 3},
+    "castle": {"rect": 3, "twin": 2, "zigzag": 2, "hall": 3},
+    "palace": {"rect": 3, "twin": 2, "zigzag": 2, "hall": 3},
+    "dungeon": {"rect": 3, "hall": 2, "l": 2, "t": 2, "twin": 2, "zigzag": 1, "dogleg": 1},
+    "sewer": {"hall": 4, "l": 2, "twin": 2, "zigzag": 2, "dogleg": 2},
+    "mine": {"hall": 3, "dogleg": 2, "zigzag": 2, "cave": 3},
+    "forest": {"ellipse": 4, "blob": 3, "cave": 3},
+    "overgrown": {"ellipse": 4, "blob": 3, "cave": 3}
+  },
   "darkvision_ft": {
     "drow": 120,
     "elf": 60,

@@ -56,7 +56,7 @@ async def routes(c: Path, state: dict) -> None:
     stage.seats.ensure_host(HOST_DEVICE)
 
     status, view = await api(app, "GET", f"/api/arena/{arena_id}")
-    check("the view has the grid, the units and the turn", status == 200 and view["w"] == 12 and len(view["units"]) == 5 and view["current"] == "aragorn")
+    check("the view has the grid, the units and the turn", status == 200 and (view["w"], view["h"]) == (len(view["grid"][0]), len(view["grid"])) and len(view["units"]) == 5 and view["current"] == "aragorn")
     foe = next(u for u in view["units"] if u["id"] == "goblin#1")
     check("a creature shows a band, never numbers; a player character shows HP",
           "hp" not in foe and foe["health"] == "unhurt" and next(u for u in view["units"] if u["id"] == "aragorn")["hp"]["max"] > 0)

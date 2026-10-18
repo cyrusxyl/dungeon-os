@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
+import { SceneCanvas } from '@/components/SceneCanvas'
 import { Settings, type Framework, type SettingsData } from '@/components/Settings'
 import { write } from '@/lib/local'
-import { postJson } from '@/lib/stage'
+import type { SceneRoom } from '@/lib/scene'
+import { postJson, useJson } from '@/lib/stage'
 
 interface Campaign {
   slug: string
@@ -58,6 +60,7 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
   const [picked, setPicked] = useState<Campaign | null>(null)
   const [saves, setSaves] = useState<Save[] | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const backdrop = useJson<SceneRoom>('/api/template/tavern?mood=night')
   useEffect(() => setError(''), [panel])
 
   const start = async (
@@ -101,12 +104,11 @@ export function Menu({ data, onStarted, onChanged }: { data: MenuData; onStarted
 
   return (
     <div className="relative grid h-full place-items-center overflow-hidden p-4">
-      <img
-        src="/asset/template/tavern.png?mood=night"
-        alt=""
-        className="pixelated absolute inset-0 h-full w-full object-cover opacity-60"
-        onError={(e) => (e.currentTarget.style.display = 'none')}
-      />
+      {backdrop?.has_look && (
+        <div className="absolute inset-0 opacity-60">
+          <SceneCanvas cover room={backdrop} sheetUrl="/asset/template/tavern/room.png" mood={backdrop.mood} />
+        </div>
+      )}
       <div className="absolute inset-0 bg-gradient-to-b from-[var(--ink)]/40 via-transparent to-[var(--ink)]/90" aria-hidden="true" />
 
       <main className="relative flex w-full max-w-md flex-col items-center gap-8 border-4 border-[var(--gold)] bg-[var(--panel)]/95 p-6 sm:p-8">

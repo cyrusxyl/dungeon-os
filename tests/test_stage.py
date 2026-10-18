@@ -253,10 +253,7 @@ def test_scenes() -> None:
     if not (TILES_DIR / "walls").is_dir():
         print("  skip (tiles not fetched; run uv run dungeon-os once)")
         return
-    for name in scenes.catalog()["templates"]:
-        img = scenes.render({"template": name})
-        assert img.size == (scenes.W, scenes.H), name
-    check("every template renders at 320x192", True)
+    check("every template makes an isometric room", all(scenes.room({"template": name})["grid"] for name in scenes.catalog()["templates"]))
     cat = scenes.catalog()
     bad = []
     for name in cat["props"]:
@@ -272,9 +269,7 @@ def test_scenes() -> None:
     surfaces = [(s, c, r) for s in (*cat["floors"], *cat["grounds"]) for c in range(2) for r in range(2)]
     check("every floor and ground makes a tile", all(scenes.surface_tile(s, c, r).size == (scenes.T, scenes.T) for s, c, r in surfaces))
     check("every wall makes a tile", all(scenes._wall_tile(w, 1, 0, 9).size == (scenes.T, scenes.T * scenes.WALL_ROWS) for w in cat["walls"]))
-    for mood in cat["moods"]:
-        scenes.render({"template": "street", "mood": mood})
-    check("every mood renders", True)
+    check("every mood renders, and the room carries it", all(scenes.room({"template": "street", "mood": m})["mood"] == m for m in cat["moods"]))
     from PIL import Image
     from stage import pose
 
@@ -282,12 +277,13 @@ def test_scenes() -> None:
     off = []
     for n in stand:
         spec = {"template": "hall", "slots": {**{s: None for s in scenes.SLOTS}, "mid_center": n}}
-        pim = scenes.prop_image(n)
-        x0, y0 = scenes._spot(pim, n, "mid_center", 0)
-        alpha = pim.getchannel("A")
-        for sx, sy in scenes.stand_points(spec)[0]["points"]:
-            if not alpha.getpixel((sx - x0, sy - y0)):
+        alpha = scenes.prop_image(n).getchannel("A")
+        entry = scenes.stand_points(spec)[0]
+        for sx, sy in entry["points"]:
+            if not alpha.getpixel((sx, sy)):
                 off.append(n)
+        if (entry["x"], entry["y"]) != (5, 4):
+            off.append(f"{n} cell")
     check(f"every stand point lies on opaque pixels of its prop {off}", not off)
     frame = Image.new("RGBA", (64, 64))
     frame.paste((200, 50, 50, 255), (22, 13, 42, 63))
@@ -1538,9 +1534,10 @@ def test_party() -> None:
         check("no party, no key", "party" not in show(Path(tmp), "@scene inn")[0])
 
     from stage import scenes as _scenes
-    check("the loading room renders with every desk icon", _scenes.filler_png()[:4] == b"\x89PNG"
+    check("the loading room has a picture with every desk icon", _scenes.room_png(_scenes.FILLER, _scenes.FILLER_STUFF)[:4] == b"\x89PNG"
+          and len(_scenes.room(_scenes.FILLER, _scenes.FILLER_STUFF)["stuff"]) == len(_scenes.FILLER_STUFF)
           and all((Path(__import__("stage.assets", fromlist=["x"]).ensure_dcss()) / "item" / p).exists()
-                  for p, _, _ in _scenes.FILLER_STUFF))
+                  for p, *_ in _scenes.FILLER_STUFF))
     s = state.apply(state.empty(), {"type": "scene", "location": "inn", "party": ["zed", "amy"]})
     check("the state seeds the actors", s["actors"]["zed"]["position"] == "left" and s["actors"]["amy"]["position"] == "right")
     s2 = state.apply(s, {"type": "enter", "actor": "gareth"})

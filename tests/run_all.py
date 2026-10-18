@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 def main() -> int:
     suites = sorted(HERE.glob("test_*.py"))
     if "--visual" in sys.argv:
-        suites += [HERE / "visual_roll_window.py", HERE / "visual_dice_tray.py", HERE / "visual_arena.py", HERE / "visual_stage_cast.py"]
+        suites += [HERE / "visual_roll_window.py", HERE / "visual_dice_tray.py", HERE / "visual_arena.py", HERE / "visual_stage_cast.py", HERE / "visual_scene_fight.py", HERE / "visual_iso.py"]
     failed = []
     for suite in suites:
         start = time.time()

@@ -1199,10 +1199,10 @@
     "pine_small": {
       "sheet": "terrain",
       "rect": [
-        25,
+        27,
         15,
-        2,
-        3
+        3,
+        4
       ]
     },
     "oak": {
@@ -1229,8 +1229,8 @@
       "rect": [
         12,
         12,
-        1,
-        1
+        2,
+        2
       ],
       "board": {
         "blocks_move": true,

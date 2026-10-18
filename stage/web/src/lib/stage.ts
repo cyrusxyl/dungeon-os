@@ -51,7 +51,26 @@ export function useIntegerScale(ref: React.RefObject<HTMLDivElement | null>, w: 
   return scale
 }
 
-/** Display name from the actor file, e.g. "Sister Gareth"; the id until it loads. */
+/**
+ * The scale at which a w x h picture fits the element: in half steps from 1 up, and in 5% steps below 1 (a room
+ * in the isometric view is wider than a phone).
+ */
+export function useFitScale(ref: React.RefObject<HTMLDivElement | null>, w: number, h: number): number {
+  const [scale, setScale] = useState(1)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      const fit = Math.min(width / w, height / h)
+      setScale(fit >= 1 ? Math.floor(fit * 2) / 2 : Math.max(0.2, Math.floor(fit * 20) / 20))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [ref, w, h])
+  return scale
+}
+
 /** Display name from the actor file, e.g. "Sister Gareth"; the id until it loads. */
 export function useActorName(id: string | undefined, version = 0): string {
   const data = useJson<{ name: string }>(id ? `/api/actor/${encodeURIComponent(id)}` : null, version)

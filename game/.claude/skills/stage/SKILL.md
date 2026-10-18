@@ -124,10 +124,11 @@ uv run dnd-cli scene set chapel-of-ilmater template=chapel mood=dusk wall_center
   - `mood=` sets the light: `day`, `dusk`, `night`, `torchlit`, `fog`, `rain`, `snow`.
   - `<slot>=<prop>` replaces what stands in a slot, and `<slot>=none` empties it. Wall slots: `wall_left`, `wall_left2`, `wall_center`, `wall_right2`, `wall_right`. Floor slots: `back_left` … `front_right` (back, mid, front × left, center, right).
   - `+<prop>@<zone>` adds an extra prop in a floor zone; the composer finds the spot. `clear=add` removes the extras.
+  - `shape=` gives the place a room of another shape: `rect` `hall` `l` `t` `cross` `nave` `u` `h` `octagon` `diamond` `ellipse` `ring` `twin` `zigzag` `dogleg` `blob` `cave`. `size=` is `small`, `medium` or `large`. `seed=` repeats a room (`scene set` picks one for you). A new place gets a shape by itself, from the odds of its theme (a tavern: `rect`, `l` or `t`; a chapel: `cross`, `octagon`, `ring` or `nave`) and keeps it. `shape=fixed` gives the plain 10 × 8 room. A place saved before this keeps its plain room. A fight in the place is fought in this room, with the characters on the cells where they stand.
 - Lists of templates, walls, floors, props and moods: `uv run dnd-cli scene options` (or `scene options props`).
 - A saved place is final. `scene set` on a place that has a look does nothing and prints the saved look. Add `--change` only when the story changes the place ("the chapel burns": `--change mood=night back_center=none`); it changes only what you give. A revisit shows the same place.
 - If no prop fits ("a statue of Ilmater"), the command suggests the closest props and records the gap. Use the closest prop and describe the difference in the story text.
-- To check a place: `uv run dnd-cli scene preview <location-id>` writes a PNG you can read. Use it once for an important place.
+- To check a place: `uv run dnd-cli scene show <location-id>` prints what the scene resolves to. The players see the place as a small isometric room.
 - You never give pixel positions. Slots and zones are the only placement.
 
 ## Maps: region and city

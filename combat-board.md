@@ -43,7 +43,7 @@ Open:
 
 Not built:
 
-- **Return.** The room is not marked cleared. The party does stand on the same tile. `@scene` shows the next beat.
+- **Return.** A site room is not marked cleared. `@scene` shows the next beat.
 - **Items.** A weapon change and the ammunition count. Items that a fallen foe leaves on its tile. Profiles for oil, holy water, antitoxin, caltrops and ball bearings. These items work through Improvise, a DM ruling or a saved profile.
 - **Improvise.** The board cannot remove a prop or move an object after a ruling. The DM narrates it.
 - **Loot.** The perk catalog (GitHub issue #1). A perk is free text. The console shows the list, and the players can read the console. There is no DM-only view yet.
@@ -73,7 +73,8 @@ uv run dnd-cli encounter start goblin:3 --arena          # all defaults, from th
 
 - A board is the default. With `--no-arena`, the fight runs as it did before the board. No board.
 - `layout=` is `open`, `chokepoint`, `pillars` or `chasm`. The default comes from the source.
-- `size=` is `small` (12 × 8) or `medium` (16 × 10).
+- `shape=` is the shape of the room: `rect`, `hall`, `l`, `t`, `cross`, `nave`, `u`, `h`, `octagon`, `diamond`, `ellipse`, `ring`, `twin`, `zigzag`, `dogleg`, `blob` or `cave`. The default comes from the theme (`shapes` in `stage/data/arena.json`). `orient=0` to `7` fixes how the room is turned. The default is a random turn. Tests use it.
+- `size=` is `small` (9 to 12 wide, 7 to 9 deep), `medium` (14 to 18 by 9 to 12) or `large` (20 to 26 by 13 to 17). A `hall` is 20 to 27 by 6 to 8. A `cave` is at least 13 by 10. The default is one of the three at random.
 - `light=` is `lit`, `dim` or `dark` (see Light).
 - `ambush=yes` puts the foes on the flanks. The party starts on the side it came from.
 - `feature=<thing>@<where>` and `hazard=<kind>@<where>` use the grammar of `site set` points of interest. `where` is `party`, `center` or `foes`.
@@ -87,23 +88,23 @@ The stage reads where the party is. It does not ask the DM.
 | Source | Floor and walls | Props | The party returns to |
 |---|---|---|---|
 | A site room (crawl) | The theme tiles of the site | Points of interest and doors in the room become cover and objects | The same tile; the room is marked cleared |
-| A saved scene | The LPC floor of the scene. A top-down DCSS wall for the template, because LPC walls face the front | Scene props become obstacles by zone (back-left prop: top left of the arena) | The same scene, with a new beat |
+| A saved scene | The floor and walls of the scene, drawn from the same picture as the scene | The props of the scene, on the cells where the scene shows them | The same scene, with a new beat |
 | Nothing (a road, an ambush) | A ground from the road or forest template. Trees and rocks at the edge | None. The DM adds features | The scene the DM names next |
 
-A site room and a scene are both too small to walk in (a scene is 10 × 6 tiles with three rows of floor). So the arena is always a new room, saved as `{campaign}/stage/arenas/<encounter-id>.json`. A resumed game reloads it.
+A site room is too small to walk in, so a fight from a site is in a new room. A fight from a scene is in the room of the scene: its grid, its props and its wall decor, with every character on the cell where the scene shows them (`stage/cast.py`, the same layout as the browser). A cell that a prop blocks (a seat) gives way to the nearest free cell. A creature the scene does not show starts near the far end. `shape=`, `size=`, `orient=` and `layout=` do not apply in a scene room; features and hazards do. If the starts cannot reach each other (a table cuts the room in two), the stage builds another room and tells the DM. The arena keeps a copy of the room, saved as `{campaign}/stage/arenas/<encounter-id>.json`. A resumed game reloads it.
 
 ### Generator
 
 Plain Python, seeded, no libraries. The same seed gives the same arena. The steps:
 
-1. **Shell.** A room has walls and two door gaps. An open ground has sparse trees at the edge.
-2. **Layout.** Open: three to five scattered obstacles. Chokepoint: a wall across the middle with a gap of three. Pillars: a grid of pillars with a clear lane. Chasm: a hazard band with a bridge of two tiles.
-3. **Source props.** Scene props and points of interest go to their zone.
-4. **DM features.** Each goes to the free tile nearest its `where`, outside the start columns.
-5. **Starts.** The party stands in the first columns on the entry side. The foes stand opposite. An ambush puts two foes on the flanks.
-6. **Check.** Every start tile must reach every other start tile. At least 90 percent of the floor must be reachable. If not, the generator tries the next sub-seed. After 60 tries it uses a plain open room.
+1. **Room.** The shape is a mask of floor cells (`stage/rooms.py`). The seed picks a shape from the odds of the theme, a size and a turn (8 ways). Only the largest connected part stays. A wall `#` stands on every cell that touches floor (8 neighbours). Every other cell is the void `-`: it is never drawn, never walkable, and it stops sight like a wall. A room has a door `d` in the wall cell nearest each start zone. An open ground has no doors.
+2. **Layout.** Open: three to five scattered obstacles. Chokepoint: a wall across the shorter side of the room at its centre, with a gap of three cells. Pillars: a grid of pillars around the centre. Chasm: a hazard band two cells wide across the shorter side, with a bridge of three cells. Where the centre is a narrow passage, the cut moves along the room.
+3. **Source props.** Scene props and points of interest go to their zone of the room.
+4. **DM features.** Each goes to the free cell nearest its `where` (`party` is zone A, `foes` is zone B, `center` is the centre of the room).
+5. **Starts.** Zone A is the floor cell farthest from the centre. Zone B is the floor cell farthest from A. They must be at least 7 apart. The party takes the cells nearest A and the foes take the cells nearest B. Cells with floor all around are better. An ambush puts two foes on the flanks.
+6. **Check.** A prop stands only on a cell with floor on all 8 sides, at least 3 cells from A and B, and more than 2 cells from the other decor. The floor, less the props and the walls, must be one connected area. Every start cell must lie in it. If not, the generator tries the next sub-seed. After 40 tries it leaves out the DM features and, if the DM gave no shape, it uses a plain rectangle.
 
-Tile characters: wall, pillar, tree (block movement and sight); crate and table (block movement, give cover, do not block sight); hazard (lava or water; a unit that is pushed in takes 2d6); door; floor.
+Tile characters: wall `#` and void `-` (block movement and sight); pillar, tree (block movement and sight); crate and table (block movement, give cover, do not block sight); hazard (lava or water; a unit that is pushed in takes 2d6); door; floor.
 
 **Module layout.** The core grid code goes into a new module, `stage/arena.py`. It owns the tile grid, the tile atlas and renderer, line and sight, pathing and flood fill, and cover. `crawl.py` imports from it. `crawl.py` keeps what only a site needs: the floor generators, the seen-cell memory, walking, points of interest and wandering checks. Today these functions live in `crawl.py` (`visible`, `_sight`, `_line`, `path_to`, `_path`, `_flood`, `atlas_png`, `render_full`). Moving them is a refactor with no change in behavior. It is the first step of the work, before any board code, and `test_crawl` in `tests/test_stage.py` must pass unchanged. The arena generator is new code in `arena.py`.
 
@@ -338,7 +339,7 @@ The 5e API has no treasure tables, so the first version uses a small table by CR
 ### Return
 
 - From a site room: the party stands on the tile where it stood, the room is marked cleared, and `@explore <site-id>` shows the site again.
-- From a scene: the DM shows the next beat with `@scene`.
+- From a scene: the fight was in the room of the scene, and the party stood where the scene put it. The DM shows the next beat with `@scene`.
 - The arena file stays on disk until the campaign is saved over.
 
 ## 8. Settings

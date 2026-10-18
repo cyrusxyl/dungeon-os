@@ -30,6 +30,18 @@ def start(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> li
     return lines
 
 
+def room_line(spec: dict) -> str:
+    """One line for the DM about the room of a new arena."""
+    if spec["shape"] == "scene":
+        text = "The fight is in the room of the scene, with the party where it stood."
+        if spec["ignored"]:
+            text += f" {', '.join(spec['ignored'])} did not apply there."
+    else:
+        text = f"The room is a {spec['shape']} ({spec['size']}). The party starts at one end and the foes at the other"
+        text += " (an ambush: foes also on the flanks)." if spec["ambush"] else "."
+    return text + (f" Note: {spec['fallback']}." if spec.get("fallback") else "")
+
+
 def build(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> tuple[str, dict, list[str]]:
     """Like `start`, but the arena is not written: the caller saves it. The state names it (`enc["arena"]`)."""
     enc = combat.encounter(state)
@@ -37,7 +49,7 @@ def build(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> tu
     pcs = [c for c in enc["participants"] if c not in enc["monsters"]]
     foes = list(enc["monsters"])
     source = arena.source_of(campaign_dir, stage, spec)
-    a = arena.generate(spec, source, len(pcs), len(foes))
+    a = arena.generate(spec, source, len(pcs), len(foes), pcs, foes)
     a["units"] = {cid: {"x": x, "y": y} for cid, (x, y) in zip(pcs, a["starts"]["party"])}
     a["units"] |= {cid: {"x": x, "y": y} for cid, (x, y) in zip(foes, a["starts"]["foes"])}
     a["control"] = {cid: controlled_by(enc["monsters"][cid]) for cid in foes}
@@ -49,7 +61,7 @@ def build(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> tu
     dm = [cid for cid, who in a["control"].items() if who == "dm"]
     where = {"site": f"the site {spec['source_id']}", "scene": f"the scene {spec['source_id']}", "none": "an empty field"}[spec["source"]]
     return arena_id, a, [f"Arena {arena_id}: {a['w']} x {a['h']}, layout {spec['layout']}, light {spec['light']}, built from {where} (seed {spec['seed']}).",
-                         "The party starts on the left, the foes on the right" + (" (an ambush: foes also on the flanks)." if spec["ambush"] else "."),
+                         room_line(spec),
                          "You play: " + (", ".join(dm) if dm else "no one") + ". The stage plays the other creatures."]
 
 
@@ -491,7 +503,7 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict
     pending = a.get("pending")
     known = (lambda x, y: (x, y) in seen) if fog else (lambda x, y: True)
     return {
-        "id": arena_id, "w": a["w"], "h": a["h"], "light": a["spec"]["light"],
+        "id": arena_id, "w": a["w"], "h": a["h"], "shape": a["spec"].get("shape", "rect"), "room": a.get("room"), "light": a["spec"]["light"],
         "grid": ["".join(c if known(x, y) else " " for x, c in enumerate(row)) for y, row in enumerate(a["grid"])],
         "visible": ["".join("1" if (x, y) in vis else "0" for x in range(a["w"])) for y in range(a["h"])] if fog else None,
         "hazard": "water" if a["spec"]["decor"] == "forest" else "lava",

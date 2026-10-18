@@ -1,129 +1,46 @@
-import { useEffect, useRef, useState } from 'react'
+import { useMemo } from 'react'
 
 import { DmTable } from '@/components/DmTable'
-import { layout, STAGE_W, type Placed, type StandSpot } from '@/lib/layout'
-import { type Side, type StageState, titleCase, useIntegerScale, useJson } from '@/lib/stage'
+import { SceneCanvas, type SceneActor } from '@/components/SceneCanvas'
+import { layout } from '@/lib/layout'
+import { blankRoom, type SceneRoom } from '@/lib/scene'
+import { type StageState, useJson } from '@/lib/stage'
 
-// Logical stage size in source pixels: a 10 x 6 room of 32 px LPC tiles.
-export { STAGE_W }
-export const STAGE_H = 192
-const FRAME = 64
-// A frame is drawn so its feet row (60) lands on the actor's feet line; a seated frame puts its hip row (48) on the seat.
-const FEET_ROW = 60
-const HIP_ROW = 48
-const RING: Record<Side, string> = { party: '#5fd08a', ally: '#5fd08a', neutral: '#e8c14a', hostile: '#ef6a5a' }
-
-function Img({ src, fallback, className }: { src: string; fallback: React.ReactNode; className?: string }) {
-  const [failed, setFailed] = useState(false)
-  useEffect(() => setFailed(false), [src])
-  if (failed) return <>{fallback}</>
-  return <img src={src} alt="" draggable={false} className={`pixelated ${className ?? ''}`} onError={() => setFailed(true)} />
-}
-
-// A big monster's PNG is bigger than the 64 px frame: draw it at its own size, centered on its spot, feet on the line.
-function ActorSprite({ id, src, x, bottom, filter }: { id: string; src: string; x: number; bottom: number; filter: string }) {
-  const [size, setSize] = useState(FRAME)
-  const [failed, setFailed] = useState(false)
-  useEffect(() => setFailed(false), [src])
-  return (
-    <div
-      className="absolute transition-[left,top] duration-300"
-      style={{ left: Math.max(0, Math.min(STAGE_W - size, x - size / 2)), top: bottom - size, width: size, height: size, filter }}
-    >
-      {failed ? (
-        <Silhouette id={id} />
-      ) : (
-        <img
-          src={src}
-          alt=""
-          draggable={false}
-          className="pixelated h-full w-full"
-          onLoad={(e) => setSize(Math.max(FRAME, e.currentTarget.naturalWidth))}
-          onError={() => setFailed(true)}
-        />
-      )}
-    </div>
-  )
-}
-
-function Silhouette({ id }: { id: string }) {
-  // Shown until an actor has an appearance: a plain figure shape, never a guess.
-  return (
-    <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-      <ellipse cx="32" cy="60" rx="12" ry="3" fill="#000" opacity="0.35" />
-      <circle cx="32" cy="22" r="8" fill="#3a3350" />
-      <rect x="22" y="31" width="20" height="26" rx="3" fill="#3a3350" />
-      <title>{titleCase(id)}</title>
-    </svg>
-  )
-}
-
-// Actors are drawn over the scene image, so they get the scene's mood as a filter.
-const MOOD_FILTER: Record<string, string> = {
-  day: 'none',
-  dusk: 'sepia(0.2) brightness(0.92)',
-  night: 'brightness(0.6) saturate(0.7) hue-rotate(10deg)',
-  torchlit: 'brightness(0.8) sepia(0.25)',
-  fog: 'contrast(0.85) brightness(1.05) saturate(0.8)',
-  rain: 'brightness(0.75) saturate(0.8)',
-  snow: 'brightness(1.03) saturate(0.85)',
-}
-
-function useSceneInfo(scene: string | null, version: number): { mood: string; stand: StandSpot[] } {
-  const data = useJson<{ mood: string; stand?: StandSpot[] }>(scene ? `/api/scene/${encodeURIComponent(scene)}` : null, version)
-  return { mood: data?.mood ?? 'day', stand: data?.stand ?? [] }
-}
+/** The scene room as the browser draws it: the room of the scene when it has a look, else bare floor. */
+const NO_LOOK: SceneRoom = { ...blankRoom(), props: [], has_look: false, mood: 'day', open: true, shaped: false, decor: [], stand: [], stuff: [], sheet: { w: 0, h: 0, north: [0, 0], west: [0, 0], stuff: 0 } }
 
 export function StageView({ state, speaker }: { state: StageState; speaker?: string }) {
-  const box = useRef<HTMLDivElement>(null)
-  const scale = useIntegerScale(box, STAGE_W, STAGE_H)
   const scene = state.scene
-  const { mood, stand } = useSceneInfo(scene, state.versions?.[`scene:${scene}`] ?? 0)
-  const cast = layout(state.actors, stand)
+  const version = state.versions?.[`scene:${scene}`] ?? 0
+  const data = useJson<SceneRoom>(scene ? `/api/scene/${encodeURIComponent(scene)}?v=${version}` : null, version)
+  const room = data?.has_look ? data : NO_LOOK
+  const actors = state.actors
+  const versions = state.versions
+  const cast = useMemo<SceneActor[]>(
+    () =>
+      layout(actors, room.stand, room).map((p) => ({
+        ...p,
+        src: `/asset/actor/${encodeURIComponent(p.id)}/full.png?d=${p.facing}${p.sit ? '&pose=sit' : ''}&v=${versions?.[p.id] ?? 0}`,
+      })),
+    [actors, room, versions],
+  )
 
+  if (!scene && Object.keys(actors).length === 0) {
+    return state.dm.status === 'starting' || state.dm.status === 'busy' ? (
+      <DmTable activity={state.activity} />
+    ) : (
+      <div className="absolute inset-0 grid place-items-center text-[8px] text-[var(--dim)] pixel-font">No scene yet</div>
+    )
+  }
   return (
-    <div ref={box} className="relative flex h-full w-full items-center justify-center overflow-hidden">
-      <div
-        className="relative shrink-0 overflow-hidden"
-        style={{ width: STAGE_W, height: STAGE_H, transform: `scale(${scale})`, transformOrigin: 'center' }}
-      >
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(#221d30 0 52%, #2c2536 52% 100%)' }} />
-        {scene && (
-          <Img
-            key={scene}
-            src={`/asset/scene/${scene}.png?v=${state.versions?.[`scene:${scene}`] ?? 0}`}
-            className="scene-in absolute inset-0 h-full w-full"
-            fallback={
-              <div className="absolute inset-x-0 top-6 text-center text-[8px] tracking-wider text-[var(--dim)] pixel-font">
-                {titleCase(scene)}
-              </div>
-            }
-          />
-        )}
-        {cast.filter((p: Placed) => !p.sit).map((p: Placed) => (
-          <div
-            key={`ring-${p.id}`}
-            className="absolute rounded-[50%] transition-[left,top] duration-300"
-            style={{ left: p.x - 13, top: p.y - 2, width: 26, height: 6, background: RING[p.side], opacity: 0.75, boxShadow: '0 0 0 1px #0008' }}
-          />
-        ))}
-        {cast.map((p: Placed) => (
-          <ActorSprite
-            key={p.id}
-            id={p.id}
-            src={`/asset/actor/${encodeURIComponent(p.id)}/full.png?d=${p.facing}${p.sit ? '&pose=sit' : ''}&v=${state.versions?.[p.id] ?? 0}`}
-            x={p.x}
-            bottom={p.sit ? p.y - HIP_ROW + FRAME : p.y - FEET_ROW + FRAME - (p.id === speaker ? 2 : 0)}
-            filter={MOOD_FILTER[mood] ?? 'none'}
-          />
-        ))}
-        {!scene && Object.keys(state.actors).length === 0 &&
-          (state.dm.status === 'starting' || state.dm.status === 'busy' ? (
-            <DmTable activity={state.activity} />
-          ) : (
-            <div className="absolute inset-0 grid place-items-center text-[8px] text-[var(--dim)] pixel-font">No scene yet</div>
-          ))}
-      </div>
-    </div>
+    <SceneCanvas
+      key={scene ?? ''}
+      room={room}
+      sheetUrl={data?.has_look ? `/asset/scene/${encodeURIComponent(scene!)}/room.png?v=${version}` : ''}
+      cast={cast}
+      speaker={speaker}
+      mood={room.mood}
+      className="scene-in"
+    />
   )
 }

@@ -11,6 +11,9 @@ export function variant(x: number, y: number, n: number): number {
   return k < n ? k : 0
 }
 
+/** The loader that `useImages` returns: the picture for a URL once it has loaded. */
+export type ImageLoader = (url: string) => HTMLImageElement | undefined
+
 /** Images by URL; `tick` changes when one finishes loading, so the canvas redraws. */
 export function useImages(): [(url: string) => HTMLImageElement | undefined, number] {
   const cache = useRef(new Map<string, HTMLImageElement>())

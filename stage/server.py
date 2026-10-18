@@ -1232,34 +1232,40 @@ def create_app(
             await stage.broadcast()
         return JSONResponse({"ok": True})
 
-    async def asset_scene(request: Request):
-        campaign = need().campaign_dir
-        location = request.path_params["location"]
+    def load_room(spec: dict | None, stuff: tuple = ()) -> dict:
+        """The room of a scene spec for the browser; a missing or bad spec gives a room with no look."""
+        try:
+            return {**scenes.room(spec, stuff), "has_look": True} if spec else {"has_look": False, "mood": "day"}
+        except ValueError:
+            return {"has_look": False, "mood": "day"}
 
-        def render():
-            spec = scenes.load(campaign, location)
-            return spec and scenes.png(spec)
-        return await png_response(render)
-
-    async def asset_template(request: Request):
-        """A template with no campaign, for the start menu's backdrop."""
-        spec = {"template": request.path_params["name"], "mood": request.query_params.get("mood", "day")}
-        return await png_response(scenes.png, spec, static=True)
-
-    async def asset_filler(request: Request):
-        return await png_response(scenes.filler_png, static=True)
+    async def room_png(spec: dict | None, stuff: tuple = (), static: bool = False):
+        if not spec:
+            return Response(status_code=404)
+        return await png_response(scenes.room_png, spec, stuff, static=static)
 
     async def api_scene(request: Request):
         spec = scenes.load(need().campaign_dir, request.path_params["location"])
-        try:
-            mood = scenes.resolve(spec)["mood"] if spec else "day"
-        except ValueError:
-            mood = "day"
-        try:
-            stand = scenes.stand_points(spec) if spec else []
-        except ValueError:
-            stand = []
-        return JSONResponse({"mood": mood, "has_look": spec is not None, "stand": stand})
+        return JSONResponse(load_room(spec))
+
+    async def asset_scene(request: Request):
+        return await room_png(scenes.load(need().campaign_dir, request.path_params["location"]))
+
+    def template_spec(request: Request) -> dict:
+        """A template with no campaign, for the start menu's backdrop."""
+        return {"template": request.path_params["name"], "mood": request.query_params.get("mood", "day")}
+
+    async def api_template(request: Request):
+        return JSONResponse(load_room(template_spec(request)))
+
+    async def asset_template(request: Request):
+        return await room_png(template_spec(request), static=True)
+
+    async def api_filler(request: Request):
+        return JSONResponse(load_room(scenes.FILLER, scenes.FILLER_STUFF))
+
+    async def asset_filler(request: Request):
+        return await room_png(scenes.FILLER, scenes.FILLER_STUFF, static=True)
 
     async def api_actor(request: Request):
         actor_id = request.path_params["actor_id"]
@@ -1740,11 +1746,24 @@ def create_app(
             return Response(status_code=404)
         return await png_response(arena.atlas_for, a["look"], static=True)
 
+    async def asset_arena_room(request: Request):
+        """The floor and wall pictures of a fight in the room of a scene, from the copy of the scene kept in the arena."""
+        a = arena.load(need().campaign_dir, request.path_params["arena_id"])
+        if a is None or not a.get("scene_spec"):
+            return Response(status_code=404)
+        return await png_response(scenes.room_png, a["scene_spec"], static=True)
+
     async def asset_prop(request: Request):
         kind = request.path_params["kind"]
         if kind not in scenes.catalog()["props"]:
             return Response(status_code=404)
         return await png_response(arena.prop_png, kind, static=True)
+
+    async def asset_props(request: Request):
+        return await png_response(lambda: scenes.prop_atlas()[1], static=True)
+
+    async def api_props(request: Request):
+        return JSONResponse(await run_in_threadpool(scenes.props_info))
 
     async def api_map_levels(request: Request):
         stage = need()
@@ -1881,10 +1900,12 @@ def create_app(
         Route("/api/tts/start", api_tts_start, methods=["POST"]),
         Route("/api/tts/stop", api_tts_stop, methods=["POST"]),
         Route("/asset/look.png", asset_look),
-        Route("/asset/scene/{location}.png", asset_scene),
+        Route("/asset/scene/{location}/room.png", asset_scene),
         Route("/api/scene/{location}", api_scene),
-        Route("/asset/template/{name}.png", asset_template),
-        Route("/asset/filler.png", asset_filler),
+        Route("/asset/template/{name}/room.png", asset_template),
+        Route("/api/template/{name}", api_template),
+        Route("/api/filler", api_filler),
+        Route("/asset/filler/room.png", asset_filler),
         Route("/asset/actor/{actor_id}/full.png", asset_actor),
         Route("/asset/actor/{actor_id}/portrait/{emotion}.png", asset_actor),
         Route("/api/site/{site_id}", api_site),
@@ -1900,7 +1921,10 @@ def create_app(
         Route("/api/combat/settings", api_combat_settings, methods=["POST"]),
         Route("/api/arena/{arena_id}", api_arena),
         Route("/asset/arena/{arena_id}.png", asset_arena),
+        Route("/asset/arena/{arena_id}/room.png", asset_arena_room),
         Route("/asset/prop/{kind}.png", asset_prop),
+        Route("/asset/props.png", asset_props),
+        Route("/api/props", api_props),
         Route("/api/map", api_map_levels),
         Route("/api/map/travel", api_map_travel, methods=["POST"]),
         Route("/api/map/{map_id}", api_map),

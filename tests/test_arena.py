@@ -74,7 +74,8 @@ def test_props() -> None:
     check("a barrel blocks movement, gives half cover, does not block sight",
           arena.board_of("barrel")["blocks_move"] and arena.board_of("barrel")["cover"] == "half" and not arena.board_of("barrel")["blocks_sight"])
     check("a bush does not block movement", not arena.board_of("bush")["blocks_move"])
-    other = next(p for p in scenes.catalog()["props"] if p not in BOARD_PROPS)
+    other = next(p for p, v in scenes.catalog()["props"].items() if p not in BOARD_PROPS and not v.get("flat"))
+    check("a rug lies flat and blocks nothing", not arena.board_of("rug_red")["blocks_move"])
     check("a prop without an entry blocks movement and gives no cover", arena.board_of(other) == arena.DEFAULT_BOARD)
     cfg = arena.arena_data()
     check("every scene template has a look, and each look is a theme",
@@ -136,7 +137,191 @@ def test_generator() -> None:
     a = arena.generate({"features": [], "hazards": [], "seed": 4}, source("none"))
     check("an open shell has no door gaps", arena.DOOR not in "".join(a["grid"]))
     a = arena.generate({"features": [], "hazards": [], "seed": 4}, source("scene"))
-    check("a room shell has a door on each short side", a["grid"][a["h"] // 2][0] == arena.DOOR and a["grid"][a["h"] // 2][-1] == arena.DOOR)
+    doors = [(x, y) for y, row in enumerate(a["grid"]) for x, c in enumerate(row) if c == arena.DOOR]
+    near = lambda d, side: min(arena.cheb(d, tuple(s)) for s in a["starts"][side])  # noqa: E731
+    check("a room shell has a door in the wall nearest each start zone",
+          len(doors) == 2 and min(near(d, "party") for d in doors) <= 2 and min(near(d, "foes") for d in doors) <= 2)
+
+
+def floor_cells(a: dict) -> set[tuple[int, int]]:
+    return {(x, y) for y, row in enumerate(a["grid"]) for x, c in enumerate(row) if c in arena.STAND}
+
+
+def test_shapes() -> None:
+    print("arena: room shapes")
+    import random
+
+    from stage import rooms
+
+    check("the 17 shapes", len(arena.SHAPES) == 17 and set(arena.SHAPES) == set(rooms.SHAPES))
+    odds = arena.arena_data()["shapes"]
+    check("every shape in the odds tables exists, each table has weights, and there is a default",
+          "default" in odds and all(set(t) <= set(arena.SHAPES) and all(w > 0 for w in t.values()) for t in odds.values()))
+    check("every table is for a known theme", all(t == "default" or t in arena.themes() for t in odds))
+    check("the odds pick a shape by seed, the same each time and not always the same one",
+          arena.pick_shape("cave", 4) == arena.pick_shape("cave", 4) and len({arena.pick_shape("dungeon", s) for s in range(40)}) > 3)
+    check("a cave theme mostly gives caves", sum(arena.pick_shape("cave", s) == "cave" for s in range(200)) > 100)
+
+    # The mask of a shape: connected, in the size class, and the same whichever way it is turned.
+    broken, flips, sized = [], [], []
+    for shape in arena.SHAPES:
+        for seed in range(1, 6):
+            made = None
+            for attempt in range(60):
+                made = rooms.mask(shape, random.Random(f"{shape}:{seed}:{attempt}"), "small", 0)
+                if made:
+                    break
+            if not made:
+                broken.append((shape, seed, "none"))
+                continue
+            cells, used = made
+            if len(cells) < 40 or not arena._joined(set(cells), cells[0]):
+                broken.append((shape, seed))
+            counts = set()
+            for orient in range(8):
+                again = rooms.mask(shape, random.Random(f"{shape}:{seed}:{attempt}"), "small", orient)
+                counts.add(len(again[0]))
+            if len(counts) != 1:
+                flips.append((shape, seed, counts))
+            if shape not in ("hall", "cave"):
+                xs, ys = [x for x, _ in cells], [y for _, y in cells]
+                if not (max(xs) <= 12 and max(ys) <= 9):
+                    sized.append((shape, seed, max(xs), max(ys)))
+    check(f"every shape makes a connected room of at least 40 cells {broken}", not broken)
+    check(f"turning a room 8 ways does not change its floor count {flips}", not flips)
+    check(f"a small room fits the small class {sized}", not sized)
+    g = rooms.grid_of([(1, 1), (2, 1), (1, 2)])
+    check("walls touch floor and the rest is void", ["".join(r) for r in g] == ["####-", "#..#-", "#.##-", "###--"][:len(g)] or
+          all((c == "#") == any(0 <= x + a < len(g[0]) and 0 <= y + b < len(g) and g[y + b][x + a] == "." for a in (-1, 0, 1) for b in (-1, 0, 1)) for y, r in enumerate(g)
+              for x, c in enumerate(r) if c != "."))
+    sizes = {k: set() for k in ("small", "medium", "large")}
+    for seed in range(1, 40):
+        for k in sizes:
+            for attempt in range(60):
+                m = rooms.mask("rect", random.Random(f"rect:{seed}:{attempt}"), k, 0)
+                if m:
+                    sizes[k].add((max(x for x, _ in m[0]), max(y for _, y in m[0])))
+                    break
+    check("size classes give the widths and depths of the plan",
+          all(9 <= w <= 12 and 7 <= d <= 9 for w, d in sizes["small"]) and all(14 <= w <= 18 and 9 <= d <= 12 for w, d in sizes["medium"])
+          and all(20 <= w <= 26 and 13 <= d <= 17 for w, d in sizes["large"]))
+    hall = [rooms.box("hall", random.Random(s), None)[1:] for s in range(40)]
+    check("a long hall is 20 to 27 by 6 to 8, a cave at least 13 by 10",
+          all(20 <= w <= 27 and 6 <= d <= 8 for w, d in hall) and all(w >= 13 and d >= 10 for _, w, d in (rooms.box("cave", random.Random(s), "small") for s in range(40))))
+
+    # A whole arena on each shape and each layout.
+    bad, doors, made = [], [], 0
+    for shape in arena.SHAPES:
+        for layout in arena.LAYOUTS:
+            for kind in ("scene", "none"):
+                for seed in (1, 2, 3):
+                    spec = {"features": [], "hazards": [], "layout": layout, "shape": shape, "seed": seed, "ambush": seed == 2}
+                    a = arena.generate(spec, source(kind), 3, 4)
+                    made += 1
+                    blocked = arena.blocked_cells(a)
+                    free = floor_cells(a) - blocked
+                    starts = [tuple(p) for p in a["starts"]["party"] + a["starts"]["foes"]]
+                    chars = set("".join(a["grid"]))
+                    near_floor = lambda x, y: any(0 <= x + dx < a["w"] and 0 <= y + dy < a["h"] and a["grid"][y + dy][x + dx] in (arena.FLOOR, arena.HAZARD)  # noqa: E731
+                                                  for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+                    ok = (chars <= set("#.d~-") and arena._joined(free, starts[0]) and all(p in free for p in starts)
+                          and (spec["ambush"] or arena.cheb(a["starts"]["party"][0], a["starts"]["foes"][0]) >= 3)
+                          and not any(near_floor(x, y) for y, row in enumerate(a["grid"]) for x, c in enumerate(row) if c == arena.VOID)
+                          and (layout != "chasm" or any(arena.HAZARD in row for row in a["grid"])))
+                    if not ok:
+                        bad.append((shape, layout, kind, seed))
+                    if kind == "none" and arena.DOOR in "".join(a["grid"]):
+                        doors.append((shape, layout, seed))
+    check(f"{made} arenas on all shapes and layouts: starts joined and free, the void never touches floor, a chasm has hazard {bad[:5]}", not bad)
+    check("an open shell has no doors on any shape", not doors)
+    spec = {"features": [], "hazards": [], "layout": "pillars", "shape": "cross", "seed": 9}
+    check("the same seed makes the same room, another seed another", arena.generate(spec, source("site")) == arena.generate(spec, source("site"))
+          and arena.generate({**spec, "seed": 10}, source("site"))["grid"] != arena.generate(spec, source("site"))["grid"])
+    a = arena.generate({**spec, "orient": 3}, source("site"))
+    b = arena.generate({**spec, "orient": 5}, source("site"))
+    check("a fixed orient is kept in the spec", a["spec"]["orient"] == 3 and b["spec"]["orient"] == 5 and a["spec"]["shape"] == "cross")
+    props = a["props"]
+    cells = {(p["x"], p["y"]) for p in props}
+    check("pillars and cover stand only where all 8 neighbours are floor, and more than 2 apart",
+          all(sum(a["grid"][y + dy][x + dx] == arena.FLOOR for dx in (-1, 0, 1) for dy in (-1, 0, 1)) == 9 for x, y in cells))
+    # The layouts cut the room across its shorter side, with a gap of 3 cells, and both sides stay joined.
+    flat = arena.generate({"features": [], "hazards": [], "layout": "chokepoint", "shape": "rect", "seed": 2, "orient": 0, "size": "medium"}, source("none"))
+    inner = [row[1:-1] for row in flat["grid"][1:-1]]
+    walled = [x for x in range(len(inner[0])) if sum(row[x] == arena.WALL for row in inner) >= len(inner) - 3]
+    check("a chokepoint is a wall across the shorter side with a gap of 3", len(walled) == 1 and sum(row[walled[0]] == arena.FLOOR for row in inner) == 3)
+    wide = arena.generate({"features": [], "hazards": [], "layout": "chasm", "shape": "rect", "seed": 2, "orient": 0, "size": "medium"}, source("none"))
+    inner = [row[1:-1] for row in wide["grid"][1:-1]]
+    chasm = [x for x in range(len(inner[0])) if sum(row[x] == arena.HAZARD for row in inner) >= len(inner) - 3]
+    check("a chasm is two columns of hazard with a bridge of 3", len(chasm) == 2 and chasm[1] == chasm[0] + 1
+          and sum(row[chasm[0]] == arena.FLOOR for row in inner) == 3)
+
+    # The void: never walkable, stops sight, and a path cannot cross it.
+    room = {"grid": ["#--#", "#..#", "####"], "props": []}
+    check("the void blocks walking and sight like a wall", {(1, 0), (2, 0)} <= arena.blocked_cells(room) and {(1, 0), (2, 0)} <= arena.opaque_cells(room))
+    dist, _ = arena.reach((1, 1), 9, arena.blocked_cells(room), (4, 3))
+    check("a walk does not cross the void", set(dist) == {(1, 1), (2, 1)})
+
+    # The DM's words.
+    check("shape= is checked and its case does not matter", arena.parse(["shape=L"])["shape"] == "l" and arena.parse(["shape=ring"])["shape"] == "ring"
+          and raises(lambda: arena.parse(["shape=donut"])) and raises(lambda: arena.parse(["orient=9"])) and arena.parse(["orient=3"])["orient"] == 3
+          and arena.parse(["size=large"])["size"] == "large" and raises(lambda: arena.parse(["size=huge"])))
+    try:
+        arena.parse(["shape=donut"])
+    except arena.ArenaError as e:
+        check("the error names the valid shapes", all(n in str(e) for n in ("rect", "cave", "ring")))
+
+
+def test_scene_room() -> None:
+    print("arena: a fight in the room of a scene")
+    from stage import scenes as _scenes
+
+    with tempfile.TemporaryDirectory() as tmp:
+        c = Path(tmp)
+        _scenes.save(c, "hall", {"template": "hall", "slots": {"back_center": "throne"}, "add": [], "mood": "day"})
+        actors = {"aragorn": {"side": "party"}, "legolas": {"side": "party"}, "goblin#1": {"side": "hostile"}, "goblin#2": {"side": "hostile"},
+                  "king": {"side": "neutral", "on": "back_center"}}
+        src = arena.source_of(c, {"scene": "hall", "actors": actors}, {})
+        room = src["room"]
+        a = arena.generate({"features": [], "hazards": [], "seed": 3}, src, 2, 2, ["aragorn", "legolas"], ["goblin#1", "goblin#2"])
+        cells = {p["id"]: tuple(p["cell"]) for p in src["cast"]}
+        blocked = arena.blocked_cells(a)
+        check("the fight is in the room of the scene: its grid and its props", a["spec"]["shape"] == "scene" and a["grid"] == room["grid"]
+              and [(p["kind"], p["x"], p["y"]) for p in a["props"]] == [(p["kind"], p["x"], p["y"]) for p in room["props"]])
+        check("the party and the foes stand where the scene put them",
+              [tuple(p) for p in a["starts"]["party"]] == [cells["aragorn"], cells["legolas"]] and [tuple(p) for p in a["starts"]["foes"]] == [cells["goblin#1"], cells["goblin#2"]])
+        check("the arena keeps a copy of the room, with the scene spec", a["room"] == room and a["scene_spec"]["template"] == "hall")
+        check("no start stands on a blocked cell, and they all reach each other", not any(tuple(p) in blocked for p in a["starts"]["party"] + a["starts"]["foes"])
+              and arena._joined({(x, y) for y in range(a["h"]) for x in range(a["w"])} - blocked, a["starts"]["party"][0]))
+        check("a rug of the scene is a prop that does not block", any(p["kind"] == "rug_red" for p in a["props"]) and not any((p["x"], p["y"]) in blocked for p in a["props"] if p["kind"] == "rug_red"))
+        # A crowd: 4 PCs and 6 foes in 9 x 7 floor.
+        many = {**{f"pc{i}": {"side": "party"} for i in range(4)}, **{f"orc#{i}": {"side": "hostile"} for i in range(6)}}
+        src2 = arena.source_of(c, {"scene": "hall", "actors": many}, {})
+        b = arena.generate({"features": [], "hazards": [], "seed": 1}, src2, 4, 6, [f"pc{i}" for i in range(4)], [f"orc#{i}" for i in range(6)])
+        starts = [tuple(p) for p in b["starts"]["party"] + b["starts"]["foes"]]
+        check("four heroes and six foes fit in the room of a scene", b["spec"]["shape"] == "scene" and len(set(starts)) == 10 and not any(p in arena.blocked_cells(b) for p in starts))
+        # A creature the cast has not placed starts near the far end; a seated one moves off its seat.
+        c3 = arena.generate({"features": [], "hazards": [], "seed": 2}, src, 2, 3, ["aragorn", "king"], ["goblin#1", "goblin#2", "boss"])
+        king = tuple(c3["starts"]["party"][1])
+        check("a seated character is moved to a free cell, and a creature with no place gets one", king not in arena.blocked_cells(c3) and len(c3["starts"]["foes"]) == 3)
+        # A scene with a shape of its own: the fight is in that room.
+        bad = []
+        for shape in ("cross", "ring", "cave", "l", "twin"):
+            _scenes.save(c, "odd", {"template": "tavern", "slots": {}, "add": [], "mood": "day", "shape": shape, "seed": 4})
+            src4 = arena.source_of(c, {"scene": "odd", "actors": actors}, {})
+            f = arena.generate({"features": [], "hazards": [], "seed": 3}, src4, 2, 2, ["aragorn", "legolas"], ["goblin#1", "goblin#2"])
+            starts = [tuple(p) for p in f["starts"]["party"] + f["starts"]["foes"]]
+            if not (f["spec"]["shape"] == "scene" and f["grid"] == src4["room"]["grid"] and not any(p in arena.blocked_cells(f) for p in starts)):
+                bad.append(shape)
+        check(f"a fight in a scene of any shape is in that room {bad}", not bad)
+        # The DM's room words do not apply in a scene room, and the stage says so.
+        d = arena.generate({**arena.parse(["shape=ring", "size=large", "feature=cover@foes", "hazard=lava@center"]), "seed": 5}, src, 2, 2, ["aragorn", "legolas"], ["goblin#1", "goblin#2"])
+        check("shape and size are ignored in a scene room; features and hazards still apply", d["spec"]["ignored"] == ["shape", "size"] and len(d["props"]) > len(room["props"]))
+        check("the DM is told", "did not apply" in board.room_line(d["spec"]) and "room of the scene" in board.room_line(d["spec"]))
+    # A room that cannot hold the fight gives a generated room, with a note.
+    split = {**source("scene"), "room": {"grid": ["#####", "#.#.#", "#####"], "props": []}, "cast": [], "scene_spec": {"template": "hall"}}
+    e = arena.generate({"features": [], "hazards": [], "seed": 4}, split, 1, 1, ["a"], ["b"])
+    check("if the starts cannot reach each other, the stage builds another room and says so", e["spec"]["shape"] != "scene" and "no room" in e["spec"]["fallback"]
+          and "Note:" in board.room_line(e["spec"]))
 
 
 def test_source_and_files() -> None:
@@ -190,7 +375,8 @@ def test_start() -> None:
         check("every combatant stands on a start tile of its side",
               [list(a["units"][u].values()) for u in ("aragorn", "legolas")] == starts["party"]
               and [list(a["units"][u].values()) for u in ("goblin#1", "goblin#2", "boss")] == starts["foes"])
-        check("the spec keeps light and size", a["spec"]["light"] == "dark" and (a["w"], a["h"]) == (12, 8))
+        check("the spec keeps light and size (a small room, turned either way)",
+              a["spec"]["light"] == "dark" and a["spec"]["size"] == "small" and max(a["w"], a["h"]) <= 14 and min(a["w"], a["h"]) <= 11)
         check("a creature the DM named is DM-played, the others are not",
               a["control"] == {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"} and "You play: boss" in lines[-1])
         check("a bare monster index is engine-played, a renamed one is DM-played",
@@ -226,7 +412,7 @@ def test_state() -> None:
 
 
 if __name__ == "__main__":
-    for t in (test_geometry, test_props, test_parse, test_generator, test_source_and_files, test_start, test_state):
+    for t in (test_geometry, test_props, test_parse, test_generator, test_shapes, test_scene_room, test_source_and_files, test_start, test_state):
         t()
     print(f"\n{PASS} passed, {FAIL} failed")
     raise SystemExit(1 if FAIL else 0)

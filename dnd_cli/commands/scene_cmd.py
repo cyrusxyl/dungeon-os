@@ -4,7 +4,7 @@ import json
 import sys
 from datetime import date
 
-from dnd_cli.commands.show_cmd import notify_stage, preview_path, run_stage
+from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from stage import beat, maps, scenes
 from stage.assets import AssetError
 
@@ -53,20 +53,6 @@ def execute_show(campaign, location: str) -> int:
     return run_stage(campaign, go, scenes.SceneError, AssetError)
 
 
-def execute_preview(campaign, location: str) -> int:
-    def go(campaign_dir):
-        spec = scenes.load(campaign_dir, location)
-        if spec is None:
-            print(f"No scene for {location!r} yet.", file=sys.stderr)
-            return 1
-        out = preview_path(campaign_dir, f"scene-{location}")
-        img = scenes.render(spec)
-        img.resize((img.width * 3, img.height * 3), 0).save(out)  # 0 = nearest neighbor
-        print(f"Preview: {out}")
-        return 0
-    return run_stage(campaign, go, scenes.SceneError, AssetError)
-
-
 def execute_options(what: str | None) -> int:
     cat = scenes.catalog()
     groups = {
@@ -77,11 +63,12 @@ def execute_options(what: str | None) -> int:
         "props": {k: f"{'wall' if v.get('on') == 'wall' else 'floor'}{', flat' if v.get('flat') else ''}"
                   for k, v in cat["props"].items()},
         "moods": cat["moods"],
+        "shapes": list(scenes.rooms.SHAPE_NAMES),
         "slots": scenes.SLOTS,
     }
     if what is None:
         print("Usage: uv run dnd-cli scene set <location-id> template=<t> [wall=<w>] [floor=<f>] [mood=<m>] "
-              "[<slot>=<prop>|none] [+<prop>@<zone>] [clear=add]")
+              "[shape=<shape>|none] [seed=<n>] [size=small|medium|large] [<slot>=<prop>|none] [+<prop>@<zone>] [clear=add]")
         print("Zones (for +prop@zone) are the floor slots: " + ", ".join(scenes.ZONES))
         for k, v in groups.items():
             print(f"\n{k}: " + ", ".join(v))
