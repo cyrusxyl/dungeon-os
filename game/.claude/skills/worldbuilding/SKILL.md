@@ -305,11 +305,11 @@ When players visit a shop:
 
 ```bash
 uv run dnd-cli character gold sireth -25          # refuses if the character cannot pay
-uv run dnd-cli character equip sireth rapier       # weapon: attack and damage worked out; armor or shield: AC worked out
+uv run dnd-cli character item sireth equip rapier   # weapon: attack and damage worked out; armor or shield: AC worked out
 uv run dnd-cli character item sireth add "Rope, hempen (50 feet)"     # gear that is not a weapon or armor
 ```
 
-Price: the API `cost` with your markup (1 gp = 10 sp = 100 cp). `equip` adds the item to the inventory too. A character not proficient with a weapon: `equip ... --not-proficient`.
+Price: the API `cost` with your markup (1 gp = 10 sp = 100 cp). `item equip` adds the item to the inventory too, from the 5e API item of that name or index. A character not proficient with a weapon: `item ... equip ... --not-proficient`.
 
 ### Equipment Proficiency Validation
 
@@ -361,7 +361,7 @@ Before allowing equipment use:
 
 ### Loot Distribution with Equipment
 
-Name the items with their API stats, let the players divide them, then `character item ... add` (and `character equip` for gear they use at once).
+Name the items with their API stats, let the players divide them, then `character item ... add` (and `character item ... equip` for gear they use at once).
 
 ### Equipment Maintenance
 

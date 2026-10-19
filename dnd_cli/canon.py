@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import jsonschema
 
 from dnd_cli.campaign import REPO_ROOT, CAMPAIGNS_DIR, CampaignError, resolve_campaign_dir
 
@@ -39,6 +38,8 @@ def canon_path(campaign_dir: Path) -> Path:
 
 def validate(data: dict) -> None:
     """Raise CanonError with a clear message if data does not match the schema."""
+    import jsonschema  # slow to import: load it only when a file is checked
+
     schema = _load_schema()
     try:
         jsonschema.validate(data, schema)

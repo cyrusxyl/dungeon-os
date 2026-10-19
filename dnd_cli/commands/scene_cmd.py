@@ -4,8 +4,9 @@ import json
 import sys
 from datetime import date
 
+from core.ids import ID_RE, ID_RULE
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
-from stage import beat, maps, scenes
+from stage import maps, scenes
 from stage.assets import AssetError
 
 
@@ -13,8 +14,8 @@ def execute_set(campaign, location: str, tokens: list[str], change: bool = False
     def go(campaign_dir):
         if not tokens:
             raise scenes.SceneError("give at least one setting, for example template=tavern.")
-        if not beat.ID_RE.match(location):
-            raise scenes.SceneError(f"location id {location!r}: {beat.ID_RULE}.")
+        if not ID_RE.match(location):
+            raise scenes.SceneError(f"location id {location!r}: {ID_RULE}.")
         current = scenes.load(campaign_dir, location)
         if current is not None and not change:
             # A saved place is reused as is; a revisit must not rebuild it.

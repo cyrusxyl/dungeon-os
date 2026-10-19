@@ -10,8 +10,10 @@ import colorsys
 import json
 from functools import cache, lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
 from stage.assets import TILES_DIR, ensure_tiles
 
@@ -47,6 +49,7 @@ def scale(tile: str) -> float:
 
 def recolor(img: Image.Image, hue: float = 0, sat: float = 1, value: float = 1) -> Image.Image:
     """Shift the colours of a picture; the transparent pixels stay clear."""
+    from PIL import Image
     px = []
     for r, g, b, a in img.getdata():
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
@@ -60,6 +63,7 @@ def recolor(img: Image.Image, hue: float = 0, sat: float = 1, value: float = 1) 
 @lru_cache(maxsize=128)
 def frame(tile: str, facing: str) -> Image.Image:
     """The animal facing `facing` (down, up, left or right), trimmed to its pixels."""
+    from PIL import Image
     c = catalog()[tile.removeprefix(PREFIX)]
     ensure_tiles()
     fw, fh = c["frame"]

@@ -8,8 +8,9 @@ bonus. It never changes remaining slots or chosen spells.
 
 from __future__ import annotations
 
-from dnd_cli import actions, combat, resources, sheet
-from dnd_cli.combat import RulesError
+from dnd_cli import actions, resources, sheet
+from dnd_cli.combat import smite
+from dnd_cli.errors import RulesError
 
 # Features that need a recorded choice: feature name -> sheet key.
 CHOICES = {
@@ -117,7 +118,7 @@ def _audit(sheet_: dict, cls: dict, lvl: dict, levels: list[dict]) -> list[str]:
         if name.lower() in have and not sheet_.get(key):
             out.append(f"choose: {name} is not recorded (ask the player; sheet key {key})")
 
-    held = {n: res for n, res in COSTED.items() if combat.has_feature(sheet_, n)}
+    held = {n: res for n, res in COSTED.items() if smite.has_feature(sheet_, n)}
     out += card_gaps(held)
     tracked = {r["name"] for r in resources.for_sheet(sheet_)}
     has_slots = bool(spell and _slot_max(spell))

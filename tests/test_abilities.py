@@ -13,7 +13,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from dnd_cli import abilities, combat  # noqa: E402
+from dnd_cli import abilities  # noqa: E402
+from dnd_cli.combat import records  # noqa: E402
 from dnd_cli.api import api_get  # noqa: E402
 from stage import arena  # noqa: E402
 from tests.test_rules import Fixed  # noqa: E402
@@ -30,7 +31,7 @@ def check(label: str, cond: bool) -> None:
 def monster(index: str) -> dict:
     data, err, _ = api_get(f"monsters/{index}")
     assert not err, err
-    return combat.monster_record(data, index)
+    return records.monster_record(data, index)
 
 
 def test_shapes_from_text() -> None:

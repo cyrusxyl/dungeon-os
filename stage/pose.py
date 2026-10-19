@@ -12,7 +12,11 @@ the frame the same way for every pose.
 
 from __future__ import annotations
 
-from PIL import Image
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PIL import Image
+
 
 HIP = 48  # first leg row of a standing frame
 FEET = 62  # last row of the feet
@@ -28,6 +32,7 @@ def _row(frame: Image.Image, y: int) -> Image.Image:
 
 
 def _base(frame: Image.Image) -> Image.Image:
+    from PIL import Image
     out = Image.new("RGBA", (frame.width, SIT_H))
     out.alpha_composite(frame.crop((0, 0, frame.width, HIP)))
     return out
@@ -54,6 +59,7 @@ def _side(frame: Image.Image) -> Image.Image:
 
 def sit(frame: Image.Image, facing: str = "down") -> Image.Image:
     """The actor seated, from a standing 64 px frame facing `down`, `up`, `left` or `right`."""
+    from PIL import Image
     if frame.size != (64, 64):
         return frame  # a monster tile: no joints, so it keeps standing
     if facing == "right":

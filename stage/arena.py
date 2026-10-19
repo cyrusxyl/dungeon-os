@@ -798,13 +798,13 @@ def arenas_dir(campaign_dir: Path) -> Path:
 
 
 def load(campaign_dir: Path, arena_id: str) -> dict | None:
-    from stage.files import read_json
+    from core.files import read_json
 
     return read_json(arenas_dir(campaign_dir) / f"{arena_id}.json") if re.fullmatch(r"[a-z0-9-]+", arena_id) else None
 
 
 def save(campaign_dir: Path, arena_id: str, a: dict) -> Path:
-    from stage.files import write_json
+    from core.files import write_json
 
     return write_json(arenas_dir(campaign_dir) / f"{arena_id}.json", a)
 

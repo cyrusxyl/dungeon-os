@@ -21,8 +21,8 @@ Built (the numbers are the sections of this file):
 - **1 and 2.** The arena generator and the shared grid code (`stage/arena.py`). `encounter start --arena`. Light and fog. The board rules: walk, reach, sight, cover, reaction attacks, areas, shove and hide.
 - **3 and 4.** One ability format (`dnd_cli/abilities.py`). The foe planner with styles and traits (`stage/foes.py`). The DM plays only tier 3 foes. The DM hears one round summary.
 - **5.** The hand in the browser. It shows cards or a list. The player picks the skin on the device. It shows the pips, the target list with odds in words, and the reason an ability is off. A player aims an area on the board. The first tap shows the preview. A second tap on the same cell casts. The reaction question has a countdown.
-- **6.** Improvise (`stage/improvise.py`): the engine suggests a ruling and the DM confirms it. Item profiles for healing potions, alchemist's fire and acid (`stage/data/items.json`). A sheet row can have its own profile (`character item ... profile`). The Items drawer has up to three pinned items. A character can pick up an object next to it.
-- **7.** XP for NPCs (`xp` in the NPC file). XP for foes resolved without a kill (`encounter end --resolved`). `loot roll` and `loot force`.
+- **6.** Improvise (`stage/improvise.py`): the engine suggests a ruling and the DM confirms it. Item profiles for healing potions, alchemist's fire and acid (`core/data/items.json`). A sheet row can have its own profile (`character item ... profile`). The Items drawer has up to three pinned items. A character can pick up an object next to it.
+- **7.** XP for NPCs (`xp` in the NPC file). XP for foes resolved without a kill (`encounter end --resolved`). `loot roll`, and `character item ... add` with `--perk --rarity --base --effects` for an item the DM chose.
 - **8 and 9.** The settings and the routes. `POST /api/arena/improvise`, `GET /api/arena/hand` and `POST /api/arena/preview` are added to the draft.
 
 - **Playtest round 2 (2026-10-10).** Fixes:
@@ -52,8 +52,8 @@ Not built:
 
 ## Rules that apply everywhere
 
-1. **The engine runs on the server.** Pathing, sight, foe turns, reactions and fog are Python in `stage/`, next to `crawl.py`. They call `dnd_cli/combat.py`. The browser draws only what the server sends. This keeps the crawl rule: hidden stays hidden. A foe in the dark is not in the data the browser gets.
-2. **One rules core.** `combat.py` owns HP, rolls, initiative, conditions and XP. The board must call it. It must not copy it.
+1. **The engine runs on the server.** Pathing, sight, foe turns, reactions and fog are Python in `stage/`, next to `crawl.py`. They call `dnd_cli/combat/`. The browser draws only what the server sends. This keeps the crawl rule: hidden stays hidden. A foe in the dark is not in the data the browser gets.
+2. **One rules core.** The package `dnd_cli/combat/` owns HP, rolls, initiative, conditions and XP. The board must call it. It must not copy it.
 3. **One ability format.** A card, a list row, a foe action and a spell all use the same data (section 3). The skin is a choice of the player.
 4. **The DM gives no positions.** The DM gives words (`cover@foes`, `layout=chokepoint`). The stage computes the layout. This is the same rule as the site command.
 5. **The engine never refuses an improvised action.** It gives a default ruling or it asks the DM (section 6).
@@ -147,7 +147,7 @@ Fields: `cost` (`action`, `bonus`, `reaction`, `free`), `range_ft` or `reach_ft`
 - A monster spell comes from the `Spellcasting` special ability. It is structured (level, DC, slots, spell list). The spell range, area and damage come from the spell data.
 - An action with a `usage` field (for example `recharge on roll`, `1d6`, minimum 5) becomes a `uses` entry.
 
-**Traits.** Many traits are plain text in `special_abilities`: Nimble Escape, Pack Tactics, Martial Advantage. The engine cannot read them. A small hand-written table (`stage/data/traits.json`) gives the common ones a rule. Every other trait that changes a turn is marked `dm_only`. A foe with a `dm_only` ability uses it only when the DM plays the turn.
+**Traits.** Many traits are plain text in `special_abilities`: Nimble Escape, Pack Tactics, Martial Advantage. The engine cannot read them. A small hand-written table (`core/data/traits.json`) gives the common ones a rule. Every other trait that changes a turn is marked `dm_only`. A foe with a `dm_only` ability uses it only when the DM plays the turn.
 
 ## 4. Who plays the foes
 
@@ -311,12 +311,12 @@ The character sheet keeps the whole inventory. The hand shows only what a player
 2. A small hand-written table for the common consumables: healing potions, alchemist's fire, acid, oil, holy water, antitoxin, caltrops, ball bearings.
 3. A DM ruling. The DM can save an approved improvised ruling as the profile of an item. The next use runs without the DM.
 
-**Engine calls.** `character item <name> remove` for use, `character equip` for a weapon change, `encounter heal` and `encounter damage` and `encounter condition` for the effect. The board adds no second inventory.
+**Engine calls.** `character item <name> remove` for use, `character item <name> equip` for a weapon change, `encounter heal` and `encounter damage` and `encounter condition` for the effect. The board adds no second inventory.
 
 **The Item layer** (`dnd_cli/item.py`). The sheet is the save file: the DM reads it, fixes it by hand, and git diffs it. The engine reads a row through one `Item` and no module reads the keys of a row itself. Rules:
 
 - An `Item` wraps one row. It does not copy it. `Item(row)` and `item.row` are the same dict, so a field that the class does not know (a DM's hand edit) stays. The class adds no default key.
-- A row is an *instance*: `name`, `quantity`, `equipped`, `rarity`, and `type` and `base` as a reference to the definition. The definition comes from the 5e data (`equip_base`), from `stage/data/items.json` (the profile), or from the row. A field of the row wins over the definition (a DM ruling, for example `profile`).
+- A row is an *instance*: `name`, `quantity`, `equipped`, `rarity`, and `type` and `base` as a reference to the definition. The definition comes from the 5e data (`equip_base`), from `core/data/items.json` (the profile), or from the row. A field of the row wins over the definition (a DM ruling, for example `profile`).
 - `equip(sheet, base)` and `unequip(sheet)` change the sheet. `ability(rec)` is the hand card. `effects()` are the presets while it is equipped. `view()` is the UI row.
 - `Item` does no I/O and imports no rules module. The caller loads and saves through `dnd_cli.character`, and fetches the 5e data of a base. Callers use `item.add`, `item.remove`, `item.get`, `item.equip_base` and `item.set_profile`; `sheet.py` has no item names.
 - The JSON schema (`game/schemas/character.schema.json`) is the contract for the file. A new field goes in the schema and in the class together. A new item kind is added in `item.py` and nowhere else.
@@ -337,13 +337,13 @@ The engine does this. `combat.end` splits the XP of defeated foes among the part
 
 The engine rolls. The DM decides.
 
-- **Catalogs.** Fixed items (potions, scrolls, tools) by rarity, and gear (weapons, armor, rings, amulets, cloaks, boots, gloves, helmets) with rolled perks. The perk catalog is `stage/data/perks.json`: a name, the item types it fits, a lowest and highest rarity, a roll weight, and an effect or a ruling.
+- **Catalogs.** Fixed items (potions, scrolls, tools) by rarity, and gear (weapons, armor, rings, amulets, cloaks, boots, gloves, helmets) with rolled perks. The perk catalog is `core/data/perks.json`: a name, the item types it fits, a lowest and highest rarity, a roll weight, and an effect or a ruling.
 - **Rarity sets power.** Common: no perk. Uncommon: one perk. Rare: two. Very rare: two, with the strong ones (+3, Keen, Unyielding, Blessed). Legendary: a unique item that the DM writes. A weapon of uncommon rarity or more always starts with its enchant (+1, +2, +3), as in Baldur's Gate 3. Accessories roll perks like other gear. Potions and scrolls never do.
 - **Roll.** `uv run dnd-cli loot roll --cr 1 --kind individual|hoard --seed N` picks coins and items from the CR and the foe types. The same seed gives the same list. The stage shows the list to the DM, not to the players.
-- **Control.** The DM can accept, reroll, swap an item, or force one: `loot force longsword perk=keen`. A perk can be free text. The DM writes the lore.
-- **Effects.** A perk compiles to an effect preset (see `dnd-cli effect add`), or the DM rules it. The roll lists the presets of the item. `loot force --effects` stores them on the inventory item. The item also keeps its `type` and `base` (the base item it is made from: `loot force` finds it in the name, or `--base`). The engine counts the effects only while the item is `equipped` (`character item equip|unequip`). Equipping a weapon or armor with a base takes the 5e stats of the base: a weapon becomes an attack under the item's name, armor sets the AC and replaces the old armor. A weapon part applies to the attack that has the name of the item. Two worn items with the same perk both count. `effect add` and `effect remove` stay for spells and other bonuses that are not gear. The effect parts are in `dnd_cli/effects.py`: flat bonus on a roll (with an optional ability or skill filter), weapon bonuses (to-hit, damage, crit range, extra damage dice, target type), Armor Class, resistance and flat damage reduction. A weapon part touches weapon attacks only, not Unarmed Strike, spells or thrown items.
+- **Control.** The DM can accept, reroll, swap an item, or give one: `character item <name> add "Longsword" --perk keen`. A perk can be free text. The DM writes the lore.
+- **Effects.** A perk compiles to an effect preset (see `dnd-cli effect add`), or the DM rules it. The roll lists the presets of the item. `character item ... add --effects` stores them on the inventory item. The item also keeps its `type` and `base` (the base item it is made from: `item add` finds it in the name, or `--base`). The engine counts the effects only while the item is `equipped` (`character item equip|unequip`). Equipping a weapon or armor with a base takes the 5e stats of the base: a weapon becomes an attack under the item's name, armor sets the AC and replaces the old armor. A weapon part applies to the attack that has the name of the item. Two worn items with the same perk both count. `effect add` and `effect remove` stay for spells and other bonuses that are not gear. The effect parts are in `dnd_cli/effects.py`: flat bonus on a roll (with an optional ability or skill filter), weapon bonuses (to-hit, damage, crit range, extra damage dice, target type), Armor Class, resistance and flat damage reduction. A weapon part touches weapon attacks only, not Unarmed Strike, spells or thrown items.
 
-The 5e API has no treasure tables, so the first version uses a small table by CR tier in `stage/data/loot.json`. It has coins for an individual or a hoard, and item names by rarity. A legendary item is never named: the DM writes it.
+The 5e API has no treasure tables, so the first version uses a small table by CR tier in `core/data/loot.json`. It has coins for an individual or a hoard, and item names by rarity. A legendary item is never named: the DM writes it.
 
 ### Return
 
@@ -371,7 +371,7 @@ Two settings change how a fight feels. A host can change both during play.
 |---|---|
 | `GET /api/arena` | The seen part of the arena, the units in sight, the turn, the intents. |
 | `POST /api/arena/move` | `{to: [x, y]}`: walks, spends speed, returns the new view and the reasons it stopped. |
-| `POST /api/arena/act` | `{ability, target}` or `{ability, at: [x, y]}`: runs the ability through `combat.py`. |
+| `POST /api/arena/act` | `{ability, target}` or `{ability, at: [x, y]}`: runs the ability through `dnd_cli/combat/`. |
 | `POST /api/arena/react` | `{id, take: true\|false}`: answers a reaction question. |
 | `POST /api/arena/improvise` | `{who, text, object?}`: sends the text and the engine suggestion to the DM. |
 | `GET /api/arena/hand?who=` | The hand of a character: abilities with the reason each is off, the pips, the feet left. |

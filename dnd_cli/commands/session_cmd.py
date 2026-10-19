@@ -5,7 +5,8 @@ from pathlib import Path
 
 from dnd_cli import audit, world
 from dnd_cli.commands.show_cmd import run_stage
-from stage.files import read_json, write_json
+from dnd_cli.errors import RulesError
+from core.files import read_json, write_json
 
 LOG_TAIL_WORDS = 1200
 
@@ -45,10 +46,10 @@ def brief(campaign_dir: Path, fetch=None) -> str:
     out = [f"# Session brief: {campaign_dir.name}", "", "## State (state.json)",
            json.dumps(shown, separators=(",", ":"))]
     if (state.get("active_encounter") or {}).get("type") == "combat":
-        from dnd_cli import combat
+        from dnd_cli.combat import encounters
 
         # The tracker's short status, not its full creature records.
-        out += ["", "## Combat in progress (uv run dnd-cli encounter status)"] + combat.status(campaign_dir, state)
+        out += ["", "## Combat in progress (uv run dnd-cli encounter status)"] + encounters.status(campaign_dir, state)
 
     out += ["", "## Party (characters/*.json; full sheet: uv run dnd-cli character show <id>)"]
     sheets = sorted((campaign_dir / "characters").glob("*.json"))
@@ -69,7 +70,7 @@ def brief(campaign_dir: Path, fetch=None) -> str:
     canon = _read(campaign_dir / "canon.json")
     out += ["", "## Canon (canon.json, DM only)"]
     out.append(json.dumps(json.loads(canon), separators=(",", ":")) if canon else
-               "(missing: run uv run dnd-cli canon init <campaign> before anything else)")
+               "(missing: run uv run dnd-cli canon init before anything else)")
 
     story = _read(campaign_dir / "dm_story.md")
     out += ["", "## Story bible (dm_story.md, DM only)",
@@ -88,7 +89,6 @@ def cached_api(endpoint: str) -> dict:
     """5e API data from the local cache only. The brief must never wait for the network."""
     from dnd_cli import sources
     from dnd_cli.cache import load_cache
-    from dnd_cli.combat import RulesError
 
     hit = sources.replacement(endpoint.lstrip("/"))
     if hit is None:

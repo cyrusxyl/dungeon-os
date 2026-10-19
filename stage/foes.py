@@ -14,7 +14,8 @@ import math
 import random
 from pathlib import Path
 
-from dnd_cli import abilities, combat, dice
+from dnd_cli import abilities, dice
+from dnd_cli.combat import encounters, records, tracker
 from stage import arena, board
 
 THREAT_COST = 3.0  # the weight of one hero that can reach a cell, against one point of damage
@@ -39,10 +40,10 @@ class Ctx:
 
     def __init__(self, campaign_dir: Path, state: dict, a: dict, cid: str):
         self.state, self.a, self.cid = state, a, cid
-        self.recs = {c: combat.combatant(campaign_dir, state, c) for c in a["units"]}
+        self.recs = {c: records.combatant(campaign_dir, state, c) for c in a["units"]}
         self.rec = self.recs[cid]
         self.pos = {c: board.pos(a, c) for c in a["units"]}
-        self.targets = [c for c in a["units"] if combat.enemies(state, cid, c) and board.standing(self.recs[c])]  # the units this one may attack
+        self.targets = [c for c in a["units"] if tracker.enemies(state, cid, c) and board.standing(self.recs[c])]  # the units this one may attack
         self.bystanders = {(b["x"], b["y"]) for b in (a.get("bystanders") or {}).values()}
         self.opaque, self.cover = arena.opaque_cells(a), arena.cover_cells(a)
         self.size = (a["w"], a["h"])
@@ -74,7 +75,7 @@ class Ctx:
         return sum(1 for c in self.targets if arena.cheb(p, self.pos[c]) <= self.recs[c].get("speed_ft", 30) // board.TILE_FT + 1)
 
     def fail_chance(self, target: str, save: dict) -> float:
-        return clamp((save["dc"] - combat.save_bonus(self.recs[target], combat.ability(save["ability"])) - 1) / 20, 0.05, 0.95)
+        return clamp((save["dc"] - records.save_bonus(self.recs[target], records.ability(save["ability"])) - 1) / 20, 0.05, 0.95)
 
 
 def _kill(ctx: Ctx, target: str, expected: float, weights: dict) -> float:
@@ -170,9 +171,9 @@ def plan(campaign_dir: Path, state: dict, a: dict, cid: str, style: str | None =
         return None
     weights = arena.arena_data()["styles"][style or style_of(a, ctx.rec)]
     dist, _ = board.reachable(campaign_dir, state, a, cid)
-    if combat.turn_used(state, cid)["action"]:
+    if tracker.turn_used(state, cid)["action"]:
         return None
-    allies_of = {t: any(c != cid and c in ctx.pos and combat.team_of(state, c) == combat.team_of(state, cid) and board.standing(ctx.recs[c]) and arena.cheb(ctx.pos[c], ctx.pos[t]) <= 1
+    allies_of = {t: any(c != cid and c in ctx.pos and tracker.team_of(state, c) == tracker.team_of(state, cid) and board.standing(ctx.recs[c]) and arena.cheb(ctx.pos[c], ctx.pos[t]) <= 1
                         for c in ctx.pos) for t in ctx.targets}
     best = None
     tiles = list(dist.items())
@@ -192,7 +193,7 @@ def plan(campaign_dir: Path, state: dict, a: dict, cid: str, style: str | None =
 
 def describe(campaign_dir: Path, state: dict, a: dict, cid: str) -> dict:
     """What the players see over a creature (its intent), as {"kind", "text"}: the play the planner would make now."""
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     if a["control"].get(cid) == "dm":
         return {"kind": "dm", "text": "DM decides"}
     weights = arena.arena_data()["styles"][style_of(a, rec)]
@@ -201,7 +202,7 @@ def describe(campaign_dir: Path, state: dict, a: dict, cid: str) -> dict:
     pl = plan(campaign_dir, state, a, cid) or approach_plan(campaign_dir, state, a, cid)
     if pl is None:
         return {"kind": "none", "text": "Waits"}
-    name = lambda c: combat.combatant(campaign_dir, state, c)["name"]  # noqa: E731
+    name = lambda c: records.combatant(campaign_dir, state, c)["name"]  # noqa: E731
     kind = pl["kind"]
     if kind == "move":
         return {"kind": "move", "text": f"Moves → {name(pl['target'])}"}
@@ -215,15 +216,15 @@ def approach_plan(campaign_dir: Path, state: dict, a: dict, cid: str) -> dict | 
     if not pcs:
         return None
     here = board.pos(a, cid)
-    target = min(pcs, key=lambda p: (arena.cheb(here, board.pos(a, p)), combat.combatant(campaign_dir, state, p)["hp"]["current"]))
+    target = min(pcs, key=lambda p: (arena.cheb(here, board.pos(a, p)), records.combatant(campaign_dir, state, p)["hp"]["current"]))
     dest = board.approach(campaign_dir, state, a, cid, target)
     return {"kind": "move", "p": dest, "target": target, "score": 0.0} if dest else None
 
 
 def _flee(campaign_dir: Path, state: dict, a: dict, cid: str, rng) -> dict:
     """A creature below its courage runs: it dashes to the cell farthest from every hero."""
-    combat.condition(state, cid, "add", "dashing", rounds=1)
-    combat.spend_turn(state, cid, "action", quiet=True)
+    encounters.condition(state, cid, "add", "dashing", rounds=1)
+    tracker.spend_turn(state, cid, "action", quiet=True)
     dist, prev = board.reachable(campaign_dir, state, a, cid)
     pcs = board.standing_enemies(campaign_dir, state, a, cid) or board.standing_pcs(campaign_dir, state, a)
     best = max(dist, key=lambda c: (min(arena.cheb(c, board.pos(a, p)) for p in pcs), -dist[c]))
@@ -237,13 +238,13 @@ def _flee(campaign_dir: Path, state: dict, a: dict, cid: str, rng) -> dict:
 def play_foe(campaign_dir: Path, state: dict, a: dict, cid: str, rng=None) -> dict:
     """The stage plays one creature's turn. Returns {"lines", "pending"}; `pending` is True when a hero is asked for a reaction
     attack and the turn waits for the answer (the stage plays on from where the creature stands)."""
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     weights = arena.arena_data()["styles"][style_of(a, rec)]
     lines = []
     if not board.resources(state, cid).get("recharged"):  # once at the start of the turn, not again after a reaction question
         board.resources(state, cid)["recharged"] = True
         lines = abilities.recharge(rec, rng or random)
-    if (limit := weights.get("flee_below")) and rec["hp"]["current"] <= rec["hp"]["max"] * limit and not combat.turn_used(state, cid)["action"]:
+    if (limit := weights.get("flee_below")) and rec["hp"]["current"] <= rec["hp"]["max"] * limit and not tracker.turn_used(state, cid)["action"]:
         out = _flee(campaign_dir, state, a, cid, rng)
         return {"lines": lines + out["lines"], "pending": out["pending"]}
     pl = plan(campaign_dir, state, a, cid) or approach_plan(campaign_dir, state, a, cid)
@@ -256,7 +257,7 @@ def play_foe(campaign_dir: Path, state: dict, a: dict, cid: str, rng=None) -> di
         lines += out["lines"]
         if out["pending"]:
             return {"lines": lines, "pending": True}
-        if not board.standing(combat.combatant(campaign_dir, state, cid)):
+        if not board.standing(records.combatant(campaign_dir, state, cid)):
             return {"lines": lines, "pending": False}
     try:
         return {"lines": lines + _perform(campaign_dir, state, a, cid, pl, rng), "pending": False}
@@ -266,19 +267,19 @@ def play_foe(campaign_dir: Path, state: dict, a: dict, cid: str, rng=None) -> di
 
 def _disengage_first(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[str]:
     """A creature with Nimble Escape (a bonus Disengage) uses it before it walks away from a hero it stands next to."""
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     ab = next((x for x in rec.get("abilities", []) if x.get("effect") == "disengage"), None)
     here = board.pos(a, cid)
-    if ab is None or combat.turn_used(state, cid)["bonus"] or combat.has_condition(state, cid, "disengaged") \
+    if ab is None or tracker.turn_used(state, cid)["bonus"] or tracker.has_condition(state, cid, "disengaged") \
             or not any(arena.cheb(here, board.pos(a, p)) <= 1 for p in board.standing_enemies(campaign_dir, state, a, cid)):
         return []
-    combat.spend_turn(state, cid, "bonus", quiet=True)
-    combat.condition(state, cid, "add", "disengaged", rounds=1)
+    tracker.spend_turn(state, cid, "bonus", quiet=True)
+    encounters.condition(state, cid, "add", "disengaged", rounds=1)
     return [f"{cid} uses {ab['name']} to slip away without a reaction attack."]
 
 
 def _perform(campaign_dir: Path, state: dict, a: dict, cid: str, pl: dict, rng) -> list[str]:
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     ab = next((x for x in rec.get("abilities", []) if x["id"] == pl.get("ability")), None)
     kind = pl["kind"]
     if kind == "attack":

@@ -33,7 +33,7 @@ Bardic Inspiration, advantage...), leave one off, and click **Roll**. The
 party panel shows the turn order, each character's action, bonus action and
 reaction, spell slots, class resources (Rage, Ki, Second Wind...),
 concentration and conditions. **Sheet** opens the abilities and skills, the
-inventory and the spellbook. The DM adds spell bonuses with `dnd-cli effect add`. Gear gives its effects while it is equipped (`loot force --effects`, `character item equip`).
+inventory and the spellbook. The DM adds spell bonuses with `dnd-cli effect add`. Gear gives its effects while it is equipped (`character item add --effects`, `character item equip`).
 
 The **Map** button shows the current level of the world (a dungeon, a city,
 a region) and the levels above it; pick a known place to travel there. In a
@@ -148,8 +148,18 @@ uv run dnd-cli info conditions paralyzed
 - **DM Utilities**: Random selection, quick reference formatting
 
 See `dnd_cli/README.md` for full documentation.
+## Layers
+
+One dependency direction. A lower layer never imports a higher one. `tests/test_layers.py` checks it.
+
+- `core/`: neutral pieces. File helpers (`files.py`), id rules (`ids.py`) and rule data (`data/`: items, loot, perks, traits). It imports nothing from `dnd_cli` or `stage`.
+- `dnd_cli/` (rules): `combat/` (`tracker`, `records`, `rolls`, `wounds`, `smite`, `encounters`, `resolve`), `item.py`, `sheet.py`, `world.py` and the others. They import `core` only.
+- `dnd_cli/commands/` and `dnd_cli/__main__.py`: the CLI. They import rules and `stage`.
+- `stage/` (server and UI): it imports `core` and the rules. It never imports a command module.
+
 ## Development
 
+- A new top-level package needs `pyproject.toml` (`packages.find`) and a new `uv pip install -e .`.
 - `.venv/bin/python tests/run_all.py` runs every test suite (about 15 seconds). Add `--visual` to also run the browser check of the roll window (needs Google Chrome, and `npm run build` in `stage/web`).
 - `tests/test_rolls_fuzz.py` audits 400 random rolls: the total, the dice, the effects, the outcome, and that no hidden number reaches the stage.
 - `tests/visual_roll_window.py [dir]` drives headless Chrome through the roll window. It checks what unit tests cannot: the window closes on time while the DM keeps sending events, the Roll button waits for unread story, and a hidden DC is not in the page. Give it a directory to keep screenshots.

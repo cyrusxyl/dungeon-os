@@ -15,9 +15,11 @@ from datetime import date
 from pathlib import Path
 
 from dnd_cli import audit, character, dice, sheet
-from dnd_cli import item as inv
-from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, load_state, save_state
-from stage.files import read_json, write_json
+from dnd_cli import item as items
+from dnd_cli.combat.records import ABILITIES, SKILLS, ability
+from dnd_cli.combat.tracker import load_state, save_state
+from dnd_cli.errors import RulesError
+from core.files import read_json, write_json
 
 
 def slug(text: str) -> str:
@@ -45,14 +47,6 @@ def _title(index: str) -> str:
 
 def _first_sentence(text: str) -> str:
     return re.split(r"(?<=[.!?])\s", text.strip(), maxsplit=1)[0]
-
-
-def _lookup(fetch, endpoint: str, what: str) -> dict:
-    try:
-        return fetch(endpoint)
-    except RulesError:
-        raise RulesError(f"no {what} {endpoint.split('/')[-1]!r} in the 5e API. "
-                         f"Find the index with: uv run dnd-cli search {endpoint.split('/')[0]} --name <word>") from None
 
 
 def _desc(fetch, endpoint: str) -> str:
@@ -109,10 +103,10 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
           alignment: str = "", languages: str | None = None, bonus_abilities: str | None = None,
           background_bonus: str | None = None) -> dict:
     """Return a level 1 sheet. Raises RulesError, with a message that says how to fix the call."""
-    r = _lookup(fetch, f"races/{slug(race)}", "race")
-    sub = _lookup(fetch, f"subraces/{slug(subrace)}", "subrace") if subrace else {}
-    c = _lookup(fetch, f"classes/{slug(cls)}", "class")
-    lvl = _lookup(fetch, f"classes/{c['index']}/levels/1", "class level")
+    r = fetch(f"races/{slug(race)}")
+    sub = fetch(f"subraces/{slug(subrace)}") if subrace else {}
+    c = fetch(f"classes/{slug(cls)}")
+    lvl = fetch(f"classes/{c['index']}/levels/1")
 
     try:
         bg = fetch(f"backgrounds/{slug(background)}")
@@ -130,7 +124,7 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
                              f"with {opt['choose']} of {','.join(a[:3] for a in ABILITIES if a in allowed)}.")
         bonuses += [(a, 1) for a in picked]
     scores_final = _scores(scores, assign, bonuses)
-    m = {a: dice.mod(v) for a, v in scores_final.items()}
+    m = dice.mods(scores_final)
 
     # skills
     need, options = _class_skill_options(c)
@@ -173,10 +167,10 @@ def build(fetch, *, player: str, name: str, race: str, cls: str, background: str
         del data["alignment"]
 
     for idx, n in Counter(slug(i) for i in _names(equipment)).items():  # a repeated index is a quantity
-        item = _lookup(fetch, f"equipment/{idx}", "equipment")
-        inv.equip_base(data, item)
+        row = fetch(f"equipment/{idx}")
+        items.equip_base(data, row)
         if n > 1:
-            inv.add(data, item["name"], n - 1)
+            items.add(data, row["name"], n - 1)
 
     traits = [(t["name"], f"traits/{t['index']}") for t in r.get("traits", []) + sub.get("racial_traits", [])]
     feats = [(f["name"], f"features/{f['index']}") for f in lvl.get("features", [])]
@@ -286,8 +280,8 @@ def _gear_sets(fetch, o: dict) -> list[list[tuple[str, str, int]]]:
         return []
     if kind == "multiple":
         sets = [[]]
-        for item in o["items"]:
-            alts = _gear_sets(fetch, item)
+        for part in o["items"]:
+            alts = _gear_sets(fetch, part)
             if not alts:
                 return []
             sets = [a + b for a in sets for b in alts]
@@ -297,10 +291,10 @@ def _gear_sets(fetch, o: dict) -> list[list[tuple[str, str, int]]]:
     return []
 
 
-def _gear_option(items: list[tuple[str, str, int]]) -> dict:
+def _gear_option(parts: list[tuple[str, str, int]]) -> dict:
     """One option for the creator: the indexes joined by commas (a repeat is a quantity), and a name to read."""
-    name = ", ".join(n if c == 1 else f"{n} \u00d7{c}" for _, n, c in items)
-    return {"index": ",".join(i for i, _, c in items for _ in range(c)), "name": name}
+    name = ", ".join(n if c == 1 else f"{n} \u00d7{c}" for _, n, c in parts)
+    return {"index": ",".join(i for i, _, c in parts for _ in range(c)), "name": name}
 
 
 def _simple_choices(fetch, cls: dict) -> list[dict]:
@@ -347,8 +341,6 @@ def _class_options(fetch, index: str) -> dict:
 
 
 def _race_options(fetch, index: str) -> dict:
-    from stage import actors
-
     r = fetch(f"races/{index}")
     opt = r.get("ability_bonus_options")
     return {
@@ -357,7 +349,6 @@ def _race_options(fetch, index: str) -> dict:
                                  "options": [ability(o["ability_score"]["index"]) for o in opt["from"]["options"]]},
         "subraces": [{"index": s["index"], "name": sub["name"], "ability_bonuses": _bonuses(sub)}
                      for s in r.get("subraces", []) for sub in [fetch(f"subraces/{s['index']}")]],
-        "look_race": actors.race_of(r["name"]) or "human",
     }
 
 
@@ -367,21 +358,8 @@ def _background_options(fetch, index: str) -> dict:
             "skills": [_skill(p["index"]) for p in b.get("starting_proficiencies", []) if p["index"].startswith("skill-")]}
 
 
-def _look_options() -> dict:
-    from stage import actors, lpc
-
-    colors = lpc.catalog()["hair_long"].colors()
-    return {
-        "bodies": ["male", "female", "muscular"],
-        "eyes": lpc.palette_names("eye"),
-        "races": {k: {"skins": v["skins"], "default_skin": v.get("skin", v["skins"][0])} for k, v in actors.races().items()},
-        "hair": [{"id": h, "name": h.removeprefix("hair_").replace("_", " ").title()} for h in HAIR_STYLES],
-        "hair_colors": [c for c in HAIR_COLORS if c in colors],
-    }
-
-
 def options(fetch) -> dict:
-    """The document behind the web creator: every choice `build` accepts at level 1. Raises RulesError."""
+    """The document behind the web creator: every choice `build` accepts at level 1, without how it looks. Raises RulesError."""
     def indexes(resource: str) -> list[str]:
         return [x["index"] for x in fetch(resource)["results"]]
 
@@ -390,4 +368,4 @@ def options(fetch) -> dict:
         classes = pool.map(lambda i: _class_options(fetch, i), indexes("classes"))
         backgrounds = pool.map(lambda i: _background_options(fetch, i), indexes("backgrounds"))
         return {"races": list(races), "classes": list(classes), "backgrounds": list(backgrounds),
-                "skills": list(SKILLS), "abilities": list(ABILITIES), "look": _look_options()}
+                "skills": list(SKILLS), "abilities": list(ABILITIES)}

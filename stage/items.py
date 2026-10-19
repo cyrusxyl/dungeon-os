@@ -1,6 +1,6 @@
 """Items on the board: the abilities a character gets from its inventory, and the objects that lie on a tile.
 
-An inventory row has a profile when it is in stage/data/items.json or carries a `profile` of its own (a DM ruling that was
+An inventory row has a profile when it is in core/data/items.json or carries a `profile` of its own (a DM ruling that was
 saved). A profile gives the row an ability in the format of dnd_cli/abilities.py. Using it removes one from the sheet.
 Other rows have no card: the player uses them with Improvise. See combat-board.md, section 6.
 """
@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from dnd_cli import character, combat, dice, item as inv
+from dnd_cli import character, dice, item as items
+from dnd_cli.combat import records, tracker, wounds
 from stage import arena, board
 
 
@@ -20,17 +21,17 @@ def object_free(state: dict, cid: str) -> bool:
 
 def listing(sheet: dict, rec: dict) -> list[dict]:
     """One ability for each inventory row that has a profile."""
-    return [ab for it in inv.items(sheet) if (ab := it.ability(rec))]
+    return [ab for it in items.items(sheet) if (ab := it.ability(rec))]
 
 
 def ally_targets(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
     """Who a healing item can go to: the user and each friend next to them."""
     here, out = board.pos(a, cid), []
     for other in a["units"]:
-        if combat.team_of(state, other) != combat.team_of(state, cid):
+        if tracker.team_of(state, other) != tracker.team_of(state, cid):
             continue
         dist = arena.cheb(here, board.pos(a, other)) * board.TILE_FT
-        out.append({"id": other, "name": combat.combatant(campaign_dir, state, other)["name"], "dist_ft": dist, "ok": dist <= board.TILE_FT,
+        out.append({"id": other, "name": records.combatant(campaign_dir, state, other)["name"], "dist_ft": dist, "ok": dist <= board.TILE_FT,
                     "why": None if dist <= board.TILE_FT else "Not next to you."})
     return out
 
@@ -45,7 +46,7 @@ def pickups(state: dict, a: dict, cid: str) -> list[dict]:
 
 def consume(campaign_dir: Path, cid: str, name: str) -> None:
     sh = character.load(campaign_dir, cid)
-    inv.remove(sh, name, 1)
+    items.remove(sh, name, 1)
     character.save(campaign_dir, cid, sh)
 
 
@@ -57,22 +58,22 @@ def heal(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, target: s
         raise board.BoardError("Not next to you.")
     board.spend_ability(campaign_dir, state, cid, ab)
     amount, _ = dice.roll(ab["heal"], rng)
-    name = combat.combatant(campaign_dir, state, cid)["name"]
-    who = combat.combatant(campaign_dir, state, target)["name"]
+    name = records.combatant(campaign_dir, state, cid)["name"]
+    who = records.combatant(campaign_dir, state, target)["name"]
     board.note(a, f"{name} used {ab['name']} on {'themselves' if target == cid else who}")
-    return [f"{cid} uses {ab['name']} on {target}.", combat.heal(campaign_dir, state, target, amount)]
+    return [f"{cid} uses {ab['name']} on {target}.", wounds.heal(campaign_dir, state, target, amount)]
 
 
 def pick_up(campaign_dir: Path, state: dict, a: dict, cid: str, pick_id: str) -> list[str]:
-    item = next((i for i in a["items"] if f"pickup:{i['id']}" == pick_id), None)
-    if item is None or arena.cheb(board.pos(a, cid), (item["x"], item["y"])) > 1:
+    obj = next((i for i in a["items"] if f"pickup:{i['id']}" == pick_id), None)
+    if obj is None or arena.cheb(board.pos(a, cid), (obj["x"], obj["y"])) > 1:
         raise board.BoardError("there is nothing like that next to you.")
     if not object_free(state, cid):
         raise board.BoardError("The free object interaction of this turn is used.")
     sh = character.load(campaign_dir, cid)
-    inv.add(sh, item["name"], 1)
+    items.add(sh, obj["name"], 1)
     character.save(campaign_dir, cid, sh)
-    a["items"].remove(item)
+    a["items"].remove(obj)
     state["active_encounter"].setdefault("resources", {}).setdefault(cid, {})["object"] = True
-    board.note(a, f"{combat.combatant(campaign_dir, state, cid)['name']} picked up {item['name']}")
-    return [f"{cid} picks up {item['name']}."]
+    board.note(a, f"{records.combatant(campaign_dir, state, cid)['name']} picked up {obj['name']}")
+    return [f"{cid} picks up {obj['name']}."]

@@ -22,7 +22,7 @@ from pathlib import Path
 
 from dnd_cli.api import api_get
 
-TRAITS_PATH = Path(__file__).resolve().parents[1] / "stage" / "data" / "traits.json"
+TRAITS_PATH = Path(__file__).resolve().parents[1] / "core" / "data" / "traits.json"
 COSTS = {"1 action": "action", "1 bonus action": "bonus", "1 reaction": "reaction"}
 
 

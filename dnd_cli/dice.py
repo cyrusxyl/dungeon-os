@@ -63,8 +63,17 @@ def d20(rng: random.Random | None = None, adv: bool = False, dis: bool = False) 
     return (max(faces) if adv else min(faces) if dis else faces[0]), faces
 
 
+ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
+BONUS = re.compile(r"[+-]\d+$")
+
+
 def mod(score: int) -> int:
     return (score - 10) // 2
+
+
+def mods(scores: dict) -> dict:
+    """Ability -> modifier for the six abilities. A missing score counts as 10."""
+    return {a: mod(scores.get(a, 10)) for a in ABILITIES}
 
 
 def prof_for_level(level: int) -> int:
@@ -73,3 +82,19 @@ def prof_for_level(level: int) -> int:
 
 def signed(n: int) -> str:
     return f"+{n}" if n >= 0 else str(n)
+
+
+def flat_bonus(expr: str) -> int:
+    """The flat part at the end of a dice expression: `1d8+3` -> 3, `1d8` -> 0."""
+    m = BONUS.search(expr.replace(" ", ""))
+    return int(m.group()) if m else 0
+
+
+def with_bonus(expr: str, bonus: int) -> str:
+    """The dice of `expr` with its flat part set to `bonus`: (`1d8+2`, 3) -> `1d8+3`."""
+    return BONUS.sub("", expr.replace(" ", "")) + (signed(bonus) if bonus else "")
+
+
+def multiple(total: int, mod: int, prof: int) -> int:
+    """How many times the proficiency bonus a stored total holds above its ability modifier (0, 1 or 2)."""
+    return max(0, min(2, round((total - mod) / prof))) if prof else 0

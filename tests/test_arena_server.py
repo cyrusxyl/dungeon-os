@@ -17,7 +17,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from dnd_cli import combat  # noqa: E402
+from dnd_cli.combat import tracker  # noqa: E402
 from stage import arena, board  # noqa: E402
 from stage import server  # noqa: E402
 from stage.server import create_app  # noqa: E402
@@ -38,7 +38,7 @@ def prepare(tmp: Path):
     """A fight on a board in a campaign copy: the arena on disk, the state saved."""
     c, state = fight_with_boss(tmp)
     board.start(c, state, ["layout=open", "size=small", "seed=3"], {})
-    combat.save_state(c, state)
+    tracker.save_state(c, state)
     return c, state
 
 
@@ -84,7 +84,7 @@ async def routes(c: Path, state: dict) -> None:
     stage.state["dm"] = {"status": "idle"}
 
     # an attack: put a goblin next to aragorn on disk
-    st = combat.load_state(c)
+    st = tracker.load_state(c)
     a = arena.load(c, arena_id)
     ax, ay = board.pos(a, "aragorn")
     free = next(cell for cell in ((ax + 1, ay), (ax + 1, ay + 1), (ax, ay + 1), (ax - 1, ay)) if cell not in arena.blocked_cells(a))
@@ -113,10 +113,10 @@ async def routes(c: Path, state: dict) -> None:
     a = arena.load(c, arena_id)
     a["pending"]["asked_at"] = time.time() - 30
     arena.save(c, arena_id, a)
-    before = combat.load_state(c)["active_encounter"].get("resources", {}).get("legolas", {}).get("reaction")
+    before = tracker.load_state(c)["active_encounter"].get("resources", {}).get("legolas", {}).get("reaction")
     step = await asyncio.to_thread(stage.board_step)
     check("an unanswered question times out: no attack, the reaction is spent, the question is gone",
-          arena.load(c, arena_id)["pending"] is None and step["kind"] == "turn" and combat.turn_used(combat.load_state(c), "legolas")["reaction"] and not before)
+          arena.load(c, arena_id)["pending"] is None and step["kind"] == "turn" and tracker.turn_used(tracker.load_state(c), "legolas")["reaction"] and not before)
     a = arena.load(c, arena_id)
     a["pending"] = {"type": "react", "who": "legolas", "against": "goblin#1", "path": [], "asked_at": time.time()}
     arena.save(c, arena_id, a)
@@ -128,10 +128,10 @@ async def routes(c: Path, state: dict) -> None:
     check("an answer with no question is refused", status == 400)
 
     # the hand: abilities for the character, an action from it, a preview of an area
-    state0 = combat.load_state(c)
+    state0 = tracker.load_state(c)
     state0["active_encounter"]["resources"]["aragorn"] = {}
     state0["active_encounter"].setdefault("conditions", {}).pop("aragorn", None)
-    combat.save_state(c, state0)
+    tracker.save_state(c, state0)
     status, h = await api(app, "GET", "/api/arena/hand?who=aragorn")
     names = {x["id"] for x in h["abilities"]} if status == 200 else set()
     check("the hand lists the weapons, the common actions and the features of a character",
@@ -141,7 +141,7 @@ async def routes(c: Path, state: dict) -> None:
     check("only the player of the character gets the hand", status == 403)
     check("an unknown character has no hand", (await api(app, "GET", "/api/arena/hand?who=nobody"))[0] == 404)
     status, r = await api(app, "POST", "/api/arena/act", {"who": "aragorn", "ability": "dash"})
-    check("an ability of the hand is done from the stage", status == 200 and combat.has_condition(combat.load_state(c), "aragorn", "dashing") and r["lines"])
+    check("an ability of the hand is done from the stage", status == 200 and tracker.has_condition(tracker.load_state(c), "aragorn", "dashing") and r["lines"])
     status, r = await api(app, "POST", "/api/arena/act", {"who": "aragorn", "ability": "dash"})
     check("an ability that is off says why", status == 400 and "action is used" in r["error"])
     status, r = await api(app, "POST", "/api/arena/act", {"who": "legolas", "ability": "dash"})
@@ -202,9 +202,9 @@ async def routes(c: Path, state: dict) -> None:
     # improvise: the DM hears the words and a suggested ruling
     status, r = await api(app, "POST", "/api/arena/improvise", {"who": "aragorn", "text": "I throw a bottle"})
     check("an improvised action with the action spent is refused", status == 400 and "action is used" in r["error"] and not sent, str(r))
-    state0 = combat.load_state(c)
+    state0 = tracker.load_state(c)
     state0["active_encounter"]["resources"]["aragorn"] = {}
-    combat.save_state(c, state0)
+    tracker.save_state(c, state0)
     status, r = await api(app, "POST", "/api/arena/improvise", {"who": "aragorn", "text": "  "})
     check("empty words are refused", status == 400)
     status, r = await api(app, "POST", "/api/arena/improvise", {"who": "legolas", "text": "I throw a bottle"})
@@ -214,16 +214,16 @@ async def routes(c: Path, state: dict) -> None:
     status, r = await api(app, "POST", "/api/arena/improvise", {"who": "aragorn", "text": "I throw a bottle in the goblin's face"})
     check("the DM hears the words and the suggested ruling", status == 200 and len(sent) == 1 and "improvises" in sent[0] and "Suggested ruling" in sent[0] and "1d4" in sent[0], str(sent))
     sent.clear()
-    state0 = combat.load_state(c)
+    state0 = tracker.load_state(c)
     state0["active_encounter"]["resources"]["aragorn"] = {}
-    combat.save_state(c, state0)
+    tracker.save_state(c, state0)
     status, r = await api(app, "POST", "/api/end-turn", {"who": "aragorn"})
-    check("End turn moves the tracker and does not call the DM", status == 200 and not sent and combat.load_state(c)["active_encounter"]["current_turn"] == "legolas")
+    check("End turn moves the tracker and does not call the DM", status == 200 and not sent and tracker.load_state(c)["active_encounter"]["current_turn"] == "legolas")
     await api(app, "POST", "/api/end-turn", {"who": "legolas"})
-    check("the turn is a goblin's now", combat.load_state(c)["active_encounter"]["current_turn"] in ("goblin#1", "goblin#2"))
+    check("the turn is a goblin's now", tracker.load_state(c)["active_encounter"]["current_turn"] in ("goblin#1", "goblin#2"))
     stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
-    now = combat.load_state(c)["active_encounter"]
+    now = tracker.load_state(c)["active_encounter"]
     check("the pump played both goblins and stopped at the creature the DM plays, with a prompt",
           now["current_turn"] == "boss" and len(sent) == 1 and "[combat]" in sent[0] and "(boss)" in sent[0])
     check("the goblins' turns used the board (they moved)", now["resources"].get("goblin#1", {}).get("moved", 0) > 0 or now["resources"].get("goblin#2", {}).get("moved", 0) > 0
@@ -231,18 +231,18 @@ async def routes(c: Path, state: dict) -> None:
     stage.state["dm"] = {"status": "busy"}
     stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
-    check("a busy DM holds the pump", combat.load_state(c)["active_encounter"]["current_turn"] == "boss")
+    check("a busy DM holds the pump", tracker.load_state(c)["active_encounter"]["current_turn"] == "boss")
     stage.state["dm"] = {"status": "idle"}
     stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
-    now = combat.load_state(c)["active_encounter"]
+    now = tracker.load_state(c)["active_encounter"]
     check("when the DM is idle and has not ended its creature's turn, the stage ends it", now["current_turn"] == "aragorn" and now["round"] == 2)
     check("then the DM hears the round once, in one line", len(sent) == 2 and "Round 1 is over" in sent[1])
-    st = combat.load_state(c)
+    st = tracker.load_state(c)
     for foe in ("goblin#1", "goblin#2", "boss"):
         st["active_encounter"]["monsters"][foe]["hp"]["current"] = 0
     st["active_encounter"]["current_turn"] = "goblin#1"
-    combat.save_state(c, st)
+    tracker.save_state(c, st)
     stage.pump_due = True  # an event of the stage wakes the pump in play
     await stage.pump_board()
     check("with every creature down, the DM is told once to end the fight", len(sent) == 3 and "encounter end" in sent[2])

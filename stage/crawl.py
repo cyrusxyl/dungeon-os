@@ -19,7 +19,7 @@ from pathlib import Path
 from stage import arena
 from stage.arena import T, atlas_png, data, icon_png, themes, tile_counts, variant
 from stage.beat import SLUG_RE, title
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 _DUNGEON_SIZES = {"small": (32, 22), "medium": (44, 30), "large": (60, 40)}
 SIZES = {

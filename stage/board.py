@@ -1,8 +1,8 @@
 """The combat board engine: units on an arena, and the rules that need a position.
 
-The turn tracker (`state.json` `active_encounter`, `dnd_cli/combat.py`) keeps the order, the HP, the
+The turn tracker (`state.json` `active_encounter`, `dnd_cli/combat/`) keeps the order, the HP, the
 conditions and the action pips. This module adds where each unit stands, and the rules of the board:
-walking, reach, sight and cover. It calls `combat.py` for rolls and damage. It never calls the DM.
+walking, reach, sight and cover. It calls `dnd_cli/combat/` for rolls and damage. It never calls the DM.
 See combat-board.md.
 """
 
@@ -11,15 +11,17 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from dnd_cli import abilities, character, combat, dice, item as items
+from dnd_cli import abilities, character, dice, item as items
+from dnd_cli.combat import encounters, records, resolve, rolls, tracker, wounds
+from dnd_cli.errors import RulesError
 from stage import arena, cast
 from stage.beat import title
 
 
-def controlled_by(rec: dict, team: str = combat.HOSTILE) -> str:
+def controlled_by(rec: dict, team: str = tracker.HOSTILE) -> str:
     """`dm` for a hostile creature the DM plays (an NPC file, or a monster the DM named, as in boss=bugbear), else `engine`. A creature on
     the party's side or a faction of its own is always the engine's."""
-    if team != combat.HOSTILE:
+    if team != tracker.HOSTILE:
         return "engine"
     if rec.get("kind") == "npc":
         return "dm"
@@ -47,15 +49,15 @@ def room_line(spec: dict) -> str:
 
 def build(campaign_dir: Path, state: dict, tokens: list[str], stage: dict) -> tuple[str, dict, list[str]]:
     """Like `start`, but the arena is not written: the caller saves it. The state names it (`enc["arena"]`)."""
-    enc = combat.encounter(state)
+    enc = tracker.encounter(state)
     spec = arena.parse(tokens)
-    side = [c for c in enc["participants"] if combat.team_of(state, c) == combat.PARTY]  # the party's team: the players' characters and its allies
+    side = [c for c in enc["participants"] if tracker.team_of(state, c) == tracker.PARTY]  # the party's team: the players' characters and its allies
     others = [c for c in enc["participants"] if c not in side]
     source = arena.source_of(campaign_dir, stage, spec)
     a = arena.generate(spec, source, len(side), len(others), side, others)
     a["units"] = {cid: {"x": x, "y": y} for cid, (x, y) in zip(side, a["starts"]["party"])}
     a["units"] |= {cid: {"x": x, "y": y} for cid, (x, y) in zip(others, a["starts"]["foes"])}
-    a["control"] = {cid: controlled_by(enc["monsters"][cid], combat.team_of(state, cid)) for cid in enc["monsters"]}
+    a["control"] = {cid: controlled_by(enc["monsters"][cid], tracker.team_of(state, cid)) for cid in enc["monsters"]}
     a["bystanders"] = bystanders_of(stage, a)
     refresh_sight(campaign_dir, state, a)
     refresh_intents(campaign_dir, state, a)
@@ -115,21 +117,21 @@ def open_fight(campaign_dir: Path, state: dict, stage: dict, who: str, target: s
     if target not in here:
         raise BoardError(f"{target} is not here to attack. Here: {', '.join(here) or 'no one'}.")
     pcs = list(dict.fromkeys([who, *[p for p in pcs if p != who]]))
-    spec, note = combat.foe_spec(campaign_dir, target)
+    spec, note = encounters.foe_spec(campaign_dir, target)
     actors = stage.get("actors") or {}
     # A target on the stage joins as one of its fighters, under its own id; a bystander is drawn in by this attack.
-    lines = combat.start(campaign_dir, state, [] if target in actors else [spec], pcs, rng, actors)
+    lines = encounters.start(campaign_dir, state, [] if target in actors else [spec], pcs, rng, actors)
     enc = state["active_encounter"]
     if target in actors and target not in enc["participants"]:
-        lines += combat.provoke(campaign_dir, state, target, who, rng)
+        lines += encounters.provoke(campaign_dir, state, target, who, rng)
         enc["current_turn"] = enc["initiative_order"][0]["name"]
     else:
-        combat.feud(state, who, target)
+        tracker.feud(state, who, target)
     arena_id, a, arena_lines = build(campaign_dir, state, [], stage)
     foe = target if target in enc["monsters"] else next(iter(enc["monsters"]))
-    rec = combat.combatant(campaign_dir, state, who)
+    rec = records.combatant(campaign_dir, state, who)
     pool = attack_rolls(rec)
-    entry = combat._find_attack(rec, weapon) if weapon else next((x for x in pool if x.get("equipped")), pool[0])
+    entry = resolve._find_attack(rec, weapon) if weapon else records.wielded(pool)
     _place_foe(campaign_dir, state, a, who, foe, entry)
     refresh_sight(campaign_dir, state, a)
     refresh_intents(campaign_dir, state, a)
@@ -147,7 +149,7 @@ def open_fight(campaign_dir: Path, state: dict, stage: dict, who: str, target: s
 TILE_FT = 5
 
 
-class BoardError(combat.RulesError):
+class BoardError(RulesError):
     """A move or an attack the board refuses. The message says why."""
 
 
@@ -172,7 +174,7 @@ def outcome(campaign_dir: Path, state: dict, a: dict) -> dict:
         cells[cid] = {"cell": list(cell), "facing": "down"}
     monsters = state["active_encounter"]["monsters"]  # a player character who is down is not a corpse: only creatures are listed
     down = [cid for cid in a["units"] if cid in monsters and not standing(monsters[cid])]
-    sides = {cid: "hostile" if combat.hostile_to_party(state, cid) else "neutral" for cid in a["units"] if combat.team_of(state, cid) == combat.NEUTRAL}
+    sides = {cid: "hostile" if tracker.hostile_to_party(state, cid) else "neutral" for cid in a["units"] if tracker.team_of(state, cid) == tracker.NEUTRAL}
     return {"cells": cells, "down": down, "sides": sides}
 
 
@@ -219,7 +221,7 @@ def occupied(campaign_dir: Path, state: dict, a: dict, skip: str | None = None) 
     """The cells units stand on: every creature still up, and a player character at 0 HP (it lies where it fell)."""
     out = {}
     for cid in a["units"]:
-        if cid != skip and (not is_foe(state, cid) or standing(combat.combatant(campaign_dir, state, cid))):
+        if cid != skip and (not is_foe(state, cid) or standing(records.combatant(campaign_dir, state, cid))):
             out[pos(a, cid)] = cid
     for bid, b in (a.get("bystanders") or {}).items():
         out[(b["x"], b["y"])] = bid  # a bystander stands where it stood, and blocks the cell
@@ -235,7 +237,7 @@ def sync_units(campaign_dir: Path, state: dict, a: dict) -> list[str]:
     for cid in enc["participants"]:
         if cid in a["units"]:
             continue
-        starts = a["starts"]["party" if combat.team_of(state, cid) == combat.PARTY else "foes"]
+        starts = a["starts"]["party" if tracker.team_of(state, cid) == tracker.PARTY else "foes"]
         w, h = a["w"], a["h"]
         cells = [(x, y) for y in range(h) for x in range(w) if (x, y) not in blocked and (x, y) not in taken]
         if not cells:
@@ -309,7 +311,7 @@ def hidden_foes(campaign_dir: Path, state: dict, a: dict, vis: set | None = ...)
         vis = visible_cells(campaign_dir, state, a)
     if vis is None:
         return set()
-    return {c for c in a["units"] if combat.team_of(state, c) != combat.PARTY and pos(a, c) not in vis}
+    return {c for c in a["units"] if tracker.team_of(state, c) != tracker.PARTY and pos(a, c) not in vis}
 
 
 # -- walking ---------------------------------------------------------------------
@@ -321,13 +323,13 @@ def resources(state: dict, cid: str) -> dict:
 
 def tiles_left(state: dict, rec: dict) -> int:
     """Tiles the creature can still walk this turn: its speed (doubled by Dash) less what it has walked."""
-    base = rec.get("speed_ft", 30) // TILE_FT * (2 if combat.has_condition(state, rec["id"], "dashing") else 1)
+    base = rec.get("speed_ft", 30) // TILE_FT * (2 if tracker.has_condition(state, rec["id"], "dashing") else 1)
     return max(0, base - resources(state, rec["id"]).get("moved", 0))
 
 
 def reachable(campaign_dir: Path, state: dict, a: dict, cid: str) -> tuple[dict, dict]:
     """Where `cid` can walk now: (steps by cell, previous cell by cell)."""
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     others = set(occupied(campaign_dir, state, a, skip=cid))
     return arena.reach(pos(a, cid), tiles_left(state, rec), arena.blocked_cells(a), (a["w"], a["h"]), others)
 
@@ -338,10 +340,10 @@ def engage(campaign_dir: Path, state: dict, a: dict, attacker: str, target: str,
     by = a.get("bystanders") or {}
     if target not in by:
         return []
-    lines = combat.provoke(campaign_dir, state, target, attacker, rng)
+    lines = encounters.provoke(campaign_dir, state, target, attacker, rng)
     cell = by.pop(target)
     a["units"][target] = {"x": cell["x"], "y": cell["y"]}
-    a.setdefault("control", {})[target] = controlled_by(state["active_encounter"]["monsters"][target], combat.NEUTRAL)
+    a.setdefault("control", {})[target] = controlled_by(state["active_encounter"]["monsters"][target], tracker.NEUTRAL)
     return lines
 
 
@@ -355,7 +357,7 @@ def needs_confirm(state: dict, a: dict, attacker: str, target: str) -> str | Non
     name = (state.get("active_encounter") or {}).get("monsters", {}).get(target, {}).get("name") or title(target)
     if target in (a.get("bystanders") or {}):
         return confirm_why("bystander", name)
-    if combat.team_of(state, target) != combat.team_of(state, attacker) and not combat.enemies(state, attacker, target):
+    if tracker.team_of(state, target) != tracker.team_of(state, attacker) and not tracker.enemies(state, attacker, target):
         return confirm_why("neutral", name)
     return None
 
@@ -368,20 +370,20 @@ def attack_rolls(rec: dict) -> list[dict]:
 def melee_attack(rec: dict) -> dict | None:
     """The attack a creature makes with a reaction: its equipped melee weapon, else any melee attack."""
     melee = [x for x in attack_rolls(rec) if x.get("reach_ft")]
-    return next((x for x in melee if x.get("equipped")), melee[0] if melee else None)
+    return records.wielded(melee)
 
 
 def provokers(campaign_dir: Path, state: dict, a: dict, cid: str, to: tuple[int, int]) -> list[str]:
     """The enemies that get a reaction attack when `cid` steps from where it stands to `to`."""
-    if combat.has_condition(state, cid, "disengaged"):
+    if tracker.has_condition(state, cid, "disengaged"):
         return []
     here, out = pos(a, cid), []
     for other in a["units"]:
-        if other == cid or not combat.enemies(state, other, cid):
+        if other == cid or not tracker.enemies(state, other, cid):
             continue
-        rec = combat.combatant(campaign_dir, state, other)
+        rec = records.combatant(campaign_dir, state, other)
         weapon = melee_attack(rec)
-        if not standing(rec) or weapon is None or combat.turn_used(state, other)["reaction"]:
+        if not standing(rec) or weapon is None or tracker.turn_used(state, other)["reaction"]:
             continue
         reach = weapon["reach_ft"] // TILE_FT
         if arena.cheb(pos(a, other), here) <= reach < arena.cheb(pos(a, other), to):
@@ -390,8 +392,8 @@ def provokers(campaign_dir: Path, state: dict, a: dict, cid: str, to: tuple[int,
 
 
 def _react(campaign_dir: Path, state: dict, a: dict, who: str, against: str, rng) -> list[str]:
-    weapon = melee_attack(combat.combatant(campaign_dir, state, who))
-    lines = combat.attack(campaign_dir, state, who, weapon["name"], against, rng=rng, cost="reaction", catch_up=False)
+    weapon = melee_attack(records.combatant(campaign_dir, state, who))
+    lines = resolve.attack(campaign_dir, state, who, weapon["name"], against, rng=rng, cost="reaction", catch_up=False)
     note(a, brief(campaign_dir, state, a, lines, who, weapon["name"], against, " as a reaction"))
     return [f"{who} takes a reaction attack as {against} leaves its reach."] + lines
 
@@ -407,7 +409,7 @@ def walk(campaign_dir: Path, state: dict, a: dict, cid: str, path: list, rng=Non
                 a["pending"] = {"type": "react", "who": foe, "against": cid, "path": [list(c) for c in path[i:]], "asked_at": time.time()}
                 return {"steps": steps, "lines": lines, "pending": a["pending"]}
             lines += _react(campaign_dir, state, a, foe, cid, rng)
-            if not standing(combat.combatant(campaign_dir, state, cid)):
+            if not standing(records.combatant(campaign_dir, state, cid)):
                 return {"steps": steps, "lines": lines, "pending": None}
         a["units"][cid] = {"x": cell[0], "y": cell[1]}
         resources(state, cid)["moved"] = resources(state, cid).get("moved", 0) + 1
@@ -426,7 +428,7 @@ def move(campaign_dir: Path, state: dict, a: dict, cid: str, to, rng=None) -> di
     if to == pos(a, cid):
         raise BoardError(f"{cid} is already there.")
     if to not in dist:
-        rec = combat.combatant(campaign_dir, state, cid)
+        rec = records.combatant(campaign_dir, state, cid)
         raise BoardError(f"{cid} cannot reach {to[0]},{to[1]}: {tiles_left(state, rec) * TILE_FT} ft of walking left.")
     return walk(campaign_dir, state, a, cid, arena.path_from(prev, pos(a, cid), to), rng)
 
@@ -439,11 +441,11 @@ def answer(campaign_dir: Path, state: dict, a: dict, take: bool, rng=None) -> di
     a["pending"] = None
     lines = []
     mover = p["against"]
-    if take and standing(combat.combatant(campaign_dir, state, p["who"])) and not combat.turn_used(state, p["who"])["reaction"]:
+    if take and standing(records.combatant(campaign_dir, state, p["who"])) and not tracker.turn_used(state, p["who"])["reaction"]:
         lines += _react(campaign_dir, state, a, p["who"], mover, rng)
     else:
-        combat.spend_turn(state, p["who"], "reaction")  # the answer is final: no second question for this reaction
-    if not standing(combat.combatant(campaign_dir, state, mover)):
+        tracker.spend_turn(state, p["who"], "reaction")  # the answer is final: no second question for this reaction
+    if not standing(records.combatant(campaign_dir, state, mover)):
         return {"steps": [], "lines": lines, "pending": None}
     rest = walk(campaign_dir, state, a, mover, p["path"], rng)
     rest["lines"] = lines + rest["lines"]
@@ -456,7 +458,7 @@ def answer(campaign_dir: Path, state: dict, a: dict, take: bool, rng=None) -> di
 def attack_check(campaign_dir: Path, state: dict, a: dict, attacker: str, entry: dict, target: str) -> dict:
     """Can `attacker` hit `target` with this attack from where they stand? {"mode", "cover", "dis"} or a BoardError."""
     here, there = pos(a, attacker), pos(a, target)
-    t_rec = combat.combatant(campaign_dir, state, target)
+    t_rec = records.combatant(campaign_dir, state, target)
     if not standing(t_rec):
         raise BoardError(f"{target} is down.")
     dist = arena.cheb(here, there)
@@ -470,16 +472,16 @@ def attack_check(campaign_dir: Path, state: dict, a: dict, attacker: str, entry:
     if not arena.clear_line(here, there, arena.opaque_cells(a)):
         raise BoardError(f"A wall or a tall prop hides {target}.")
     near = any(arena.cheb(here, pos(a, o)) <= 1 for o in a["units"]
-               if o != attacker and combat.enemies(state, o, attacker) and standing(combat.combatant(campaign_dir, state, o)))
+               if o != attacker and tracker.enemies(state, o, attacker) and standing(records.combatant(campaign_dir, state, o)))
     return {"mode": "ranged", "cover": arena.cover_between(here, there, arena.cover_cells(a)), "dis": near}
 
 
 def brief(campaign_dir: Path, state: dict, a: dict, lines: list[str], attacker: str, weapon: str, target: str, how: str = "") -> str:
     """One line for the round summary: who used what on whom, hit or miss, and whether it is down. No numbers."""
     unseen = hidden_foes(campaign_dir, state, a)
-    names = ["Something unseen" if c in unseen else combat.combatant(campaign_dir, state, c)["name"] for c in (attacker, target)]
+    names = ["Something unseen" if c in unseen else records.combatant(campaign_dir, state, c)["name"] for c in (attacker, target)]
     head = next((ln for ln in lines if ln.startswith(f"{attacker} ") and " → " in ln), "")
-    down = not standing(combat.combatant(campaign_dir, state, target))
+    down = not standing(records.combatant(campaign_dir, state, target))
     return f"{names[0]} {'missed' if 'miss' in head else 'hit'} {names[1]} with {weapon}{how}" + (f"; {names[1]} is down" if down else "")
 
 
@@ -493,8 +495,8 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
     if own_turn_only and cost != "reaction" and state["active_encounter"].get("current_turn") != attacker:
         raise BoardError(f"it is {state['active_encounter'].get('current_turn')}'s turn, not {attacker}'s.")
     pulled = engage(campaign_dir, state, a, attacker, target, rng)
-    rec = combat.combatant(campaign_dir, state, attacker)
-    entry = combat._find_attack(rec, weapon)
+    rec = records.combatant(campaign_dir, state, attacker)
+    entry = resolve._find_attack(rec, weapon)
     check = attack_check(campaign_dir, state, a, attacker, entry, target)
     traits, damage_expr, damage_type = rec.get("traits", []), None, ""
     ally = bool(traits) and _party_adjacent(campaign_dir, state, a, attacker, target)
@@ -503,7 +505,7 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
     if ally and "Martial Advantage" in traits and not resources(state, attacker).get("martial") and len(entry["damage"]) == 1:
         resources(state, attacker)["martial"] = True  # once per turn
         damage_expr, damage_type = f"{entry['damage'][0][0]}+{abilities.traits()['Martial Advantage']['dice']}", entry["damage"][0][1]
-    lines = combat.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
+    lines = resolve.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
                           bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up,
                           damage_expr=damage_expr, damage_type=damage_type, melee=check["mode"] == "melee", smite=smite)
     note(a, brief(campaign_dir, state, a, lines, attacker, entry["name"], target))
@@ -535,12 +537,12 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict
     seen = ({(x, y) for y, row in enumerate(a["seen"]) for x, c in enumerate(row) if c == "1"} | vis) if fog else None
     units = []
     for cid in a["units"]:
-        rec = combat.combatant(campaign_dir, state, cid)
+        rec = records.combatant(campaign_dir, state, cid)
         x, y = pos(a, cid)
         if cid in hidden:
             continue
-        u = {"id": cid, "name": rec["name"], "x": x, "y": y, "pc": not is_foe(state, cid), "team": combat.team_of(state, cid), "down": not standing(rec),
-             "health": combat.health_band(rec), "conditions": [c["condition"] for c in enc.get("conditions", {}).get(cid, [])]}
+        u = {"id": cid, "name": rec["name"], "x": x, "y": y, "pc": not is_foe(state, cid), "team": tracker.team_of(state, cid), "down": not standing(rec),
+             "health": records.health_band(rec), "conditions": [c["condition"] for c in enc.get("conditions", {}).get(cid, [])]}
         if u["pc"]:
             u["hp"] = rec["hp"]
         elif cid in a.get("intents", {}):
@@ -549,10 +551,10 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict
     current = enc.get("current_turn")
     walk: list[list[int]] = []
     left = 0
-    if current in a["units"] and not is_foe(state, current) and standing(combat.combatant(campaign_dir, state, current)) and not a.get("pending"):
+    if current in a["units"] and not is_foe(state, current) and standing(records.combatant(campaign_dir, state, current)) and not a.get("pending"):
         dist, _ = reachable(campaign_dir, state, a, current)
         walk = [list(c) for c, n in dist.items() if n > 0]
-        left = tiles_left(state, combat.combatant(campaign_dir, state, current)) * TILE_FT
+        left = tiles_left(state, records.combatant(campaign_dir, state, current)) * TILE_FT
     pending = a.get("pending")
     known = (lambda x, y: (x, y) in seen) if fog else (lambda x, y: True)
     return {
@@ -582,12 +584,12 @@ def require_turn(state: dict, cid: str) -> None:
 
 def default_weapon(campaign_dir: Path, state: dict, a: dict, attacker: str, target: str) -> str:
     """The attack a click on a creature means: an equipped weapon that reaches it, else any attack that does."""
-    rec = combat.combatant(campaign_dir, state, attacker)
+    rec = records.combatant(campaign_dir, state, attacker)
     dist = arena.cheb(pos(a, attacker), pos(a, target))
     armed = attack_rolls(rec)
     reaching = [x for x in armed if dist <= max(x.get("reach_ft", 0), x.get("range_ft", 0)) // TILE_FT]
     pool = reaching or armed
-    return next((x for x in pool if x.get("equipped")), pool[0])["name"]
+    return records.wielded(pool)["name"]
 
 
 # -- the stage plays the creatures ------------------------------------------------
@@ -595,25 +597,25 @@ def default_weapon(campaign_dir: Path, state: dict, a: dict, attacker: str, targ
 
 def standing_pcs(campaign_dir: Path, state: dict, a: dict) -> list[str]:
     """The standing units of the party's team."""
-    return [c for c in a["units"] if combat.team_of(state, c) == combat.PARTY and standing(combat.combatant(campaign_dir, state, c))]
+    return [c for c in a["units"] if tracker.team_of(state, c) == tracker.PARTY and standing(records.combatant(campaign_dir, state, c))]
 
 
 def standing_enemies(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[str]:
     """The standing units that are enemies of `cid`."""
-    return [c for c in a["units"] if combat.enemies(state, cid, c) and standing(combat.combatant(campaign_dir, state, c))]
+    return [c for c in a["units"] if tracker.enemies(state, cid, c) and standing(records.combatant(campaign_dir, state, c))]
 
 
 def standing_foes(campaign_dir: Path, state: dict, a: dict) -> list[str]:
     """The standing units that are enemies of the party."""
-    return [c for c in a["units"] if combat.hostile_to_party(state, c) and standing(combat.combatant(campaign_dir, state, c))]
+    return [c for c in a["units"] if tracker.hostile_to_party(state, c) and standing(records.combatant(campaign_dir, state, c))]
 
 
 def dm_prompt(campaign_dir: Path, state: dict, a: dict, cid: str) -> str:
     """What the DM is told when a creature it plays is up. It names only what the party can see (the console is public)."""
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     here = pos(a, cid)
-    near = ", ".join(f"{combat.combatant(campaign_dir, state, p)['name']} ({p}) {arena.cheb(here, pos(a, p))} tiles, "
-                     f"{combat.health_band(combat.combatant(campaign_dir, state, p))}" for p in standing_pcs(campaign_dir, state, a))
+    near = ", ".join(f"{records.combatant(campaign_dir, state, p)['name']} ({p}) {arena.cheb(here, pos(a, p))} tiles, "
+                     f"{records.health_band(records.combatant(campaign_dir, state, p))}" for p in standing_pcs(campaign_dir, state, a))
     attacks = "; ".join(f"{x['name']} +{x.get('bonus', 0)} " + ", ".join(e for e, _ in x["damage"])
                         + (f" (reach {x['reach_ft']} ft)" if x.get("reach_ft") else f" (range {x['range_ft']} ft)") for x in rec["attacks"] if x["damage"])
     walk = tiles_left(state, rec) * TILE_FT
@@ -635,7 +637,7 @@ def expired(pending: dict, settings: dict) -> bool:
 def summary_prompt(campaign_dir: Path, state: dict, a: dict, rnd: int, lines: list[str]) -> str:
     """The one line the DM hears for a round: what happened, without numbers, and who is down."""
     unseen = hidden_foes(campaign_dir, state, a)
-    down = [combat.combatant(campaign_dir, state, c)["name"] for c in a["units"] if c not in unseen and not standing(combat.combatant(campaign_dir, state, c))]
+    down = [records.combatant(campaign_dir, state, c)["name"] for c in a["units"] if c not in unseen and not standing(records.combatant(campaign_dir, state, c))]
     return (f"[combat] Round {rnd} is over. What happened: {'; '.join(lines)}." + (f" Down: {', '.join(down)}." if down else "")
             + " Tell it in one short beat (two sentences at most) and wait: the stage runs the next round.")
 
@@ -662,8 +664,8 @@ def pump_step(campaign_dir: Path, state: dict, a: dict, rng=None, settings: dict
             return None
         a["announced_end"] = True
         return {"kind": "over", "won": bool(standing_pcs(campaign_dir, state, a))}
-    if not standing(combat.combatant(campaign_dir, state, cid)):
-        return {"kind": "turn", "who": cid, "lines": combat.next_turn(campaign_dir, state), "pending": False}
+    if not standing(records.combatant(campaign_dir, state, cid)):
+        return {"kind": "turn", "who": cid, "lines": encounters.next_turn(campaign_dir, state), "pending": False}
     asked = a.get("asked")
     if a["control"].get(cid) == "dm":
         if asked != [cid, enc.get("round", 1)]:
@@ -671,13 +673,13 @@ def pump_step(campaign_dir: Path, state: dict, a: dict, rng=None, settings: dict
             return {"kind": "dm", "prompt": dm_prompt(campaign_dir, state, a, cid)}
         # The DM answered and did not end the turn: the stage ends it.
         a["asked"] = None
-        return {"kind": "turn", "who": cid, "lines": combat.next_turn(campaign_dir, state), "pending": False}
+        return {"kind": "turn", "who": cid, "lines": encounters.next_turn(campaign_dir, state), "pending": False}
     from stage import foes  # the planner reads this module
 
     played = foes.play_foe(campaign_dir, state, a, cid, rng)
     if played["pending"]:
         return {"kind": "turn", "who": cid, "lines": played["lines"], "pending": True}
-    return {"kind": "turn", "who": cid, "lines": played["lines"] + combat.next_turn(campaign_dir, state), "pending": False}
+    return {"kind": "turn", "who": cid, "lines": played["lines"] + encounters.next_turn(campaign_dir, state), "pending": False}
 
 
 def player_attack(campaign_dir: Path, state: dict, a: dict, who: str, target: str | None, weapon: str | None = None, confirm: bool = False) -> list[str]:
@@ -698,8 +700,8 @@ def player_attack(campaign_dir: Path, state: dict, a: dict, who: str, target: st
 
 def _party_adjacent(campaign_dir: Path, state: dict, a: dict, attacker: str, target: str) -> bool:
     """An ally of `attacker` (up and not the attacker) stands next to `target`: Pack Tactics and Martial Advantage need it."""
-    return any(o != attacker and combat.team_of(state, o) == combat.team_of(state, attacker) and arena.cheb(pos(a, o), pos(a, target)) <= 1
-               and standing(combat.combatant(campaign_dir, state, o)) for o in a["units"])
+    return any(o != attacker and tracker.team_of(state, o) == tracker.team_of(state, attacker) and arena.cheb(pos(a, o), pos(a, target)) <= 1
+               and standing(records.combatant(campaign_dir, state, o)) for o in a["units"])
 
 
 def check_aim(a: dict, cid: str, ab: dict, aim) -> None:
@@ -722,19 +724,19 @@ def covered_units(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, 
     """The creatures an area covers (an ally too). A cone or a line never covers its caster."""
     cells = arena.shape_cells(ab["shape"], pos(a, cid), tuple(aim), (a["w"], a["h"]))
     return [u for u in a["units"] if pos(a, u) in cells and (u != cid or ab["shape"]["type"] not in ("cone", "line"))
-            and standing(combat.combatant(campaign_dir, state, u))]
+            and standing(records.combatant(campaign_dir, state, u))]
 
 
 def spend_ability(campaign_dir: Path, state: dict, cid: str, ab: dict) -> None:
     """The action, bonus action or reaction an ability costs, and its use or slot."""
-    if ab["cost"] in combat.TURN_KINDS:
-        combat.spend_turn(state, cid, ab["cost"], quiet=True)
-    abilities.spend(combat.combatant(campaign_dir, state, cid), ab)
+    if ab["cost"] in tracker.TURN_KINDS:
+        tracker.spend_turn(state, cid, ab["cost"], quiet=True)
+    abilities.spend(records.combatant(campaign_dir, state, cid), ab)
 
 
 def use_zone(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, aim, rng=None) -> list[str]:
     """A save-based ability on an area: each creature in it saves, and takes the damage (half on a success for a `half` ability)."""
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     if not abilities.available(rec, ab):
         raise BoardError(f"{rec['name']} cannot use {ab['name']} now.")
     check_aim(a, cid, ab, aim)
@@ -746,9 +748,9 @@ def use_zone(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, aim, 
     targets = covered_units(campaign_dir, state, a, cid, ab, aim)
     spend_ability(campaign_dir, state, cid, ab)
     expr, dtype = ab["damage"][0]
-    lines = combat.save(campaign_dir, state, targets, ab["save"]["ability"], ab["save"]["dc"], damage_expr=expr, damage_type=dtype,
+    lines = resolve.save(campaign_dir, state, targets, ab["save"]["ability"], ab["save"]["dc"], damage_expr=expr, damage_type=dtype,
                         half=ab["save"]["success"] == "half", rng=rng) if targets else []
-    names = ", ".join(combat.combatant(campaign_dir, state, t)["name"] for t in targets) or "no one"
+    names = ", ".join(records.combatant(campaign_dir, state, t)["name"] for t in targets) or "no one"
     note(a, f"{rec['name']} used {ab['name']} on {names}")
     return [f"{cid} uses {ab['name']}: {len(targets)} in the area."] + lines
 
@@ -756,14 +758,14 @@ def use_zone(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, aim, 
 def use_spell_attack(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, target: str, rng=None) -> list[str]:
     """A spell with an attack roll: the board's reach, sight and cover decide, then the usual attack roll with the spell's damage."""
     pulled = engage(campaign_dir, state, a, cid, target, rng)
-    rec = combat.combatant(campaign_dir, state, cid)
+    rec = records.combatant(campaign_dir, state, cid)
     if not abilities.available(rec, ab):
         raise BoardError(f"{rec['name']} cannot use {ab['name']} now.")
     check = attack_check(campaign_dir, state, a, cid, {"name": ab["name"], **ab["attack"]}, target)
     spend_ability(campaign_dir, state, cid, ab)
     expr, dtype = ab["damage"][0]
     weapon = ab.get("weapon", "spell")  # an item thrown as an improvised weapon rolls with its own to-hit
-    lines = combat.attack(campaign_dir, state, cid, weapon, target, rng=rng, cost=None, damage_expr=expr, damage_type=dtype,
+    lines = resolve.attack(campaign_dir, state, cid, weapon, target, rng=rng, cost=None, damage_expr=expr, damage_type=dtype,
                           bonus=ab.get("to_hit", 0) - arena.COVER_BONUS[check["cover"]], dis=check["dis"])
     note(a, brief(campaign_dir, state, a, [ln.replace(f" {weapon} ", f" {ab['name']} ", 1) for ln in lines], cid, ab["name"], target))
     return pulled + [f"{cid} casts {ab['name']}."] + lines
@@ -774,7 +776,7 @@ def use_multiattack(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict
     lines, first = [], True
     for name, count in ab["parts"]:
         for _ in range(count):
-            if not standing(combat.combatant(campaign_dir, state, target)):
+            if not standing(records.combatant(campaign_dir, state, target)):
                 return lines
             lines += attack(campaign_dir, state, a, cid, name, target, rng=rng, cost=ab["cost"] if first else None)
             first = False
@@ -793,11 +795,11 @@ def shove(campaign_dir: Path, state: dict, a: dict, cid: str, target: str, rng=N
     here, there = pos(a, cid), pos(a, target)
     if arena.cheb(here, there) > 1:
         raise BoardError(f"{target} is {arena.cheb(here, there) * TILE_FT} ft away. Shove needs it next to you.")
-    me, foe = combat.combatant(campaign_dir, state, cid), combat.combatant(campaign_dir, state, target)
-    mine = dice.d20(rng)[0] + combat.skill_bonus(me, "athletics")
-    theirs = dice.d20(rng)[0] + max(combat.skill_bonus(foe, "athletics"), combat.skill_bonus(foe, "acrobatics"))
-    combat.spend_turn(state, cid, "bonus", quiet=True)
-    combat.stage_feed(f"{me['name']} shoves {foe['name']}: {mine} against {theirs}.")
+    me, foe = records.combatant(campaign_dir, state, cid), records.combatant(campaign_dir, state, target)
+    mine = dice.d20(rng)[0] + records.skill_bonus(me, "athletics")
+    theirs = dice.d20(rng)[0] + max(records.skill_bonus(foe, "athletics"), records.skill_bonus(foe, "acrobatics"))
+    tracker.spend_turn(state, cid, "bonus", quiet=True)
+    rolls.stage_feed(f"{me['name']} shoves {foe['name']}: {mine} against {theirs}.")
     lines = pulled + [f"{cid} shoves {target}: Athletics {mine} against {theirs}."]
     if mine < theirs:
         return lines + [f"{target} holds its ground."]
@@ -810,8 +812,8 @@ def shove(campaign_dir: Path, state: dict, a: dict, cid: str, target: str, rng=N
     lines.append(f"{target} is pushed 5 ft.")
     if a["grid"][dest[1]][dest[0]] == arena.HAZARD:
         amount, groups = dice.roll("2d6", rng)
-        combat.stage_roll(f"{foe['name']} falls into the {'water' if a['spec']['decor'] == 'forest' else 'lava'}: 2d6", amount, groups)
-        lines.append(combat.damage(campaign_dir, state, target, amount, "fire"))
+        rolls.stage_roll(f"{foe['name']} falls into the {'water' if a['spec']['decor'] == 'forest' else 'lava'}: 2d6", amount, groups)
+        lines.append(wounds.damage(campaign_dir, state, target, amount, "fire"))
     note(a, f"{me['name']} shoved {foe['name']}")
     return lines
 
@@ -820,10 +822,10 @@ def hide(campaign_dir: Path, state: dict, a: dict, cid: str, rng=None) -> list[s
     """Stealth against the highest passive Perception of the creatures that stand. On a success the character is hidden:
     its next attack has advantage."""
     foes = [c for c in standing_foes(campaign_dir, state, a)]
-    dc = max((10 + combat.skill_bonus(combat.combatant(campaign_dir, state, f), "perception") for f in foes), default=10)
-    combat.spend_turn(state, cid, "action", quiet=True)
-    done = combat.check(campaign_dir, state, [cid], "stealth", dc=dc, hide_dc=True, rng=rng)[-1]
+    dc = max((10 + records.skill_bonus(records.combatant(campaign_dir, state, f), "perception") for f in foes), default=10)
+    tracker.spend_turn(state, cid, "action", quiet=True)
+    done = resolve.check(campaign_dir, state, [cid], "stealth", dc=dc, hide_dc=True, rng=rng)[-1]
     if "— success" in done:
-        combat.condition(state, cid, "add", "hidden")
-    name = combat.combatant(campaign_dir, state, cid)["name"]
+        encounters.condition(state, cid, "add", "hidden")
+    name = records.combatant(campaign_dir, state, cid)["name"]
     return [f"{name} slips out of sight." if "— success" in done else f"{name} tries to hide, and is noticed."]  # the DC and the roll stay on the stage

@@ -1,4 +1,4 @@
-"""JSON files of the stage: read tolerant, write by rename.
+"""JSON files of a campaign: read tolerant, write by rename.
 
 The stage server and the DM's CLI both read and write files under
 `{campaign}/stage/`, so a writer never leaves a half-written file.

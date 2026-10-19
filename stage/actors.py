@@ -16,12 +16,16 @@ import io
 import json
 from functools import cache, lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PIL import Image
+if TYPE_CHECKING:
+    from PIL import Image
 
+from core.ids import ID_RE, ID_RULE
+from dnd_cli.creation import HAIR_COLORS, HAIR_STYLES
 from stage import beat, creatures, lpc, pose
 from stage.assets import ensure_dcss
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 PRESETS_PATH = Path(__file__).resolve().parent / "data" / "presets.json"
 MONSTERS_PATH = Path(__file__).resolve().parent / "data" / "monsters.json"
@@ -131,6 +135,19 @@ def race_of(text: str) -> str | None:
     """The race key named in free text, e.g. 'Drow (High Elf)' -> 'drow', 'Half-Elf' -> 'half-elf'."""
     t = text.lower().replace(" ", "-")
     return next((r for r in sorted(races(), key=len, reverse=True) if r in t), None)
+
+
+def creator_options(doc: dict) -> dict:
+    """The creator's options (`creation.options`) with how each race and the hair look: the web creator shows both."""
+    colors = lpc.catalog()["hair_long"].colors()
+    look = {
+        "bodies": ["male", "female", "muscular"],
+        "eyes": lpc.palette_names("eye"),
+        "races": {k: {"skins": v["skins"], "default_skin": v.get("skin", v["skins"][0])} for k, v in races().items()},
+        "hair": [{"id": h, "name": h.removeprefix("hair_").replace("_", " ").title()} for h in HAIR_STYLES],
+        "hair_colors": [c for c in HAIR_COLORS if c in colors],
+    }
+    return {**doc, "look": look, "races": [{**r, "look_race": race_of(r["name"]) or "human"} for r in doc["races"]]}
 
 
 def creator_tokens(look: dict, cls: str = "", name: str = "") -> list[str]:
@@ -266,8 +283,8 @@ def set_look(campaign_dir: Path, actor_id: str, tokens: list[str], change: bool 
     """
     if not tokens:
         raise lpc.ActorError("give at least one setting, for example name=Sireth body=female.")
-    if not beat.ID_RE.match(actor_id):
-        raise lpc.ActorError(f"actor id {actor_id!r}: {beat.ID_RULE}.")
+    if not ID_RE.match(actor_id):
+        raise lpc.ActorError(f"actor id {actor_id!r}: {ID_RULE}.")
     current = read_json(actors_dir(campaign_dir) / f"{actor_id}.json")
     if current is not None and not change:
         raise LookExists(actor_id, current)
@@ -305,6 +322,7 @@ def _tile_frame(spec: dict, facing: str = "down", scale: float | None = None) ->
 
     The frame is 64 px, or bigger when the figure is: the stage reads its size from the PNG.
     """
+    from PIL import Image
     scale = tile_scale(spec) if scale is None else scale
     if spec["tile"].startswith(creatures.PREFIX):
         tile = creatures.frame(spec["tile"], facing)
@@ -359,6 +377,7 @@ def png(spec: dict, kind: str, position: str | None = None, emotion: str | None 
 
 def preview(spec: dict, out: Path, emotion: str | None = None) -> Path:
     """Full body, side view, and portrait in one image, for the DM to check."""
+    from PIL import Image
     if "tile" in spec:
         frame = _tile_frame(spec)
         out.parent.mkdir(parents=True, exist_ok=True)

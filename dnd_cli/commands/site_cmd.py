@@ -3,6 +3,7 @@
 import random
 import sys
 
+from core.ids import ID_RULE
 from dnd_cli.commands.show_cmd import notify_stage, preview_path, run_stage
 from stage import actors, beat, crawl, maps
 from stage.assets import AssetError
@@ -20,7 +21,7 @@ def _summary(site_id: str, site: dict) -> str:
 def execute_set(campaign, site_id: str, tokens: list[str], change: bool = False) -> int:
     def go(campaign_dir):
         if not beat.SLUG_RE.match(site_id):
-            raise crawl.SiteError(f"site id {site_id!r}: {beat.ID_RULE}.")
+            raise crawl.SiteError(f"site id {site_id!r}: {ID_RULE}.")
         current = crawl.load(campaign_dir, site_id)
         if current is not None and not change:
             print(f"{site_id!r} is already set; the stage uses it as saved:\n{_summary(site_id, current)}\n"

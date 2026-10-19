@@ -15,7 +15,7 @@ A preset has one or more of these parts:
   `vs` limits the preset to targets whose creature type contains one of these words.
 - `ac`, `resist` and `reduce`: Armor Class, damage resistances, and flat damage reduction ({damage type or "all": n})
   of a player character.
-Loot perks (stage/data/perks.json) name presets with these parts.
+Loot perks (core/data/perks.json) name presets with these parts.
 
 Effects live in `{campaign}/stage/effects.json` as `{character id: [preset id]}`.
 They are not in `state.json`: the rules commands load and save the whole state
@@ -24,17 +24,18 @@ file, and the stage writes effects while the DM is idle.
 Worn gear adds effects too. An inventory item with `equipped: true` and an `effects` list
 gives those presets while it is equipped. Nothing is stored for them, so unequip removes them.
 Two equipped items with the same perk both count. A `weapon` part of an item applies only to
-the attack whose name words are all in the item name ("Longsword" in "+1 Longsword of Flame").
+the attack whose `item` field (in `weapons` of the sheet) is the name of that item. An attack with
+no `item` has no gear perks.
 """
 
 from __future__ import annotations
 
 import random
-import re
 from pathlib import Path
 
-from dnd_cli import character, dice, item
-from stage.files import read_json, write_json
+from dnd_cli import character, dice, item as items
+from dnd_cli.errors import RulesError
+from core.files import read_json, write_json
 
 ROLLS = ("check", "save", "attack")
 
@@ -87,6 +88,15 @@ PRESETS: dict[str, dict] = {
 NO_WEAPON = {"hit": [], "dmg": 0, "crit": 20, "extra": []}
 
 
+def gear_presets(text: str) -> list[str]:
+    """The effect presets in a comma-separated list, checked: an item can give only a gear effect (kept, no concentration)."""
+    ids = [e.strip() for e in text.split(",") if e.strip()]
+    gear = [k for k, v in PRESETS.items() if v["use"] == "kept" and not v["concentration"]]
+    if bad := [e for e in ids if e not in gear]:
+        raise RulesError(f"no gear effect {', '.join(bad)}. Gear effects: {', '.join(gear)}.")
+    return ids
+
+
 def path(campaign_dir: Path) -> Path:
     return campaign_dir / "stage" / "effects.json"
 
@@ -100,19 +110,23 @@ def stored(campaign_dir: Path, cid: str) -> list[str]:
     return load(campaign_dir).get(cid, [])
 
 
-def _words(name: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", name.lower()))
+def _sheet(campaign_dir: Path, cid: str) -> dict:
+    return read_json(character.character_path(campaign_dir, cid)) or {}
 
 
-def worn(campaign_dir: Path, cid: str) -> list[tuple[str, str]]:
-    """(preset id, item name) for each effect of an equipped item. A sheet that is missing gives none."""
-    sheet = read_json(character.character_path(campaign_dir, cid)) or {}
-    return [(e, it.name) for it in item.items(sheet) for e in it.effects() if e in PRESETS]
+def _worn(sheet: dict) -> list[tuple[str, str]]:
+    return [(e, it.name) for it in items.items(sheet) for e in it.effects() if e in PRESETS]
 
 
-def active(campaign_dir: Path, cid: str) -> list[str]:
+def worn(campaign_dir: Path, cid: str, sheet: dict | None = None) -> list[tuple[str, str]]:
+    """(preset id, item name) for each effect of an equipped item. A sheet that is missing gives none.
+    `sheet`: the sheet the caller has already read; the file is read only when it is None."""
+    return _worn(_sheet(campaign_dir, cid) if sheet is None else sheet)
+
+
+def active(campaign_dir: Path, cid: str, sheet: dict | None = None) -> list[str]:
     """The stored effects, then the effects of worn gear."""
-    return stored(campaign_dir, cid) + [e for e, _ in worn(campaign_dir, cid)]
+    return stored(campaign_dir, cid) + [e for e, _ in worn(campaign_dir, cid, sheet)]
 
 
 def _save(campaign_dir: Path, data: dict[str, list[str]]) -> None:
@@ -143,7 +157,8 @@ def apply(campaign_dir: Path, cid: str, kind: str, rng: random.Random | None = N
     """
     rng = rng or random
     out: dict = {"adv": False, "dis": False, "bonus": [], "flat": [], "used": []}
-    ids = stored(campaign_dir, cid)
+    data = load(campaign_dir)
+    ids = data.get(cid, [])
     for eid in ids + [e for e, _ in worn(campaign_dir, cid)]:
         spec = PRESETS[eid]
         if kind not in spec["on"] or eid in skip or (spec.get("only") and not set(spec["only"]) & set(tags)):
@@ -163,7 +178,6 @@ def apply(campaign_dir: Path, cid: str, kind: str, rng: random.Random | None = N
                                  "value": sign * total})
     spent = [e for e in out["used"] if PRESETS[e]["use"] == "next"]
     if spent:
-        data = load(campaign_dir)
         data[cid] = [e for e in ids if e not in spent]
         _save(campaign_dir, data)
     return out
@@ -173,14 +187,16 @@ def weapon(campaign_dir: Path, cid: str, target_type: str = "", attack: str = ""
     """What the character's effects add to the weapon attack `attack` against a target of `target_type`:
     to-hit tiles, flat damage, the lowest d20 that is a critical hit, and extra [dice, type] damage."""
     out = {"hit": [], "dmg": 0, "crit": 20, "extra": []}
-    # A stored effect is for every weapon. A worn item's effect is for the weapon it names.
-    held = [(e, "") for e in stored(campaign_dir, cid)] + worn(campaign_dir, cid)
-    for eid, item in held:
+    sheet = _sheet(campaign_dir, cid)
+    link = next((w.get("item") for w in sheet.get("weapons", []) if w.get("name") == attack), None)
+    # A stored effect is for every weapon. A worn item's effect is for the weapon that is linked to the item.
+    held = [(e, "") for e in stored(campaign_dir, cid)] + _worn(sheet)
+    for eid, source in held:
         spec = PRESETS[eid]
         part = spec.get("weapon")
         if not part or (part.get("vs") and not any(t in target_type.lower() for t in part["vs"])):
             continue
-        if item and not _words(attack) <= _words(item):  # "Crossbow, hand" is in "+1 Hand Crossbow of Frost"
+        if source and source != link:
             continue
         if part.get("hit"):
             out["hit"].append({"label": spec["label"], "value": part["hit"]})
@@ -191,9 +207,14 @@ def weapon(campaign_dir: Path, cid: str, target_type: str = "", attack: str = ""
     return out
 
 
-def defense(campaign_dir: Path, cid: str) -> dict:
+def defense(campaign_dir: Path, cid: str, sheet: dict | None = None) -> dict:
     """What the character's effects add to its defense: Armor Class, resistances, flat damage reduction."""
-    specs = [PRESETS[e] for e in active(campaign_dir, cid)]
+    return defense_of(active(campaign_dir, cid, sheet))
+
+
+def defense_of(held: list[str]) -> dict:
+    """The same, for effects the caller already has from `active`."""
+    specs = [PRESETS[e] for e in held]
     reduce: dict[str, int] = {}
     for s in specs:
         for dtype, n in s.get("reduce", {}).items():

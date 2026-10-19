@@ -14,7 +14,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from dnd_cli import actions, combat  # noqa: E402
+from dnd_cli import actions  # noqa: E402
+from dnd_cli.combat import encounters, records, tracker  # noqa: E402
 from stage import arena, board, foes, scenes, state as stage_state  # noqa: E402
 from tests.test_rules import GOBLIN, Fixed, campaign  # noqa: E402
 
@@ -51,26 +52,26 @@ def scene_fight(tmp: str):
 
 
 def main() -> int:
-    combat.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
+    encounters.api_get = lambda path: (dict(GOBLIN, index=path.split("/")[1]), None, None)
 
     # The relations.
     enc = {"type": "combat", "participants": ["aragorn", "ilvuur", "qorlia", "goblin#1"], "teams": {"ilvuur": "party", "qorlia": "neutral"},
            "monsters": {"goblin#1": {}, "ilvuur": {}, "qorlia": {}}}
     st = {"active_encounter": enc}
     check("a player character is on the party's team, a monster on the hostile one, a companion where it was put",
-          [combat.team_of(st, i) for i in ("aragorn", "goblin#1", "ilvuur", "qorlia")] == ["party", "hostile", "party", "neutral"])
-    check("party and hostile fight, and so do neutral and hostile", combat.enemies(st, "aragorn", "goblin#1") and combat.enemies(st, "qorlia", "goblin#1")
-          and combat.enemies(st, "goblin#1", "ilvuur"))
-    check("party and neutral are at peace, and a team is not its own enemy", not combat.enemies(st, "aragorn", "qorlia") and not combat.enemies(st, "aragorn", "ilvuur"))
-    check("only the hostile are enemies of the party", [combat.hostile_to_party(st, i) for i in ("qorlia", "ilvuur", "goblin#1")] == [False, False, True])
-    check("a strike on someone at peace makes a feud, one way for one target", combat.feud(st, "aragorn", "qorlia") and combat.enemies(st, "aragorn", "qorlia")
-          and combat.enemies(st, "qorlia", "ilvuur") and not combat.feud(st, "aragorn", "qorlia") and not combat.feud(st, "aragorn", "ilvuur"))
-    check("the feud is with that one, not its whole team", combat.hostile_to_party(st, "qorlia") and not combat.hostile_to_party({"active_encounter": {**enc, "feuds": []}}, "qorlia"))
+          [tracker.team_of(st, i) for i in ("aragorn", "goblin#1", "ilvuur", "qorlia")] == ["party", "hostile", "party", "neutral"])
+    check("party and hostile fight, and so do neutral and hostile", tracker.enemies(st, "aragorn", "goblin#1") and tracker.enemies(st, "qorlia", "goblin#1")
+          and tracker.enemies(st, "goblin#1", "ilvuur"))
+    check("party and neutral are at peace, and a team is not its own enemy", not tracker.enemies(st, "aragorn", "qorlia") and not tracker.enemies(st, "aragorn", "ilvuur"))
+    check("only the hostile are enemies of the party", [tracker.hostile_to_party(st, i) for i in ("qorlia", "ilvuur", "goblin#1")] == [False, False, True])
+    check("a strike on someone at peace makes a feud, one way for one target", tracker.feud(st, "aragorn", "qorlia") and tracker.enemies(st, "aragorn", "qorlia")
+          and tracker.enemies(st, "qorlia", "ilvuur") and not tracker.feud(st, "aragorn", "qorlia") and not tracker.feud(st, "aragorn", "ilvuur"))
+    check("the feud is with that one, not its whole team", tracker.hostile_to_party(st, "qorlia") and not tracker.hostile_to_party({"active_encounter": {**enc, "feuds": []}}, "qorlia"))
 
     with tempfile.TemporaryDirectory() as tmp:
         c, stage = scene_fight(tmp)
-        state = combat.load_state(c)
-        started = combat.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
+        state = tracker.load_state(c)
+        started = encounters.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
         enc = state["active_encounter"]
         check("the fighters of the stage join: the party, the companion, the faction, the goblin under its stage id",
               set(enc["participants"]) == {"aragorn", "legolas", "ilvuur", "qorlia", "goblin#1"}, str(enc["participants"]))
@@ -120,26 +121,26 @@ def main() -> int:
         board.player_attack(c, state, a, "aragorn", "mara-shop", confirm=True)
         check("the bystander is drawn in: a unit, in the order, on a team of its own, an enemy of the attacker",
               "mara-shop" in a["units"] and "mara-shop" not in a["bystanders"] and len(enc["initiative_order"]) == before + 1
-              and enc["teams"]["mara-shop"] == "neutral" and combat.enemies(state, "aragorn", "mara-shop"))
+              and enc["teams"]["mara-shop"] == "neutral" and tracker.enemies(state, "aragorn", "mara-shop"))
         check("it fights on the stage's side of control, as the engine", a["control"]["mara-shop"] == "engine")
-        check("a drawn-in bystander is not an enemy of the whole party's team", combat.team_of(state, "mara-shop") == "neutral")
-        check("the party's allies are its enemy's enemies: the green companion fights the one that attacks the party", combat.enemies(state, "mara-shop", "ilvuur"))
+        check("a drawn-in bystander is not an enemy of the whole party's team", tracker.team_of(state, "mara-shop") == "neutral")
+        check("the party's allies are its enemy's enemies: the green companion fights the one that attacks the party", tracker.enemies(state, "mara-shop", "ilvuur"))
         board.player_attack(c, state, a, "aragorn", "qorlia", confirm=True)
-        check("an attack on the faction at peace makes a feud", combat.enemies(state, "aragorn", "qorlia") and combat.enemies(state, "qorlia", "legolas"))
+        check("an attack on the faction at peace makes a feud", tracker.enemies(state, "aragorn", "qorlia") and tracker.enemies(state, "qorlia", "legolas"))
 
         # XP: only the party's enemies give it.
         enc["monsters"]["mara-shop"]["hp"]["current"] = enc["monsters"]["mara-shop"]["hp"]["max"]  # the attack above was a real roll: it may have killed her
         for cid in ("ilvuur", "goblin#1", "qorlia"):
             enc["monsters"][cid]["hp"]["current"] = 0
-        lines = combat.end(c, state, award_xp=True)
+        lines = encounters.end(c, state, award_xp=True)
         check("a dead companion gives no XP; the goblin and the faction at war with the party do",
               any("Defeated foes give" in ln for ln in lines) and f"give {GOBLIN.get('xp', 0) + 100} XP" in " ".join(lines), " ".join(lines))
 
     # The end of a fight: what the scene keeps.
     with tempfile.TemporaryDirectory() as tmp:
         c, stage = scene_fight(tmp)
-        state = combat.load_state(c)
-        combat.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
+        state = tracker.load_state(c)
+        encounters.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
         arena_id, a, _ = board.build(c, state, [], stage)
         enc = state["active_encounter"]
         enc["current_turn"] = "aragorn"
@@ -159,8 +160,8 @@ def main() -> int:
     # The stage plays the party's friends against its enemies: out of reach, a companion walks toward the goblin, not toward the party.
     with tempfile.TemporaryDirectory() as tmp:
         c, stage = scene_fight(tmp)
-        state = combat.load_state(c)
-        combat.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
+        state = tracker.load_state(c)
+        encounters.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
         arena_id, a, _ = board.build(c, state, [], stage)
         props = {(p["x"], p["y"]) for p in a["props"]}
         open_cells = sorted(((x, y) for y, row in enumerate(a["grid"]) for x, ch in enumerate(row) if ch == arena.FLOOR and (x, y) not in props), key=lambda c: (c[0] + c[1], c))
@@ -185,10 +186,10 @@ def main() -> int:
     # The fight ends: a player character who went down is not a corpse, and stands again in the next outcome. Units are never left on a chair.
     with tempfile.TemporaryDirectory() as tmp:
         c, stage = scene_fight(tmp)
-        state = combat.load_state(c)
-        combat.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
+        state = tracker.load_state(c)
+        encounters.start(c, state, ["goblin"], None, rng=Fixed(10), stage=stage["actors"])
         arena_id, a, _ = board.build(c, state, [], stage)
-        sheet = combat.combatant(c, state, "legolas")
+        sheet = records.combatant(c, state, "legolas")
         sheet["hp"]["current"] = 0
         state["active_encounter"]["monsters"]["ilvuur"]["hp"]["current"] = 0
         done = board.outcome(c, state, a)
@@ -210,13 +211,13 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         c, stage = scene_fight(tmp)
         stage["actors"]["ghost-knight"] = {"side": "hostile", "cell": [1, 1]}
-        real = combat.api_get
-        combat.api_get = lambda path: (None, "not found", None)
+        real = encounters.api_get
+        encounters.api_get = lambda path: (None, "not found", None)
         try:
-            state = combat.load_state(c)
-            lines = combat.start(c, state, [], None, rng=Fixed(10), stage=stage["actors"])
+            state = tracker.load_state(c)
+            lines = encounters.start(c, state, [], None, rng=Fixed(10), stage=stage["actors"])
         finally:
-            combat.api_get = real
+            encounters.api_get = real
         check("an actor with no stat block is left out of the fight, and the DM is told which", "ghost-knight" not in state["active_encounter"]["participants"]
               and any("ghost-knight" in ln and "not in the fight" in ln for ln in lines), str(lines))
 
@@ -233,8 +234,8 @@ def main() -> int:
         events = [{"type": "enter", "actor": "goblin#1", "side": "hostile"}]
         beat.append(c, events)
         live = stage_state.replay(beat.log_path(c))
-        state = combat.load_state(c)
-        combat.start(c, state, ["goblin"], None, rng=Fixed(10), stage=live["actors"])
+        state = tracker.load_state(c)
+        encounters.start(c, state, ["goblin"], None, rng=Fixed(10), stage=live["actors"])
         _, a, _ = board.build(c, state, [], {**live, "actors": {i: {**v, "cell": v.get("cell") or [2 + n, 3]} for n, (i, v) in enumerate(live["actors"].items())}})
         enc = state["active_encounter"]
         arena_id = arena.new_id(c)
@@ -242,7 +243,7 @@ def main() -> int:
         a["units"]["aragorn"] = {"x": 4, "y": 4}
         enc["monsters"]["goblin#1"]["hp"]["current"] = 0
         arena.save(c, arena_id, a)
-        combat.save_state(c, state)
+        tracker.save_state(c, state)
         os.environ["DUNGEON_STAGE_LOG"] = str(beat.log_path(c))
         try:
             rules_cmd.execute_encounter(str(c), "end", argparse.Namespace(no_xp=True, resolved=None))

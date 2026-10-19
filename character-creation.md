@@ -99,7 +99,7 @@ Notes:
 - `spellcasting` is `null` for a class with no spells at level 1. `spells` is the number to pick at level 1: `spells_known` if the level data has it; wizard 6 (spellbook); a prepared caster (cleric, druid): 0 here, the client shows "you prepare spells each day; pick up to ability mod + 1". `spell_options` are the class spells of level 1, `cantrip_options` level 0.
 - `equipment.choices`: only choices whose options are plain equipment references. Skip the rest (the DM can add gear later).
 - The SRD has one background (Acolyte). The client also offers **Custom background**: a name and two skills (`background_skills`).
-- The SRD has no drow subrace. `look_race` maps the sheet race to a look race in `stage/data/races.json`. The appearance step lets the player pick any look race (for example "drow" for an Elf).
+- The SRD has no drow subrace. `look_race` maps the sheet race to a look race in `stage/data/races.json`. `creation.options` has no looks. `stage.actors.creator_options` adds `look` and `look_race` for the web creator. The appearance step lets the player pick any look race (for example "drow" for an Elf).
 
 ### `GET /asset/look.png?race=elf&body=female&skin=light&eyes=green&hair=hair_long:blonde&class=wizard`
 
@@ -129,7 +129,7 @@ Request:
 }
 ```
 
-The server: id = slug of `name` (add `-2`, `-3` if taken); player id = slug of `player_name`. Call `creation.create(campaign_dir, rules_cmd._api, ...)`. Then add `personality_traits`, `ideals`, `bonds`, `flaws` (strings), `backstory` (string) and `hooks` to the sheet. Then save the look with the shared look function (the sheet must exist first). Nothing is written when `create` fails.
+The server: id = slug of `name` (add `-2`, `-3` if taken); player id = slug of `player_name`. Call `creation.create(campaign_dir, fetch, ...)` (`fetch` is `dnd_cli.api.fetch`). Then add `personality_traits`, `ideals`, `bonds`, `flaws` (strings), `backstory` (string) and `hooks` to the sheet. Then save the look with the shared look function (the sheet must exist first). Nothing is written when `create` fails.
 
 Response: `{"id": "lyra-moonwhisper", "lines": ["Lyra Moonwhisper: Elf (High Elf) Wizard 1 ..."]}`. Error: 400 `{"error": "<RulesError text>"}`.
 

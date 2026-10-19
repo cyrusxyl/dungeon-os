@@ -5,7 +5,6 @@ from typing import List, Dict, Optional
 from dnd_cli import sources
 from dnd_cli.api import api_list
 from dnd_cli.cache import load_cache
-from dnd_cli.fuzzy import fuzzy_match_multi_algorithm
 from dnd_cli.text_search import text_search
 
 
@@ -157,7 +156,8 @@ def execute(resource: str, filters: dict) -> int:
     if 'name' in filters:
         query = filters['name']
 
-        # Try fuzzy matching
+        # Try fuzzy matching (rapidfuzz is slow to import, so only a name search loads it)
+        from dnd_cli.fuzzy import fuzzy_match_multi_algorithm
         fuzzy_matches = fuzzy_match_multi_algorithm(query, filtered, threshold=60)
 
         if fuzzy_matches:

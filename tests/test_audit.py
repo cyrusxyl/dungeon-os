@@ -10,7 +10,7 @@ from __future__ import annotations
 import copy
 
 from dnd_cli import audit, resources, sheet
-from dnd_cli.combat import RulesError
+from dnd_cli.errors import RulesError
 
 PASS = FAIL = 0
 

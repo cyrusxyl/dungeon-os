@@ -11,16 +11,12 @@ character is proficient. Level-up and gear infer proficiency from the totals:
 from __future__ import annotations
 
 import random
-import re
 
-from dnd_cli import dice, item, resources
-from dnd_cli.combat import ABILITIES, SKILLS, RulesError, ability, level_for_xp
+from dnd_cli import dice, item as items, resources
+from dnd_cli.combat.records import ABILITIES, SKILLS, ability, level_for_xp
+from dnd_cli.errors import RulesError
 from dnd_cli.dice import prof_for_level
 
-
-
-def mods(sheet: dict) -> dict:
-    return {a: dice.mod(sheet["ability_scores"].get(a, 10)) for a in ABILITIES}
 
 
 def prof_from(level_data: dict, level: int) -> int:
@@ -30,7 +26,7 @@ def prof_from(level_data: dict, level: int) -> int:
 
 def spell_numbers(sheet: dict, spell: dict, prof: int) -> tuple[int, int]:
     """(spell save DC, spell attack bonus) of this spellcasting block."""
-    m = mods(sheet).get(spell.get("ability"), 0)
+    m = dice.mods(sheet["ability_scores"]).get(spell.get("ability"), 0)
     return 8 + prof + m, prof + m
 
 
@@ -64,14 +60,14 @@ def base_ac(class_name: str, m: dict) -> int:
 
 
 def gold(sheet: dict, delta: int) -> str:
-    purse = item.find(sheet, item.GOLD)
+    purse = items.find(sheet, items.GOLD)
     have = purse.quantity if purse else 0
     if have + delta < 0:
         raise RulesError(f"{sheet['name']} has only {have} gp; {-delta} gp is too much.")
     if delta > 0:
-        item.add(sheet, item.GOLD, delta)
+        items.add(sheet, items.GOLD, delta)
     elif delta < 0:
-        item.remove(sheet, item.GOLD, -delta)
+        items.remove(sheet, items.GOLD, -delta)
     return f"{sheet['name']}: {have + delta} gp"
 
 
@@ -105,7 +101,7 @@ def short_rest(sheet: dict, spend: int, rng=None) -> str:
     rng = rng or random
     hd = sheet.setdefault("hit_dice", {"total": sheet["level"], "remaining": sheet["level"]})
     spend = min(spend, hd.get("remaining", 0))
-    die, con = _hit_die(sheet), mods(sheet)["constitution"]
+    die, con = _hit_die(sheet), dice.mods(sheet["ability_scores"])["constitution"]
     healed = sum(max(0, rng.randint(1, die) + con) for _ in range(spend))
     hp = sheet["hp"]
     hp["current"] = min(hp["max"], hp["current"] + healed)
@@ -133,29 +129,13 @@ def add_xp(sheet: dict, xp: int) -> str:
     return line
 
 
-def _stored_ability(weapon: dict, old_mods: dict) -> str:
-    """The ability a stored weapon uses: the one whose modifier is its damage bonus (DEX on a tie)."""
-    m = re.search(r"([+-]\d+)$", weapon.get("damage", "").replace(" ", ""))
-    flat = int(m.group(1)) if m else 0
-    for abil in ("dexterity", "strength"):
-        if old_mods[abil] == flat:
-            return abil
-    props = [p.lower() for p in weapon.get("properties", [])]
-    ranged = "ammunition" in props or any(k in weapon.get("name", "").lower() for k in ("bow", "sling", "dart"))
-    return "dexterity" if ranged or "finesse" in props else "strength"
-
-
-def _multiple(total: int, mod: int, prof: int) -> int:
-    return max(0, min(2, round((total - mod) / prof))) if prof else 0
-
-
 def retotal(sheet: dict, old_prof: int, prof: int) -> None:
     """Set skill and save totals for a new proficiency bonus.
 
     The old total shows the bonus the character had: none, half (rounded down),
     full, or double. Keep that kind and apply it to the new bonus.
     """
-    m = mods(sheet)
+    m = dice.mods(sheet["ability_scores"])
 
     def new(total: int, mod: int) -> int:
         extra = total - mod
@@ -209,19 +189,16 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
     old_level, new_level = sheet["level"], level_data["level"]
     if new_level != old_level + 1:
         raise RulesError(f"{sheet['name']} is level {old_level}; the next level is {old_level + 1}, not {new_level}.")
-    old_mods, old_prof = mods(sheet), sheet.get("proficiency_bonus", prof_for_level(old_level))
-    weapon_abil = {w["name"]: _stored_ability(w, old_mods) for w in sheet.get("weapons", [])}
-    skill_mult = {s: _multiple(v, old_mods[SKILLS[s]], old_prof) for s, v in sheet.get("skills", {}).items() if s in SKILLS}
-    save_mult = {a: _multiple(v, old_mods[a], old_prof) for a, v in sheet.get("saving_throws", {}).items() if a in ABILITIES}
-    weapon_mult = {w["name"]: _multiple(w.get("attack_bonus", 0), old_mods[weapon_abil[w["name"]]], old_prof)
-                   for w in sheet.get("weapons", [])}
+    old_mods, old_prof = dice.mods(sheet["ability_scores"]), sheet.get("proficiency_bonus", prof_for_level(old_level))
+    skill_mult = {s: dice.multiple(v, old_mods[SKILLS[s]], old_prof) for s, v in sheet.get("skills", {}).items() if s in SKILLS}
+    save_mult = {a: dice.multiple(v, old_mods[a], old_prof) for a, v in sheet.get("saving_throws", {}).items() if a in ABILITIES}
 
     lines = []
     for abil, n in (asi or {}).items():
         scores = sheet["ability_scores"]
         scores[abil] = min(20, scores[abil] + n)
         lines.append(f"{abil[:3].upper()} {scores[abil]}")
-    new_mods, prof = mods(sheet), prof_from(level_data, new_level)
+    new_mods, prof = dice.mods(sheet["ability_scores"]), prof_from(level_data, new_level)
 
     con = new_mods["constitution"]
     rolled = rng.randint(1, hit_die) if hp_mode == "roll" else hit_die // 2 + 1
@@ -241,11 +218,7 @@ def level_up(sheet: dict, level_data: dict, hit_die: int, hp_mode: str = "avg",
         sheet["skills"][s] = new_mods[SKILLS[s]] + mult * prof
     for a, mult in save_mult.items():
         sheet["saving_throws"][a] = new_mods[a] + mult * prof
-    for w in sheet.get("weapons", []):
-        abil = weapon_abil[w["name"]]
-        w["attack_bonus"] = new_mods[abil] + weapon_mult[w["name"]] * prof
-        if w.get("damage"):
-            w["damage"] = item.with_bonus(w["damage"], new_mods[abil])
+    items.retotal_weapons(sheet, old_mods, old_prof, new_mods, prof)
     if ensure_spellcasting(sheet, level_data, class_data):
         lines.append(f"{sheet['class']} now casts spells ({sheet['spellcasting']['ability'][:3].upper()}): "
                      "ask the player which spells to prepare or learn")

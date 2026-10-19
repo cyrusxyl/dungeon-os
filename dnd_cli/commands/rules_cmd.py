@@ -1,22 +1,24 @@
 """Rules commands: encounter, attack, save, check, rest, and character item/gold/equip/xp/level-up.
 
 Each prints one short line per result, so the DM spends its tokens on the
-story, not on arithmetic. Logic lives in dnd_cli/combat.py and dnd_cli/sheet.py.
+story, not on arithmetic. Logic lives in dnd_cli/combat/ and dnd_cli/sheet.py.
 """
 
 from __future__ import annotations
 
 import json
 
-from dnd_cli import audit, character, combat, effects, loot, sheet
+from dnd_cli import audit, character, effects, loot, sheet
+from dnd_cli.combat import encounters, records, resolve, rolls, tracker, wounds
 from dnd_cli import item as items
-from dnd_cli.api import api_get
+from dnd_cli.api import fetch as _api
 from dnd_cli.commands.show_cmd import notify_stage, run_stage
 from dnd_cli.dice import DiceError
+from dnd_cli.errors import RulesError
 from stage import arena, board, state as stage_state
 from stage.beat import log_path
 
-ERRORS = (combat.RulesError, DiceError, character.CharacterError, arena.ArenaError)
+ERRORS = (RulesError, DiceError, character.CharacterError, arena.ArenaError)
 
 
 def _out(lines: list[str]) -> int:
@@ -27,9 +29,9 @@ def _out(lines: list[str]) -> int:
 def _with_state(campaign, fn) -> int:
     """Load state.json, run fn(campaign_dir, state) -> lines, save state, print."""
     def go(campaign_dir):
-        state = combat.load_state(campaign_dir)
+        state = tracker.load_state(campaign_dir)
         lines = fn(campaign_dir, state)
-        combat.save_state(campaign_dir, state)
+        tracker.save_state(campaign_dir, state)
         return _out(lines)
     return run_stage(campaign, go, *ERRORS)
 
@@ -42,14 +44,14 @@ def execute_encounter(campaign, action: str, args) -> int:
         if action == "start":
             pcs = None if args.pcs in (None, "all") else [p for p in args.pcs.split(",") if p]
             on_stage = stage_state.replay(log_path(campaign_dir))
-            lines = combat.start(campaign_dir, state, args.specs, pcs, stage=on_stage["actors"])
+            lines = encounters.start(campaign_dir, state, args.specs, pcs, stage=on_stage["actors"])
             if args.no_arena:
                 return lines
             lines += board.start(campaign_dir, state, args.arena or [], on_stage)
             notify_stage(campaign_dir, {"type": "arena", "arena": state["active_encounter"]["arena"]})
             return lines
         if action == "add":
-            lines = combat.add(campaign_dir, state, args.specs)
+            lines = encounters.add(campaign_dir, state, args.specs)
             if arena_id := board.arena_id_of(state):
                 a = arena.load(campaign_dir, arena_id)
                 if board.sync_units(campaign_dir, state, a):
@@ -59,30 +61,30 @@ def execute_encounter(campaign, action: str, args) -> int:
         if action == "move":
             return _move(campaign_dir, state, args)
         if action == "next":
-            return combat.next_turn(campaign_dir, state)
+            return encounters.next_turn(campaign_dir, state)
         if action == "status":
-            return combat.status(campaign_dir, state)
+            return encounters.status(campaign_dir, state)
         if action in ("damage", "heal"):
             amount, rolled = _amount(args.amount, action)
-            line = (combat.damage(campaign_dir, state, args.target, amount, args.type or "") if action == "damage"
-                    else combat.heal(campaign_dir, state, args.target, amount))
+            line = (wounds.damage(campaign_dir, state, args.target, amount, args.type or "") if action == "damage"
+                    else wounds.heal(campaign_dir, state, args.target, amount))
             # No roll shows for this, so the players get a line in the log. A creature's HP stays behind the screen.
-            rec = combat.combatant(campaign_dir, state, args.target)
-            combat.stage_feed(line if rec["kind"] == "pc" else f"{rec['name']} {'takes damage' if action == 'damage' else 'is healed'}.")
+            rec = records.combatant(campaign_dir, state, args.target)
+            rolls.stage_feed(line if rec["kind"] == "pc" else f"{rec['name']} {'takes damage' if action == 'damage' else 'is healed'}.")
             return [rolled + line] if rolled else [line]
         if action == "condition":
-            return [combat.condition(state, args.target, args.op, args.name, args.rounds, args.save)]
+            return [encounters.condition(state, args.target, args.op, args.name, args.rounds, args.save)]
         if action == "use":
-            combat.spend_turn(state, args.target, args.kind, not args.free)
+            tracker.spend_turn(state, args.target, args.kind, not args.free)
             return [f"{args.target}: {args.kind} {'free' if args.free else 'used'}."]
         if action == "end":
             on_board = board.arena_id_of(state)
             left = board.outcome(campaign_dir, state, arena.load(campaign_dir, on_board)) if on_board else {}  # before the encounter is cleared
-            lines = combat.end(campaign_dir, state, award_xp=not args.no_xp, resolved=args.resolved)
+            lines = encounters.end(campaign_dir, state, award_xp=not args.no_xp, resolved=args.resolved)
             if on_board:
                 notify_stage(campaign_dir, {"type": "arena_end", **left})
             return lines
-        raise combat.RulesError("encounter start|add|next|status|damage|heal|condition|use|end")
+        raise RulesError("encounter start|add|next|status|damage|heal|condition|use|end")
     return _with_state(campaign, fn)
 
 
@@ -90,12 +92,12 @@ def _move(campaign_dir, state: dict, args) -> list[str]:
     """A creature the DM plays walks on the board. The rules of the board apply: speed, blocked cells, reaction attacks."""
     arena_id, a = board.running(campaign_dir, state)
     if bool(args.to) == bool(args.toward):
-        raise combat.RulesError("give --to X,Y or --toward <id>.")
+        raise RulesError("give --to X,Y or --toward <id>.")
     if args.to:
         try:
             x, y = (int(n) for n in args.to.split(","))
         except ValueError:
-            raise combat.RulesError("--to is X,Y, for example --to 7,4.") from None
+            raise RulesError("--to is X,Y, for example --to 7,4.") from None
         target = (x, y)
     else:
         target = board.approach(campaign_dir, state, a, args.who, args.toward)
@@ -105,7 +107,7 @@ def _move(campaign_dir, state: dict, args) -> list[str]:
     arena.save(campaign_dir, arena_id, a)
     notify_stage(campaign_dir, {"type": "arena_updated", "arena": arena_id})
     x, y = board.pos(a, args.who)
-    lines = result["lines"] + [f"{args.who} walks to {x},{y} ({board.tiles_left(state, combat.combatant(campaign_dir, state, args.who)) * board.TILE_FT} ft left)."]
+    lines = result["lines"] + [f"{args.who} walks to {x},{y} ({board.tiles_left(state, records.combatant(campaign_dir, state, args.who)) * board.TILE_FT} ft left)."]
     if result["pending"]:
         lines.append(f"The walk stops: {result['pending']['who']}'s player is asked for a reaction. The stage finishes the walk.")
     return lines
@@ -118,7 +120,7 @@ def _amount(text: str, label: str) -> tuple[int, str]:
     from dnd_cli import dice
 
     total, groups = dice.roll(text)
-    combat.stage_roll(f"{label} {text}", total, groups)
+    rolls.stage_roll(f"{label} {text}", total, groups)
     return total, f"{text} = {total}: "
 
 
@@ -134,7 +136,7 @@ def execute_attack(campaign, args) -> int:
             return board.attack(campaign_dir, state, a, args.attacker, args.weapon, args.target, cost=cost,
                                 adv=args.adv, dis=args.dis, bonus=args.bonus, secret=args.secret, catch_up=args.cost != "reaction",
                                 smite=args.smite)
-        return combat.attack(
+        return resolve.attack(
             campaign_dir, state, args.attacker, args.weapon, args.target, adv=args.adv, dis=args.dis,
             damage_expr=args.damage, damage_type=args.type or "", bonus=args.bonus, secret=args.secret, cost=cost,
             catch_up=args.cost != "reaction", smite=args.smite)
@@ -142,15 +144,23 @@ def execute_attack(campaign, args) -> int:
 
 
 def execute_save(campaign, args) -> int:
-    return _with_state(campaign, lambda c, s: combat.save(
-        c, s, args.targets, args.ability, args.dc, damage_expr=args.damage, damage_type=args.type or "",
+    # The last target that is an ability name is the ability: `save goblin#1 dex --dc 13`.
+    targets, ability = args.targets, args.ability
+    if ability is None and len(targets) > 1 and targets[-1].lower() in (*records.ABILITIES, *records.SHORT):
+        targets, ability = targets[:-1], targets[-1]
+    return _with_state(campaign, lambda c, s: resolve.save(
+        c, s, targets, ability, args.dc, damage_expr=args.damage, damage_type=args.type or "",
         half=args.half, source=args.source, adv=args.adv, dis=args.dis, secret=args.secret, hide_dc=args.hide_dc))
 
 
 def execute_check(campaign, args) -> int:
+    if len(args.who) < 2:
+        raise RulesError("usage: check <who...|all> <skill|ability|death> [--dc N]")
+    names, what = args.who[:-1], args.who[-1]  # the last word is what is rolled
+
     def fn(campaign_dir, state):
-        who = combat.party(campaign_dir, state) if args.who == ["all"] else args.who
-        return combat.check(campaign_dir, state, who, args.what, dc=args.dc, adv=args.adv, dis=args.dis,
+        who = tracker.party(campaign_dir, state) if names == ["all"] else names
+        return resolve.check(campaign_dir, state, who, what, dc=args.dc, adv=args.adv, dis=args.dis,
                             passive=args.passive, secret=args.secret, hide_dc=args.hide_dc)
     return _with_state(campaign, fn)
 
@@ -165,13 +175,13 @@ def execute_effect(campaign, op: str, who: str | None, name: str | None) -> int:
             held = {who: held.get(who, [])} if who else held
             return _out([f"{cid}: {', '.join(ids)}" for cid, ids in held.items() if ids] or ["No active effects."])
         if not who or not name:
-            raise combat.RulesError(f"effect {op} <who> <effect>. Effects: {', '.join(effects.PRESETS)}.")
+            raise RulesError(f"effect {op} <who> <effect>. Effects: {', '.join(effects.PRESETS)}.")
         if not character.character_path(campaign_dir, who).exists():
-            raise combat.RulesError(f"no character {who!r}.")
+            raise RulesError(f"no character {who!r}.")
         try:
             (effects.add if op == "add" else effects.remove)(campaign_dir, who, name)
         except ValueError as e:
-            raise combat.RulesError(str(e)) from e
+            raise RulesError(str(e)) from e
         spec = effects.PRESETS[name]
         return _out([f"{who}: {spec['label']} {'on' if op == 'add' else 'off'}"
                      + (f" — {spec['info']}; " + ("the next matching roll uses it." if spec["use"] == "next"
@@ -184,7 +194,7 @@ def execute_effect(campaign, op: str, who: str | None, name: str | None) -> int:
 
 def execute_rest(campaign, kind: str, who: list[str], spend: list[str]) -> int:
     def fn(campaign_dir, state):
-        names = combat.party(campaign_dir, state) if not who or who == ["all"] else who
+        names = tracker.party(campaign_dir, state) if not who or who == ["all"] else who
         dice_for = {n: int(k) for n, _, k in (s.partition(":") for s in spend)}
         lines = []
         for name in names:
@@ -211,66 +221,72 @@ def _edit_sheet(campaign, name: str, fn) -> int:
     return run_stage(campaign, go, *ERRORS)
 
 
-def _wear(data: dict, name: str, on: bool) -> list[str]:
-    """Equip or put away an item. A weapon or armor with a base takes the stats of that base: a weapon becomes an attack
-    (under the item's name, so its perks find it), armor sets the AC and takes off the armor it replaces."""
-    it = items.get(data, name)
-    if not on:
-        return it.unequip(data)
-    lines = it.equip(data, _api(f"equipment/{loot.api_index(it.base)}") if it.needs_base else None)
-    if not it.base and any("weapon" in effects.PRESETS.get(e, {}) for e in it.perks):
-        lines.append("Warning: no attack matches it, so its weapon effects do nothing. Give it a base: "
-                     "`loot force \"<item>\" --to <who> --base <Longsword>`.")
-    return lines
+def _equip(data: dict, name: str, proficient: bool) -> list[str]:
+    """Wear or wield an item. One that is not in the inventory is made from the 5e API item of that name or index."""
+    found = items.find(data, name)
+    if not found:
+        return [items.equip_base(data, _api(f"equipment/{loot.api_index(name)}"), proficient)]
+    line = found.equip(data, _api(f"equipment/{loot.api_index(found.base)}") if found.needs_base else None, proficient)
+    return [line, *filter(None, [found.weapon_warning(effects.PRESETS)])]
 
 
-def execute_item(campaign, name: str, op: str, item: str, qty: int, record_canon: bool, profile: str | None = None) -> int:
+def _purse(data: dict, name: str, qty: int, sign: int) -> list[str] | None:
+    """`item add|remove` of Gold Pieces goes through `sheet.gold`: one purse path, the same checks. None for any other item."""
+    if name.lower() != items.GOLD.lower():
+        return None
+    if qty < 1:
+        raise RulesError("quantity must be 1 or more.")
+    return [sheet.gold(data, sign * qty)]
+
+
+def execute_item_add(args) -> int:
+    """`--perk` is what makes the item special, in the DM's words (a catalog perk in it adds a hint). `--effects` is a list of
+    gear effect presets (comma-separated) that the item gives while it is equipped. `--base` names the item the gear is made
+    from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
     def fn(campaign_dir, data):
-        if op == "profile":
-            try:
-                return [items.set_profile(data, item, json.loads(profile or ""))]
-            except json.JSONDecodeError:
-                raise combat.RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
-        if op in ("equip", "unequip"):
-            return _wear(data, item, op == "equip")
-        if op == "remove":
-            return [items.remove(data, item, qty)]
-        lines = [items.add(data, item, qty)]
-        if record_canon:
+        if purse := _purse(data, args.item, args.qty, 1):
+            return purse
+        if args.rarity and args.rarity not in loot.RARITIES:
+            raise RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
+        ids = effects.gear_presets(args.effects)
+        kind = loot.base_of(args.item, args.base)
+        gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
+        lines = [items.add(data, args.item, args.qty, args.perk, args.rarity, **gear)] + loot.hints(args.perk, ids)
+        if args.canon:
             from dnd_cli import canon
             c = canon.load(campaign_dir)
-            canon.add_item(c, c.get("last_session_written", 0) + 1, data["name"], item if qty == 1 else f"{item} x{qty}")
+            canon.add_item(c, c.get("last_session_written", 0) + 1, data["name"],
+                           args.item if args.qty == 1 else f"{args.item} x{args.qty}")
             canon.save(campaign_dir, c)
             lines.append("recorded in canon (items)")
         return lines
-    return _edit_sheet(campaign, name, fn)
+    return _edit_sheet(args.campaign, args.name, fn)
+
+
+def execute_item_remove(args) -> int:
+    return _edit_sheet(args.campaign, args.name,
+                       lambda c, data: _purse(data, args.item, args.qty, -1) or [items.remove(data, args.item, args.qty)])
+
+
+def execute_item_equip(args) -> int:
+    return _edit_sheet(args.campaign, args.name, lambda c, data: _equip(data, args.item, not args.not_proficient))
+
+
+def execute_item_unequip(args) -> int:
+    return _edit_sheet(args.campaign, args.name, lambda c, data: [items.get(data, args.item).unequip(data)])
+
+
+def execute_item_profile(args) -> int:
+    def fn(campaign_dir, data):
+        try:
+            return [items.set_profile(data, args.item, json.loads(args.profile))]
+        except json.JSONDecodeError:
+            raise RulesError("give --profile as JSON, for example '{\"kind\": \"heal\", \"heal\": \"2d4\"}'.") from None
+    return _edit_sheet(args.campaign, args.name, fn)
 
 
 def execute_loot_roll(cr: float, kind: str, seed: int | None, creature_type: str) -> int:
-    try:
-        print("\n".join(loot.lines(loot.roll(cr, kind, seed, creature_type))))
-    except combat.RulesError as e:
-        print(f"Error: {e}")
-        return 1
-    return 0
-
-
-def execute_loot_force(campaign, who: str, item: str, qty: int, perk: str, rarity: str | None, fx: str = "", base: str | None = None) -> int:
-    """Give an item the DM chose, with a perk written as free text (the lore is the DM's). A catalog perk in the text adds a hint.
-    `fx` is a list of effect presets (comma-separated) that the item gives while it is equipped. `base` names the item the gear
-    is made from; without it the base is found in the item name ("+1 Longsword of Flame" is a Longsword)."""
-    def fn(campaign_dir, data):
-        if rarity and rarity not in loot.RARITIES:
-            raise combat.RulesError(f"rarity is one of {', '.join(loot.RARITIES)}.")
-        ids = [e.strip() for e in fx.split(",") if e.strip()]
-        gear = [k for k, v in effects.PRESETS.items() if v["use"] == "kept" and not v["concentration"]]
-        bad = [e for e in ids if e not in gear]
-        if bad:
-            raise combat.RulesError(f"no gear effect {', '.join(bad)}. Gear effects: {', '.join(gear)}.")
-        kind = loot.base_of(item, base)
-        gear = {"effects": ids, **({"type": kind[0], "base": kind[1]} if kind else {})}
-        return [items.add(data, item, qty, perk, rarity, **gear)] + loot.hints(perk, ids)
-    return _edit_sheet(campaign, who, fn)
+    return _out(loot.lines(loot.roll(cr, kind, seed, creature_type)))
 
 
 def execute_gold(campaign, name: str, delta: str) -> int:
@@ -282,22 +298,10 @@ def execute_gold(campaign, name: str, delta: str) -> int:
     return _edit_sheet(campaign, name, lambda c, data: [sheet.gold(data, amount)])
 
 
-def _api(endpoint: str) -> dict:
-    data, error, _ = api_get(endpoint)
-    if error or not data:
-        raise combat.RulesError(f"no {endpoint} in the 5e API. Find the index with: uv run dnd-cli search "
-                                f"{endpoint.split('/')[0]} --name {endpoint.split('/')[-1].split('-')[0]}")
-    return data
-
-
-def execute_equip(campaign, name: str, index: str, proficient: bool) -> int:
-    return _edit_sheet(campaign, name, lambda c, data: items.equip_base(data, _api(f"equipment/{index}"), proficient))
-
-
 def execute_xp(campaign, names: list[str], amount: int) -> int:
     def go(campaign_dir):
-        state = combat.load_state(campaign_dir)
-        who = combat.party(campaign_dir, state) if names == ["all"] else names
+        state = tracker.load_state(campaign_dir)
+        who = tracker.party(campaign_dir, state) if names == ["all"] else names
         lines = []
         for n in who:
             data = character.load(campaign_dir, n)
@@ -312,10 +316,10 @@ def _asi(text: str | None) -> dict:
     for part in filter(None, (text or "").split(",")):
         abil, sign, n = part.partition("+")
         if not sign or not n.isdigit():
-            raise combat.RulesError(f"--asi {text!r}: write it like str+2 or str+1,dex+1.")
-        out[combat.ability(abil)] = out.get(combat.ability(abil), 0) + int(n)
+            raise RulesError(f"--asi {text!r}: write it like str+2 or str+1,dex+1.")
+        out[records.ability(abil)] = out.get(records.ability(abil), 0) + int(n)
     if sum(out.values()) > 2:
-        raise combat.RulesError("an ability score improvement adds at most 2 points (a half-feat adds 1).")
+        raise RulesError("an ability score improvement adds at most 2 points (a half-feat adds 1).")
     return out
 
 
@@ -330,7 +334,7 @@ def execute_level_up(campaign, name: str, hp_mode: str, asi: str | None) -> int:
             desc = (_api(f"features/{f['index']}").get("desc") or [""])[0]
             feats.append({"name": f["name"], "description": desc[:300]})
         if any(f["name"].startswith("Ability Score Improvement") for f in feats) and asi is None:
-            raise combat.RulesError("this level gives an Ability Score Improvement. Ask the player, then run it with "
+            raise RulesError("this level gives an Ability Score Improvement. Ask the player, then run it with "
                                     "--asi str+2 (or --asi str+1,dex+1), or --asi none if they take a feat instead.")
         lines = sheet.level_up(data, level, hit_die, hp_mode, _asi(None if asi == "none" else asi), feats,
                                class_data=class_data)

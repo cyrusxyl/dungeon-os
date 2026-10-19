@@ -10,12 +10,13 @@ scene location ids. See dungeon-crawl.md.
 
 from __future__ import annotations
 
-from collections import deque
 from pathlib import Path
 
 from stage import crawl
-from stage.beat import ID_RULE, SLUG_RE, title
-from stage.files import read_json, write_json
+from core.ids import ID_RULE
+from dnd_cli.world import route_between, shortest
+from stage.beat import SLUG_RE, title
+from core.files import read_json, write_json
 
 DIRS = {"n": (0, -1), "ne": (1, -1), "e": (1, 0), "se": (1, 1), "s": (0, 1), "sw": (-1, 1), "w": (-1, 0), "nw": (-1, -1)}
 STEP = 2
@@ -63,10 +64,6 @@ def _free_spot(m: dict, start: list[int], d: tuple[int, int]) -> list[int]:
     while (x, y) in taken:
         x, y = x + d[0], y + d[1]
     return [x, y]
-
-
-def _route(m: dict, a: str, b: str) -> dict | None:
-    return next((r for r in m["routes"] if {r["a"], r["b"]} == {a, b}), None)
 
 
 def place(campaign_dir: Path, map_id: str, place_id: str, tokens: list[str]) -> dict:
@@ -127,7 +124,7 @@ def route(campaign_dir: Path, map_id: str, a: str, b: str, travel: str = "") -> 
     for p in (a, b):
         if p not in m["places"]:
             raise MapError(f"no place {p!r} on {map_id}. Places: {', '.join(m['places'])}.")
-    r = _route(m, a, b)
+    r = route_between(m, a, b)
     if r is None:
         m["routes"].append({"a": a, "b": b, "travel": travel.replace("_", " ")})
     elif travel:
@@ -208,34 +205,13 @@ def view(m: dict, map_id: str, here_id: str | None) -> dict:
     }
 
 
-def shortest(m: dict, a: str, b: str) -> list[str] | None:
-    """Fewest legs over known routes."""
-    prev: dict = {a: None}
-    queue = deque([a])
-    while queue:
-        cur = queue.popleft()
-        if cur == b:
-            out = []
-            while cur is not None:
-                out.append(cur)
-                cur = prev[cur]
-            return out[::-1]
-        for r in m["routes"]:
-            if cur in (r["a"], r["b"]):
-                nxt = r["b"] if cur == r["a"] else r["a"]
-                if nxt not in prev and m["places"][nxt]["known"]:
-                    prev[nxt] = cur
-                    queue.append(nxt)
-    return None
-
-
 def travel_prompt(m: dict, origin: str, dest: str) -> str:
     name = lambda pid: m["places"][pid]["name"]  # noqa: E731
     path = shortest(m, origin, dest)
     if path is None:
         way = "no known route; the party goes across country"
     else:
-        legs = [(_route(m, x, y) or {}).get("travel") for x, y in zip(path, path[1:])]
+        legs = [(route_between(m, x, y) or {}).get("travel") for x, y in zip(path, path[1:])]
         times = ", ".join(t for t in legs if t)
         way = " → ".join(name(p) for p in path) + (f" ({times})" if times else "")
     return (f"[map] The party travels from {name(origin)} to {name(dest)}: {way}. "

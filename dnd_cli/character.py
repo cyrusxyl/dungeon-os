@@ -15,8 +15,7 @@ from functools import cache
 from pathlib import Path
 from typing import Optional
 
-import jsonschema
-
+from dnd_cli import item as items
 from dnd_cli.campaign import REPO_ROOT, CampaignError
 
 SCHEMA_PATH = REPO_ROOT / "game" / "schemas" / "character.schema.json"
@@ -31,6 +30,8 @@ class CharacterError(CampaignError):
 @cache
 def _validator():
     """The schema checked and compiled once: `jsonschema.validate` would check the schema again on every call."""
+    import jsonschema  # slow to import: only a command that checks a sheet pays for it
+
     with open(SCHEMA_PATH) as f:
         schema = json.load(f)
     return jsonschema.validators.validator_for(schema)(schema)
@@ -42,9 +43,11 @@ def character_path(campaign_dir: Path, name: str) -> Path:
 
 def validate(data: dict) -> None:
     """Raise CharacterError with a clear message if data does not match the schema."""
+    from jsonschema import ValidationError
+
     try:
         _validator().validate(data)
-    except jsonschema.ValidationError as e:
+    except ValidationError as e:
         location = "/".join(str(p) for p in e.absolute_path) or "(root)"
         raise CharacterError(
             f"character file failed schema validation at {location}: {e.message}"
@@ -58,6 +61,7 @@ def load(campaign_dir: Path, name: str) -> dict:
     with open(path) as f:
         data = json.load(f)
     validate(data)
+    items.link_gear(data)  # a sheet from before the `item` link
     return data
 
 

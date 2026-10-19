@@ -45,7 +45,8 @@ import re
 import time
 from pathlib import Path
 
-from stage.files import read_json
+from core.files import read_json
+from core.ids import ID_RE, ID_RULE
 
 EMOTIONS = ("neutral", "happy", "angry", "sad", "surprised", "fearful", "disgusted")  # the voice labels; the DM-facing list
 MOODS = ("neutral", "ominous", "warm", "wry", "tense", "intense", "urgent", "action", "bright", "somber")  # narrator styles
@@ -56,8 +57,6 @@ BYSTANDER = "bystander"  # drawn in a fight, takes no turn, and is not at war wi
 JOIN_SIDES = ("ally", "neutral", "hostile")  # a companion is not a player character
 MAX_ACTORS = 12  # more than this does not fit the stage
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # a file id: sites, maps, places
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*(#\d+)?$")  # a slug, or an actor of a kind: goblin#2
-ID_RULE = "use lower-case letters, digits, '-' or '_'"
 
 
 def default_side(actor_id: str) -> str:
@@ -249,7 +248,7 @@ def companions(campaign_dir: Path) -> list[dict]:
 
 def set_companions(campaign_dir: Path, roster: list[dict]) -> None:
     """Save the roster in state.json, keeping the rest of the file."""
-    from stage.files import write_json
+    from core.files import write_json
 
     path = campaign_dir / "state.json"
     data = read_json(path) or {}

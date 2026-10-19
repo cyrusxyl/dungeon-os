@@ -223,7 +223,7 @@ def cells_path(log_path):
 def with_cells(state: dict, log_path) -> dict:
     """`state` with the walked cells of the actors laid over it, when the file is for the scene on stage. The log alone gives the cells
     where the actors were placed, which is not where they stand now; a fight must start where they stand."""
-    from stage.files import read_json
+    from core.files import read_json
 
     saved = read_json(cells_path(log_path)) or {}
     if not saved.get("scene") or saved["scene"] != state["scene"]:

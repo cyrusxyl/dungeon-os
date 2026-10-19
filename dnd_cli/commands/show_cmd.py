@@ -6,11 +6,12 @@ from pathlib import Path
 
 from dnd_cli import world
 from dnd_cli.campaign import CampaignError, active_campaign_slug, resolve_campaign_dir
+from dnd_cli.errors import RulesError
 from stage import actors, beat, cast, crawl, maps, scenes, state
-from stage.files import read_json, write_json
+from core.files import read_json, write_json
 
 
-def _stage_campaign_dir(campaign: str | None) -> Path:
+def stage_campaign_dir(campaign: str | None) -> Path:
     """The campaign the running stage shows, else the one given, else the active one.
 
     The stage server sets DUNGEON_STAGE_LOG for the DM process. Following it
@@ -26,7 +27,7 @@ def _stage_campaign_dir(campaign: str | None) -> Path:
 def run_stage(campaign: str | None, fn, *errors: type[Exception]) -> int:
     """Run fn(campaign_dir) for a stage command; print a known error and return 1."""
     try:
-        return fn(_stage_campaign_dir(campaign))
+        return fn(stage_campaign_dir(campaign))
     except (CampaignError, OSError, KeyError, *errors) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -125,14 +126,15 @@ def _beat(campaign_dir: Path, file: str | None) -> int:
     for e in events:
         if e["type"] != "roll_request":
             continue
-        from dnd_cli import character, combat
+        from dnd_cli import character
+        from dnd_cli.combat import rolls, tracker
 
         try:
             if not character.character_path(campaign_dir, e["who"]).exists():
-                raise combat.RulesError(f"@roll is for player characters; {e['who']!r} has no sheet. "
+                raise RulesError(f"@roll is for player characters; {e['who']!r} has no sheet. "
                                         "Roll for others with `uv run dnd-cli check`.")
-            e.update(combat.roll_preview(campaign_dir, combat.load_state(campaign_dir), e["who"], e["what"]))
-        except (combat.RulesError, character.CharacterError) as err:
+            e.update(rolls.roll_preview(campaign_dir, tracker.load_state(campaign_dir), e["who"], e["what"]))
+        except (RulesError, character.CharacterError) as err:
             print(f"Error: @roll {e['who']} {e['what']}: {err}", file=sys.stderr)
             return 1
 

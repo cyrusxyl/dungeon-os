@@ -35,8 +35,8 @@ export interface PartyChar {
   prof: number
   abilities: Record<string, { score: number; mod: number; save: number; save_prof: boolean }>
   skills: { name: string; ability: string; bonus: number; prof: 0 | 1 | 2 }[]
-  weapons: { name: string; attack_bonus?: number; damage?: string; damage_type?: string; properties?: string[]; equipped?: boolean }[]
-  armor?: { name: string; ac_bonus?: number; type?: string; equipped?: boolean } | null
+  weapons: { name: string; item?: string; attack_bonus?: number; damage?: string; damage_type?: string; properties?: string[]; equipped?: boolean }[]
+  armor?: { name: string; item?: string; ac_bonus?: number; type?: string; equipped?: boolean } | null
   inventory: Item[]
   capacity: number
   spell: { ability?: string; dc?: number; attack?: number; slots: Record<string, { max: number; remaining: number }>; known: string[] } | null
