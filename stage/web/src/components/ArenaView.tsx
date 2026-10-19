@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Hand } from '@/components/Hand'
+import { CombatStatus } from '@/components/Status'
 import { WalkPad } from '@/components/WalkPad'
 import type { Ability, ArenaUnit, ArenaView as View, Cell, Preview } from '@/lib/arena'
 import { useHand, useSkin } from '@/lib/hand'
@@ -428,9 +429,20 @@ export function ArenaView({ state, arenaId, actingAs, mine, status, onEnd }: { s
         )}
         {canWalk && prefs.pad && me && <WalkPad at={[me.x, me.y]} walk={view.walk} onStep={(to) => call('/api/arena/move', { who: actingAs, to })} />}
       </div>
-      {/* The roll window draws here while a roll plays; with none the strip has no height, so the board keeps the room. */}
-      <div ref={dockRef} className="h-[15rem] shrink-0 overflow-hidden border-t-2 border-[var(--border)] empty:hidden" />
-    {hand && canWalk && <Hand key={hand.who} hand={hand} skin={skin} onSkin={flipSkin} status={status} onEnd={onEnd} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />}
+      {/* The panel under the board holds the status and the hand. A roll draws over it (the dock), so the board never changes size. */}
+      <div className="relative h-[15rem] shrink-0 overflow-hidden border-t-2 border-[var(--border)]">
+        <div className="flex h-full flex-col [&>*]:h-full [&>*]:max-h-full">
+          {hand && canWalk ? (
+            <Hand key={hand.who} hand={hand} skin={skin} onSkin={flipSkin} status={status} onEnd={onEnd} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />
+          ) : (
+            <div className="flex flex-col gap-2 overflow-y-auto bg-black/85 p-2 text-xs">
+              {status && <CombatStatus c={status} />}
+              <p className="text-sm text-[var(--dim)]">{view.current ? `${name(view.current)} acts…` : 'Waiting…'}</p>
+            </div>
+          )}
+        </div>
+        <div ref={dockRef} className="absolute inset-0 z-10 overflow-hidden empty:hidden" />
+      </div>
     </div>
   )
 }

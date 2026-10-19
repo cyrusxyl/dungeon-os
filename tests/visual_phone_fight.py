@@ -112,11 +112,14 @@ def main() -> int:
                                    "target": {"label": "Armor Class", "value": 15},
                                    "damage": [{"type": "slashing", "expr": "1d8+3", "faces": [6], "groups": [{"die": "1d8", "faces": [6]}], "total": 9},
                                               {"type": "radiant", "expr": "2d8", "faces": [3, 5], "groups": [{"die": "2d8", "faces": [3, 5]}], "total": 8}]}}
+                board_h = "document.querySelector('canvas[aria-label^=\"The board\"]').parentElement.getBoundingClientRect().height"
+                h0 = await page.eval(board_h)
                 beat.append(c, [roll])
                 await asyncio.sleep(1.2)
                 await page.shot("phone-roll-start")
                 strip = await page.eval("""(() => { const e = [...document.querySelectorAll('[role=status]')].find(x => x.textContent.includes('Longsword')); const b = document.querySelector('canvas[aria-label^="The board"]').getBoundingClientRect(); const r = e && e.getBoundingClientRect(); return {inStrip: Boolean(e), top: r && r.top, boardBottom: b.bottom, boardTop: b.top} })()""")
                 check("the roll window sits under the board, not over it", strip["inStrip"] and strip["top"] >= strip["boardTop"] + 50, str(strip))
+                check("the board keeps its size while a roll plays", abs(await page.eval(board_h) - h0) < 2, f"{h0} -> {await page.eval(board_h)}")
                 await asyncio.sleep(5)
                 await page.shot("phone-roll-done")
                 feet = lambda: page.eval("(document.body.innerText.match(/(\\d+) ft left/) || [])[1] || ''")

@@ -161,7 +161,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       arenaId={state.arena}
       actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null}
       mine={mine}
-      status={party?.characters.find((c) => c.id === onTurn && mine.includes(c.id)) ?? null}
+      status={party?.characters.find((c) => c.id === onTurn && mine.includes(c.id)) ?? party?.characters.find((c) => mine.includes(c.id)) ?? null}
       onEnd={onTurn ? () => postJson('/api/end-turn', { who: onTurn }) : undefined}
     />
   ) : state.explore ? (
