@@ -7,6 +7,7 @@ Run from the repo root:  .venv/bin/python tests/test_scene_walk.py
 from __future__ import annotations
 
 import asyncio
+import random
 import sys
 import tempfile
 import time
@@ -54,6 +55,7 @@ async def main() -> None:
     stage.seats.claim(HOST_DEVICE, "aragorn", "Alex")
     stage.seats.ensure_host(HOST_DEVICE)
     stage.state["dm"] = {"status": "idle"}
+    stage.walkers.rng = random.Random(1)  # the walkers wander at random; an NPC in the way would make the walk fail now and then
     actors = lambda: stage.state["actors"]  # noqa: E731
     check("the party and an NPC have cells at the start", all("cell" in a for a in actors().values()) and len(actors()) == 3)
     start = tuple(actors()["aragorn"]["cell"])
@@ -118,6 +120,7 @@ async def main() -> None:
     check("a restart keeps the walked cell", tuple(stage2.state["actors"]["aragorn"]["cell"]) == goal)
 
     st = stage2
+    st.walkers.rng = random.Random(1)
     st.event_clients.add(Client())
     g = st.ground_of("hall")
     # Walkers keep to the ground the placer allows: after a minute of wandering and patrolling a new beat places no one again.

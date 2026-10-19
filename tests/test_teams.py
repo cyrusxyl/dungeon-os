@@ -181,6 +181,7 @@ def main() -> int:
               actions._enemies(state) == ["goblin#1"])
         state["active_encounter"]["current_turn"] = "aragorn"
         board.player_attack(c, state, a, "aragorn", "qorlia", confirm=True)
+        state["active_encounter"]["monsters"]["qorlia"]["hp"]["current"] = 12  # the attack uses real dice; a kill (2 in 100) would take qorlia off the card
         check("once the faction is at war with the party it is on the card", set(actions._enemies(state)) == {"goblin#1", "qorlia"})
 
     # The fight ends: a player character who went down is not a corpse, and stands again in the next outcome. Units are never left on a chair.
