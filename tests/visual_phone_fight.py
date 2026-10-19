@@ -124,9 +124,13 @@ def main() -> int:
                 await page.shot("phone-roll-done")
                 feet = lambda: page.eval("(document.body.innerText.match(/(\\d+) ft left/) || [])[1] || ''")
                 before = await feet()
+                scroll = "(() => { const b = document.querySelector('canvas').parentElement; return [Math.round(b.scrollLeft), Math.round(b.scrollTop)]; })()"
+                s0 = await page.eval(scroll)
                 clicked = await page.eval("""(() => { const b = [...document.querySelectorAll('button[aria-label^="Walk "]')].find(x => !x.disabled); if (!b) return null; b.click(); return b.getAttribute('aria-label'); })()""")
                 await asyncio.sleep(1.5)
                 after = await feet()
+                s1 = await page.eval(scroll)
+                check("the camera follows the walking character", abs(s1[0] - s0[0]) + abs(s1[1] - s0[1]) >= 8, f"{s0} -> {s1}")
                 check("the walking pad moves the character and spends 5 or 7 ft", bool(clicked) and int(before) - int(after) in (5, 7), f"{clicked}: {before} -> {after}")
                 over = await page.eval("""(() => { const w = document.documentElement.clientWidth; const bad = [...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > w + 1 || e.getBoundingClientRect().left < -1).slice(0, 8).map(e => e.tagName + '.' + String(e.className).slice(0, 70) + ' ' + Math.round(e.getBoundingClientRect().left) + '..' + Math.round(e.getBoundingClientRect().right));
                     const mr = document.querySelector('main').getBoundingClientRect().right;

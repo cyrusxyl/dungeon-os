@@ -272,11 +272,18 @@ export function ArenaView({ state, arenaId, actingAs, mine, status, onEnd }: { s
       const shown = moving.size ? { ...view, units: view.units.map((u) => (moving.has(u.id) ? { ...u, x: moving.get(u.id)![0], y: moving.get(u.id)![1] } : u)) } : view
       base.current = baseFor(base.current, view, g, image, props, atlas)
       draw(ctx, shown, g, base.current.base, hover, image, aimed ? aim : null, props, atlas, seen.current)
+      // The camera follows the creature whose turn it is while it walks.
+      const follow = view.current ? moving.get(view.current) : undefined
+      const el = box.current
+      if (follow && el) {
+        const [cx, cy] = groundCentre(g, follow[0], follow[1])
+        el.scrollTo({ left: cx * scale - el.clientWidth / 2, top: cy * scale - el.clientHeight / 2, behavior: 'instant' })
+      }
       if (walks.current.size) frame.current = requestAnimationFrame(paint)
     }
     paint(performance.now())
     return () => cancelAnimationFrame(frame.current)
-  }, [view, hover, image, tick, aim, aimed, props, atlas]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, hover, image, tick, aim, aimed, props, atlas, scale]) // eslint-disable-line react-hooks/exhaustive-deps
   // The board may be bigger than the screen: bring the creature whose turn it is into the middle.
   const turnKey = `${view?.id}:${view?.current}:${view?.round}`
   useEffect(() => {
