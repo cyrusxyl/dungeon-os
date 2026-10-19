@@ -283,7 +283,7 @@ def test_scenes() -> None:
         for sx, sy in entry["points"]:
             if not alpha.getpixel((sx, sy)):
                 off.append(n)
-        if (entry["x"], entry["y"]) != (5, 4):
+        if (entry["x"], entry["y"]) != (7, 5):
             off.append(f"{n} cell")
     check(f"every stand point lies on opaque pixels of its prop {off}", not off)
     frame = Image.new("RGBA", (64, 64))
@@ -636,7 +636,7 @@ def test_placement() -> None:
         st.fold(st.read_new_events())
         st.settle()
         check("a late actor is placed and the others stay", all(tuple(st.state["actors"][k]["cell"]) == v for k, v in before.items()) and "cell" in st.state["actors"]["sister-gareth"])
-        check("the room of a scene with no look is a bare room", Stage(c, ["cat"]).room_of("nowhere")["grid"] == ["." * 10] * 8)
+        check("the room of a scene with no look is a bare room", Stage(c, ["cat"]).room_of("nowhere")["grid"] == ["." * 14] * 11)
         hall = scenes.room(scenes.load(c, "hall"))
         empty = next(z for z in scenes.ZONES if not any(p["slot"] == z for p in hall["props"]))
         held = next(p["slot"] for p in hall["props"])

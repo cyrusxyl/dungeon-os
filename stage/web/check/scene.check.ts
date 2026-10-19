@@ -19,7 +19,7 @@ check('a wall on another line moves both ways: north row 3, west column 4', same
 check('a piece stands out from the wall by the depth of its back, and hangs at its lift',
   same(decorAnchor(g, { wall: 'n', t: 2.5, lift: 14, line: 0 }, 6), [264 + 48 - 6, 118 + 56 + 3 - 14 - 4]) && same(decorAnchor(g, { wall: 'w', t: 2.5, lift: 0, line: 0 }, 6), [264 - 48 + 6, 118 + 56 + 3 - 4]))
 check('the centre of a piece is above its foot by its lift and half its height', same(decorCentre(g, { wall: 'n', t: 2.5, lift: 10, line: 0 }, 40), [264 + 48, 118 + 56 - 10 - 20]))
-check('a room with nothing in it is open floor', blankRoom().grid.every((r) => r === '.'.repeat(10)) && blankRoom().props.length === 0)
+check('a room with nothing in it is open floor', blankRoom().grid.every((r) => r === '.'.repeat(14)) && blankRoom().props.length === 0)
 
 // A point of a prop's picture on the screen. Upright: a 32 x 32 picture stands with its feet on the ground centre (+4).
 const upright: PropEntry = { r: [0, 0, 32, 32], o: [0, 0], size: [32, 32], pose: { pose: 'upright' } }

@@ -572,9 +572,11 @@ def _in_room(spec: dict, source: dict, party_ids: list[str], foe_ids: list[str])
     heart = (sum(x for x, _ in party) / len(party), sum(y for _, y in party) / len(party)) if party else centre
     far = max(floor, key=lambda c: (dist(c, heart), c))
     foes = []
+    # A foe the DM names anew (a guard for the silhouettes that stood there) takes the cell of a hostile actor that is not in the fight.
+    spare = [cells[c["id"]] for c in source["cast"] if c["side"] == "hostile" and c["id"] not in foe_ids and c["id"] not in party_ids]
     for fid in foe_ids:
-        c = start(cells.get(fid), cells.get(fid, far))
-        foes.append(c)
+        want = cells.get(fid) or (spare.pop(0) if spare else None)
+        foes.append(start(want, want or far))
     if None in foes:
         return None
     anchor = {"party": heart, "center": centre, "foes": far}

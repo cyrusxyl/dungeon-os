@@ -13,7 +13,7 @@ from collections.abc import Callable
 
 FLOOR, WALL, VOID = ".", "#", "-"
 # Width and depth of a room by size class, as (low, high) pairs.
-CLASSES = {"small": ((9, 12), (7, 9)), "medium": ((14, 18), (9, 12)), "large": ((20, 26), (13, 17))}
+CLASSES = {"small": ((12, 15), (9, 11)), "medium": ((17, 22), (12, 15)), "large": ((24, 30), (16, 20))}
 HALL = ((20, 27), (6, 8))
 MIN_CAVE = (13, 10)
 MIN_PART = 40  # the largest part of a shape must have at least max(this, 30% of its box)

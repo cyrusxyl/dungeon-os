@@ -16,9 +16,10 @@ from dataclasses import dataclass
 from stage import arena, cast
 
 WALKS = ("still", "wander", "patrol")
-STEP = 0.45  # seconds from one step to the next: a little over the 300 ms the canvas takes to draw one
-PAUSE = {"wander": (2.0, 6.0), "patrol": (0.2, 1.5)}  # the rest after a walk, in seconds
-RADIUS = 3  # a wanderer goes this far (in cells) from its anchor
+GO = 0.45  # the same, for a walk a player ordered
+STEP = 0.8  # seconds from one step to the next: a calm walk, well over the 300 ms the canvas takes to draw one
+PAUSE = {"wander": (6.0, 14.0), "patrol": (3.0, 8.0)}  # the rest after a walk, in seconds
+RADIUS = 2  # a wanderer goes this far (in cells) from its anchor
 REACH = 30  # the longest walk planned, in steps
 
 Cell = tuple[int, int]
@@ -86,7 +87,7 @@ class Walkers:
         """The walk state of an actor. An actor that is new, or was placed again, starts afresh from where it stands."""
         w = self.w.get(aid)
         if w is None or w["at"] != at:
-            w = self.w[aid] = {"at": at, "home": at, "path": [], "go": False, "next": now + self.rng.uniform(0, 2), "route": None, "i": 0}
+            w = self.w[aid] = {"at": at, "home": at, "path": [], "go": False, "next": now + self.rng.uniform(1, 8), "route": None, "i": 0}
         return w
 
     def order(self, aid: str, at: Cell, path: list[Cell], now: float) -> None:
@@ -138,10 +139,10 @@ class Walkers:
             w["path"].pop(0)
             w["at"] = cells[aid] = nxt
             moves[aid] = {"cell": list(nxt), "facing": facing_of(here, nxt)}
-            w["next"] = now + STEP
+            w["next"] = now + (GO if w["go"] else STEP)
             if not w["path"]:
                 ordered, w["go"] = w["go"], False
-                w["next"] = now + (STEP if ordered or mode not in PAUSE else self.rng.uniform(*PAUSE[mode]))
+                w["next"] = now + (GO if ordered or mode not in PAUSE else self.rng.uniform(*PAUSE[mode]))
         return moves
 
     def _plan(self, aid: str, a: dict, w: dict, mode: str, others: set[Cell], g: Ground, keep: set[Cell], party_at) -> list[Cell]:

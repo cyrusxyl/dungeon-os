@@ -9,7 +9,7 @@ A scene spec is plain data, written by `dnd-cli scene set` to
 The DM never gives a pixel position. A template fills the room and names a
 default prop for some slots. The spec can change the wall or floor style,
 replace or empty a slot, and add extra props into a zone; the composer finds
-the spot. The browser draws a scene as a small isometric room (10 wide, 8 deep) on the renderer of the combat board:
+the spot. The browser draws a scene as a small isometric room (14 wide, 11 deep) on the renderer of the combat board:
 `room()` gives its cells, props and wall decor, `room_png()` its floor and wall pictures.
 """
 
@@ -47,9 +47,9 @@ UPRIGHT = re.compile(
 )
 UPRIGHT_FIRST = re.compile("cloud|smoke|armor|suit|cactus|corn|hoard")
 
-ROOM_W, ROOM_H = 10, 8  # the room of a scene in cells (see `_make_grid`)
-# Where a wall slot hangs: the wall (n = north, w = west) and the place along it in cells (the centre of the piece).
-WALL_AT = {"wall_left": ("w", 2.6), "wall_left2": ("n", 2.6), "wall_center": ("n", 5.4), "wall_right2": ("w", 5.6), "wall_right": ("n", 8.3)}
+ROOM_W, ROOM_H = 14, 11  # the room of a scene in cells (see `_make_grid`)
+# Where a wall slot hangs: the wall (n = north, w = west) and the place along it as a fraction of that wall (the centre of the piece).
+WALL_AT = {"wall_left": ("w", 0.325), "wall_left2": ("n", 0.26), "wall_center": ("n", 0.54), "wall_right2": ("w", 0.7), "wall_right": ("n", 0.83)}
 # How high above the floor a piece of wall decor hangs, in pixels: the first pattern that matches the name wins.
 WALL_LIFT = ((r"door|fireplace|hearth|stove|dresser", 0), (r"window", 14), (r"cabinet", 18), (r"lantern|torch", 10), (r".", 6))
 WALL_FACE = (48, 96)  # the rows of an LPC wall tile (96 high) a wall block of 48 shows: the lower half
@@ -282,7 +282,7 @@ def resolve(spec: dict) -> dict:
         "shape": spec.get("shape"), "seed": spec.get("seed"), "size": spec.get("size"),
     }
     if out["shape"] == "fixed":
-        out["shape"] = None  # the plain 10 x 8 room
+        out["shape"] = None  # the plain 14 x 11 room
     if out["shape"] is not None and out["shape"] not in rooms.SHAPE_NAMES:
         raise SceneError(f"shape {out['shape']!r} is not one of fixed, {', '.join(rooms.SHAPE_NAMES)}.")
     if out["size"] is not None and out["size"] not in rooms.CLASSES:
@@ -370,7 +370,7 @@ def _wall_runs(grid: list[str]) -> dict[str, tuple[int, int, int]]:
 
 
 def _make_grid(r: dict, walled: bool) -> list[str]:
-    """The rows of the room: the fixed 10 x 8 room (with walls, the north row and the west column are wall, and a south row and
+    """The rows of the room: the fixed 14 x 11 room (with walls, the north row and the west column are wall, and a south row and
     an east column are added as the low rim that the view cuts), or a shaped one."""
     if not r.get("shape"):
         n = 1 if walled else 0
@@ -397,7 +397,7 @@ def _icon(path: str) -> Image.Image:
 def room(spec: dict, stuff: tuple = ()) -> dict:
     """A scene as an isometric room, for the browser (see isometric-view.md).
 
-    The room is 10 x 8 cells, walled as `_make_grid` says; an open scene (a street,
+    The room is 14 x 11 cells, walled as `_make_grid` says; an open scene (a street,
     a forest) has floor everywhere. A scene with `shape=` has a room of that shape (`stage/rooms.py`), walled all round, with
     the void `-` outside. Floor props stand on cells by their zone; wall props hang on a wall at a place along it (`t`, in cells,
     on the wall `line`) and a height (`lift`, px). A prop with a stand point is listed in `stand`: the points are in pixels of
@@ -424,7 +424,8 @@ def room(spec: dict, stuff: tuple = ()) -> dict:
                 line, first, count = runs[wall]
                 along = first + frac * count
             else:
-                (wall, along), line = WALL_AT[slot], 0
+                (wall, frac_along), line = WALL_AT[slot], 0
+                along = frac_along * (ROOM_W if wall == "n" else ROOM_H)
             if cat["props"][name].get("on") == "wall":
                 decor.append({"kind": name, "slot": slot, "wall": wall, "t": along, "line": line, "lift": _lift(name)})
                 continue
@@ -465,7 +466,7 @@ def stand_points(spec: dict) -> list[dict]:
 
 
 def _wall_strip(r: dict, west: bool) -> list[Image.Image]:
-    """The wall tiles of the north wall (10 of them) or the west wall (8), as LPC tiles of 32 x 96."""
+    """The wall tiles of the north wall (14 of them) or the west wall (11), as LPC tiles of 32 x 96."""
     walls = r["walls"]
     if west:
         return [_wall_tile(walls[0], y, -1, -1) for y in range(ROOM_H)]
@@ -509,7 +510,7 @@ def _room_png(spec_json: str, stuff: tuple) -> bytes:
 
 
 def room_png(spec: dict, stuff: tuple = ()) -> bytes:
-    """The pictures of `room(spec, stuff)`: the floor (10 x 8 tiles), then the wall faces and caps, then the stuff icons."""
+    """The pictures of `room(spec, stuff)`: the floor (14 x 11 tiles), then the wall faces and caps, then the stuff icons."""
     return _room_png(json.dumps(spec, sort_keys=True), stuff)
 
 

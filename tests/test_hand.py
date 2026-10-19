@@ -55,6 +55,7 @@ def test_listing() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = setup(Path(tmp), at={"goblin#1": (3, 3), "goblin#2": (9, 5)})
         hand_ = by_id(hand.listing(c, state, a, "aragorn"))
+        check("the hand has a card for each weapon, and no generic Attack", "attack" not in hand_ and any(k.startswith("attack:") for k in hand_))
         check("weapons, unarmed strike, the common actions and class features are all there",
               {"attack:Longsword", "attack:Longbow", "attack:Unarmed Strike", "dash", "disengage", "dodge", "help", "hide", "shove", "feature:Second Wind"} <= set(hand_))
         sword = hand_["attack:Longsword"]

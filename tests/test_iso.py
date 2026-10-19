@@ -155,10 +155,10 @@ def test_room() -> None:
     # The study, as the demo placed it.
     study = scenes.room(scenes.FILLER, scenes.FILLER_STUFF)
     cells = {p["kind"]: (p["x"], p["y"]) for p in study["props"]}
-    check("the study's props stand where the demo had them", cells == {"chests": (2, 2), "barrel_pile": (8, 2), "table_desk": (5, 4), "plant": (2, 6), "brazier": (8, 6), "cabinet": (2, 1), "dresser": (1, 5)}, str(cells))
+    check("the study's props stand where the demo had them", cells == {"chests": (2, 2), "barrel_pile": (11, 2), "table_desk": (7, 5), "plant": (2, 8), "brazier": (11, 8), "cabinet": (3, 1), "dresser": (1, 7)}, str(cells))
     decor = {d["kind"]: (d["wall"], d["t"], d["lift"]) for d in study["decor"]}
     check("its wall decor hangs where the demo had it; furniture in a wall slot stands against the wall",
-          decor == {"window_arched": ("w", 2.6, 14), "fireplace": ("n", 5.4, 0), "tapestry": ("n", 8.3, 6)}, str(decor))
+          {k: (w, round(t, 2), lift) for k, (w, t, lift) in decor.items()} == {"window_arched": ("w", 3.58, 14), "fireplace": ("n", 7.56, 0), "tapestry": ("n", 11.62, 6)}, str(decor))
     two = scenes.room({"template": "tavern", "add": [["barrel", "back_left"], ["barrel", "back_left"], ["barrel", "back_left"]]})
     cells = [(p["x"], p["y"]) for p in two["props"] if p["kind"] == "barrel"]
     check("props added to one zone stand on different cells, and not on a wall", len(set(cells)) == 3 and all(x >= 1 and y >= 1 for x, y in cells), str(cells))
@@ -167,7 +167,7 @@ def test_room() -> None:
     hall = scenes.room({"template": "hall", "slots": {**{s: None for s in scenes.SLOTS}, "back_center": "throne"}})
     throne = hall["stand"][0]
     alpha = scenes.prop_image("throne").getchannel("A")
-    check("a throne is a seat at the cell of its zone", (throne["x"], throne["y"]) == (5, 2) and throne["mode"] == "sit" and throne["slot"] == "back_center"
+    check("a throne is a seat at the cell of its zone", (throne["x"], throne["y"]) == (7, 2) and throne["mode"] == "sit" and throne["slot"] == "back_center"
           and all(alpha.getpixel(tuple(pt)) for pt in throne["points"]))
     check("stand_points is the stand part of the room", scenes.stand_points({"template": "hall", "slots": {"back_center": "throne"}}) == scenes.room({"template": "hall", "slots": {"back_center": "throne"}})["stand"])
 
@@ -210,7 +210,7 @@ def test_shaped_scenes() -> None:
     check("a tavern gets rect, L or T and nothing else", seen <= {"rect", "l", "t"} and len(seen) >= 2, str(seen))
     saved = {"template": "tavern", "slots": {}, "add": [], "mood": "day"}
     check("a saved place without a shape keeps its plain room when it changes", "shape" not in scenes.build(["mood=night"], saved) and not scenes.room(scenes.build(["mood=night"], saved))["shaped"])
-    check("shape=fixed gives the plain 10 x 8 room", not scenes.room(scenes.build(["template=tavern", "shape=fixed"], None))["shaped"]
+    check("shape=fixed gives the plain 14 x 11 room", not scenes.room(scenes.build(["template=tavern", "shape=fixed"], None))["shaped"]
           and scenes.room(scenes.build(["template=tavern", "shape=fixed"], None))["w"] == scenes.ROOM_W + 1)
     check("a new template on a place changes its shape too", "shape" in scenes.build(["template=forest"], saved))
     bad, made = [], 0
@@ -254,7 +254,7 @@ async def routes() -> None:
     check("the old prop route still works", status == 200)
     status, _, raw = await call(app, "GET", "/api/template/tavern?mood=night")
     room = json.loads(raw)
-    check("a template has a room, with its mood", status == 200 and room["has_look"] and room["mood"] == "night" and room["decor"] and len(room["grid"]) == 9)
+    check("a template has a room, with its mood", status == 200 and room["has_look"] and room["mood"] == "night" and room["decor"] and len(room["grid"]) == scenes.ROOM_H + 1)
     status, _, raw = await call(app, "GET", "/asset/template/tavern/room.png")
     check("and a sheet", status == 200 and raw[:4] == b"\x89PNG")
     status, _, raw = await call(app, "GET", "/api/template/not_a_template")

@@ -106,6 +106,8 @@ def listing(campaign_dir: Path, state: dict, a: dict, cid: str) -> list[dict]:
         stat = (f"+{ab['attack']['bonus']} · " if ab["kind"] == "spell_attack" else f"DC {ab['save']['dc']} · ") + ab["damage"][0][0]
         add({**ab, "id": f"spell:{ab['id']}", "text": f"Level {ab['spell_level']} spell · {reach} ft" if ab["spell_level"] else f"Cantrip · {reach} ft", "stat": stat}, why)
     for spec in actions.listing(campaign_dir, state, cid, sheet):
+        if spec["id"] == "attack":
+            continue  # the weapon cards above are the attack
         kind = ("shove" if spec["id"] == "shove" else "hide" if spec["id"] == "hide" else "feature" if spec["id"].startswith("feature:")
                 else "smite" if spec["id"].startswith("smite:") else "self")
         why = None if spec["why"] in (None, "No enemy") else spec["why"]

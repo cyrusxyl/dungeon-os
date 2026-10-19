@@ -56,6 +56,8 @@ Match action to skill:
 
 Contested check: roll both sides (Stealth vs Perception) and compare.
 
+**A failed Stealth check that gets hostile creatures to notice the party starts the fight in the same beat.** Do not stop on a beat that says they are spotted and ask what the player does. Run `encounter start` at once (the stage shows the board). The foes that spotted the party do not wait for a choice.
+
 ### Step 3: Roll with one command
 
 ```bash

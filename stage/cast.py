@@ -42,7 +42,7 @@ def nearest_free(floor: list[Cell], held, cell: Cell) -> Cell:
     return min((c for c in floor if c not in held), key=lambda c: (dist(c, cell), c), default=cell)
 
 
-def blank_room(w: int = 10, h: int = 8) -> dict:
+def blank_room(w: int = 14, h: int = 11) -> dict:
     """A room with nothing in it, for a place that has no look yet."""
     return {"w": w, "h": h, "grid": ["." * w for _ in range(h)], "props": [], "stand": []}
 

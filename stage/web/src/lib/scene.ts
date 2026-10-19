@@ -77,7 +77,7 @@ export interface SceneRoom extends Room {
 }
 
 /** A room with nothing in it, for actors that stand on no scene. */
-export const blankRoom = (w = 10, h = 8): Room => ({ w, h, grid: Array.from({ length: h }, () => '.'.repeat(w)), props: [] })
+export const blankRoom = (w = 14, h = 11): Room => ({ w, h, grid: Array.from({ length: h }, () => '.'.repeat(w)), props: [] })
 
 /** The foot of a wall at the place `t` along it, in logical px: where the floor meets it. A north wall is the row `line`, a west wall the column. */
 export function wallFoot(g: Geometry, wall: 'n' | 'w', t: number, line: number): Pt {

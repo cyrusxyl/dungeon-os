@@ -185,7 +185,7 @@ def test_shapes() -> None:
                 flips.append((shape, seed, counts))
             if shape not in ("hall", "cave"):
                 xs, ys = [x for x, _ in cells], [y for _, y in cells]
-                if not (max(xs) <= 12 and max(ys) <= 9):
+                if not (max(xs) <= 15 and max(ys) <= 11):
                     sized.append((shape, seed, max(xs), max(ys)))
     check(f"every shape makes a connected room of at least 40 cells {broken}", not broken)
     check(f"turning a room 8 ways does not change its floor count {flips}", not flips)
@@ -203,8 +203,8 @@ def test_shapes() -> None:
                     sizes[k].add((max(x for x, _ in m[0]), max(y for _, y in m[0])))
                     break
     check("size classes give the widths and depths of the plan",
-          all(9 <= w <= 12 and 7 <= d <= 9 for w, d in sizes["small"]) and all(14 <= w <= 18 and 9 <= d <= 12 for w, d in sizes["medium"])
-          and all(20 <= w <= 26 and 13 <= d <= 17 for w, d in sizes["large"]))
+          all(12 <= w <= 15 and 9 <= d <= 11 for w, d in sizes["small"]) and all(17 <= w <= 22 and 12 <= d <= 15 for w, d in sizes["medium"])
+          and all(24 <= w <= 30 and 16 <= d <= 20 for w, d in sizes["large"]))
     hall = [rooms.box("hall", random.Random(s), None)[1:] for s in range(40)]
     check("a long hall is 20 to 27 by 6 to 8, a cave at least 13 by 10",
           all(20 <= w <= 27 and 6 <= d <= 8 for w, d in hall) and all(w >= 13 and d >= 10 for _, w, d in (rooms.box("cave", random.Random(s), "small") for s in range(40))))
@@ -303,6 +303,13 @@ def test_scene_room() -> None:
         c3 = arena.generate({"features": [], "hazards": [], "seed": 2}, src, 2, 3, ["aragorn", "king"], ["goblin#1", "goblin#2", "boss"])
         king = tuple(c3["starts"]["party"][1])
         check("a seated character is moved to a free cell, and a creature with no place gets one", king not in arena.blocked_cells(c3) and len(c3["starts"]["foes"]) == 3)
+        # Silhouettes in the scene (blade#1, blade#2) are named anew for the fight (guard#1, guard#2): the guards take their cells.
+        named = {"aragorn": {"side": "party"}, "blade#1": {"side": "hostile"}, "blade#2": {"side": "hostile"}}
+        src5 = arena.source_of(c, {"scene": "hall", "actors": named}, {})
+        at = {p["id"]: tuple(p["cell"]) for p in src5["cast"]}
+        g = arena.generate({"features": [], "hazards": [], "seed": 3}, src5, 1, 2, ["aragorn"], ["guard#1", "guard#2"])
+        check("a foe the scene did not name stands where a hostile actor of the scene stood",
+              [tuple(p) for p in g["starts"]["foes"]] == [at["blade#1"], at["blade#2"]])
         # A scene with a shape of its own: the fight is in that room.
         bad = []
         for shape in ("cross", "ring", "cave", "l", "twin"):
@@ -376,7 +383,7 @@ def test_start() -> None:
               [list(a["units"][u].values()) for u in ("aragorn", "legolas")] == starts["party"]
               and [list(a["units"][u].values()) for u in ("goblin#1", "goblin#2", "boss")] == starts["foes"])
         check("the spec keeps light and size (a small room, turned either way)",
-              a["spec"]["light"] == "dark" and a["spec"]["size"] == "small" and max(a["w"], a["h"]) <= 14 and min(a["w"], a["h"]) <= 11)
+              a["spec"]["light"] == "dark" and a["spec"]["size"] == "small" and max(a["w"], a["h"]) <= 17 and min(a["w"], a["h"]) <= 13)
         check("a creature the DM named is DM-played, the others are not",
               a["control"] == {"goblin#1": "engine", "goblin#2": "engine", "boss": "dm"} and "You play: boss" in lines[-1])
         check("a bare monster index is engine-played, a renamed one is DM-played",
