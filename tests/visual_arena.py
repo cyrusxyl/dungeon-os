@@ -74,7 +74,7 @@ async def board_checks(page: Page, c: Path, arena_id: str) -> None:
     a = arena.load(c, arena_id)
     ax, ay = board.pos(a, "aragorn")
     dist, _ = board.reachable(c, state, a, "aragorn")
-    target = next(cell for cell, n in dist.items() if n == 2)
+    target = next(cell for cell, n in dist.items() if n == 10)
     await click_cell(page, canvas, a, target)
     await asyncio.sleep(1.5)
     now = board.pos(arena.load(c, arena_id), "aragorn")
@@ -225,7 +225,7 @@ async def dark_room(page: Page, c: Path, arena_id: str) -> None:
 
 
 async def phone_checks(page: Page, c: Path, arena_id: str) -> None:
-    """A room in the isometric view is wider than a phone: it must scale to the screen, not scroll."""
+    """A room in the isometric view is wider than a phone: the board shrinks to 3/4 at most, then scrolls inside its own box (the page never scrolls sideways)."""
     await page.call("Emulation.setDeviceMetricsOverride", width=360, height=740, deviceScaleFactor=2, mobile=True)
     await page.eval("localStorage.setItem('dungeon-hand', JSON.stringify({ scene: true, layout: 'auto' }))")  # a phone hides the scene until asked
     await page.call("Page.reload")
@@ -233,7 +233,9 @@ async def phone_checks(page: Page, c: Path, arena_id: str) -> None:
     await page.shot("arena-phone")
     canvas = "document.querySelector('canvas[aria-label^=\"The board\"]')"
     wide = await page.eval(f"{canvas}.getBoundingClientRect().width") or 0
-    check("on a phone the board scales to the screen", 0 < wide <= 360, str(wide))
+    box = await page.eval(f"{canvas}.parentElement.getBoundingClientRect().width") or 0
+    natural = await page.eval(f"{canvas}.width / 2")
+    check("on a phone the board box fits the screen and the board is at least 3/4 size", 0 < box <= 360 and wide >= 0.74 * natural and await page.eval("document.documentElement.scrollWidth <= document.documentElement.clientWidth"), f"{box} {wide} {natural}")
     check("on a phone nothing scrolls sideways", await page.eval("document.documentElement.scrollWidth <= window.innerWidth + 1"))
     await page.eval("localStorage.removeItem('dungeon-hand')")
     await page.call("Emulation.setDeviceMetricsOverride", width=1500, height=950, deviceScaleFactor=1, mobile=False)

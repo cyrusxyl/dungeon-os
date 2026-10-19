@@ -3,6 +3,7 @@ import { useId, useState } from 'react'
 import { Button } from '@/components/ui/8bit/button'
 import { Input } from '@/components/ui/8bit/input'
 import { VoiceServer } from '@/components/VoiceServer'
+import { CombatSettings, type CombatValues } from '@/components/CombatSettings'
 import { Tabs, type Tab } from '@/components/Tabs'
 import { VoiceToggle } from '@/components/VoiceToggle'
 import { setPrefs, usePrefs, type GameplayPrefs } from '@/lib/prefs'
@@ -149,12 +150,15 @@ export function Settings({
   frameworks,
   inGame,
   mode,
+  combat,
   onSaved,
 }: {
   settings: SettingsData | null
   frameworks: Framework[]
   inGame: boolean
   mode: Mode
+  /** The host's combat options in a game; null for a guest. */
+  combat?: CombatValues | null
   onSaved: (menu: { settings: SettingsData }) => void
 }) {
   const [framework, setFramework] = useState(settings?.agent_framework ?? '')
@@ -289,7 +293,8 @@ export function Settings({
   }
 
   const gameplay: Tab = { id: 'gameplay', label: 'Gameplay', body: <GameplaySettings /> }
-  const tabs = inGame ? [gameplay, voiceTab] : [dm, gameplay, voiceTab]
+  const combatTab: Tab = { id: 'combat', label: 'Combat', body: <CombatSettings values={combat ?? null} /> }
+  const tabs = inGame ? [gameplay, combatTab, voiceTab] : [dm, gameplay, voiceTab]
   return (
     <div className="flex flex-col gap-4">
       <Tabs tabs={tabs} label="Settings" />

@@ -1876,7 +1876,7 @@ def create_app(
         def build(state, a, who):
             rec = records.combatant(stage.campaign_dir, state, who)
             return {"who": who, "abilities": hand.listing(stage.campaign_dir, state, a, who), "turn": tracker.turn_used(state, who),
-                    "feet_left": board.tiles_left(state, rec) * board.TILE_FT, "current": state["active_encounter"].get("current_turn")}
+                    "feet_left": board.feet_left(state, rec), "current": state["active_encounter"].get("current_turn")}
         return await hand_read(request, build)
 
     async def api_arena_preview(request: Request):

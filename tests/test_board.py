@@ -55,20 +55,22 @@ def test_walking() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         c, state, a = setup(Path(tmp))
         rec = records.combatant(c, state, "aragorn")
-        check("a speed of 30 ft is 6 tiles", board.tiles_left(state, rec) == 6 and rec["speed_ft"] == 30)
-        check("a speed of 35 ft is 7 tiles", board.tiles_left(state, records.combatant(c, state, "legolas")) == 7)
+        check("a speed of 30 ft is 6 tiles", board.feet_left(state, rec) == 30 and rec["speed_ft"] == 30)
+        check("a speed of 35 ft is 7 tiles", board.feet_left(state, records.combatant(c, state, "legolas")) == 35)
         dist, _ = board.reachable(c, state, a, "aragorn")
-        check("the walkable cells are within 6 steps", max(dist.values()) == 6 and (8, 3) not in dist and (7, 3) in dist)
+        check("the walkable cells are within 30 ft", max(dist.values()) <= 30 and (8, 3) not in dist and (7, 3) in dist)
+        check("a diagonal step costs 7 ft, a straight one 5 ft", dist[(3, 4)] in (5, 7) and arena.step_cost((0, 0), (1, 1)) == 7 and arena.step_cost((0, 0), (1, 0)) == 5
+              and arena.reach((0, 0), 30, set(), (9, 9), cost=arena.STEP_FT)[0][(4, 4)] == 28 and (5, 5) not in arena.reach((0, 0), 30, set(), (9, 9), cost=arena.STEP_FT)[0])
         r = board.move(c, state, a, "aragorn", (5, 3))
         check("a walk moves the unit and spends tiles", a["units"]["aragorn"] == {"x": 5, "y": 3} and len(r["steps"]) == 3
-              and board.tiles_left(state, rec) == 3)
+              and board.feet_left(state, rec) == 15)
         check("the walk cannot go past what is left", raises(lambda: board.move(c, state, a, "aragorn", (9, 3))))
         check("a unit cannot walk onto another", raises(lambda: board.move(c, state, a, "aragorn", (8, 3))))
         check("a wall cell is not reachable", raises(lambda: board.move(c, state, a, "aragorn", (0, 3))))
         encounters.condition(state, "aragorn", "add", "dashing", rounds=1)
-        check("Dash doubles the speed", board.tiles_left(state, rec) == 9)
+        check("Dash doubles the speed", board.feet_left(state, rec) == 45)
         state["active_encounter"]["resources"]["aragorn"] = {}
-        check("a new turn gives the walking back", board.tiles_left(state, rec) == 12)
+        check("a new turn gives the walking back", board.feet_left(state, rec) == 60)
 
 
 def test_blocking() -> None:
@@ -189,7 +191,7 @@ def test_foes() -> None:
         enc["current_turn"] = "goblin#2"
         out = foes.play_foe(c, state, a, "goblin#2", rng=Fixed(15, 3))
         x, y = board.pos(a, "goblin#2")
-        check("a far goblin walks 30 ft toward the party", min(arena.cheb((x, y), (2, 3)), arena.cheb((x, y), (2, 5))) == 2 and board.resources(state, "goblin#2")["moved"] == 6 and not out["pending"])
+        check("a far goblin walks 30 ft toward the party", min(arena.cheb((x, y), (2, 3)), arena.cheb((x, y), (2, 5))) == 2 and board.resources(state, "goblin#2")["moved"] == 30 and not out["pending"])
         check("it cannot attack if it is still out of reach", not any("Scimitar" in ln for ln in out["lines"]) and not tracker.turn_used(state, "goblin#2")["action"])
         step = board.pump_step(c, state, a, rng=Fixed(15, 3))
         check("pump: a creature the stage plays takes its turn and the tracker moves on",

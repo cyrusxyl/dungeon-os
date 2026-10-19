@@ -117,7 +117,7 @@ def main() -> int:
                 arbiter = next(f for f in cast if f["id"] == "arbiter")
                 ax, ay = arbiter["cell"]
                 front = {(ax + 1, ay), (ax, ay + 1), (ax + 1, ay + 1)}
-                check("no one stands in front of the seated arbiter", not any(tuple(f["cell"]) in front for f in cast if f["id"] != "arbiter"), str(front))
+                check("no one stands in front of the seated arbiter", not any(tuple(f["cell"]) in front for f in cast if f["id"] != "arbiter"), str(front) + str([(f["id"], f["cell"]) for f in cast]))
                 check("the arbiter is seated on a prop", arbiter["sit"] and arbiter["onProp"])
                 standing = [f for f in cast if not f["sit"]]
                 check("every figure but the seated one has a ring (it stands on the floor or on a prop)", len(standing) == 11, str(len(standing)))

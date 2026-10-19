@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { SlotPips } from '@/components/PartyPanel'
+import { SlotPips } from '@/components/Status'
 import { type Item, type Party, type PartyChar, ROMAN, signed } from '@/lib/party'
 import { titleCase, useJson } from '@/lib/stage'
 

@@ -179,7 +179,7 @@ def plan(campaign_dir: Path, state: dict, a: dict, cid: str, style: str | None =
     tiles = list(dist.items())
     area_tiles = {ctx.pos[cid]} | {c for c, _ in sorted(tiles, key=lambda t: min(arena.cheb(t[0], ctx.pos[h]) for h in ctx.targets))[:12]}
     for p, steps in tiles:
-        base = -weights["danger"] * THREAT_COST * ctx.threat(p) - STEP_COST * steps
+        base = -weights["danger"] * THREAT_COST * ctx.threat(p) - STEP_COST * steps / board.TILE_FT
         base += weights["cover"] if any(ctx.cover.get((p[0] + dx, p[1] + dy)) for dx in (-1, 0, 1) for dy in (-1, 0, 1)) else 0
         base += weights["kite"] * min(arena.cheb(p, ctx.pos[h]) for h in ctx.targets)
         options = list(attack_options(ctx, p, weights, allies_of))

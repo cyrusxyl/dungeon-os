@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { DiceTray, type TrayRow } from '@/components/DiceTray'
 import { Die, DIE_MS } from '@/components/Die'
 import { damageTone, diceFor, type Tone } from '@/lib/dice'
+import { useDock } from '@/lib/dock'
 import { HOLD_MS, timeScale, usePrefs } from '@/lib/prefs'
 import type { Roll, RollDetail, RollEntry } from '@/lib/stage'
 
@@ -135,11 +137,22 @@ function useDismiss(done: boolean, hold: number, onDone: () => void) {
   }, [done, hold, onDone])
 }
 
-export function Tile({ label, value, sub, tone, shown }: { label: string; value: string; sub?: string; tone: 'plain' | 'bonus' | 'penalty'; shown: boolean }) {
+export function Tile({ label, value, sub, tone, shown, small }: { label: string; value: string; sub?: string; tone: 'plain' | 'bonus' | 'penalty'; shown: boolean; small?: boolean }) {
   const border = tone === 'bonus' ? 'border-[var(--gold)]' : tone === 'penalty' ? 'border-[var(--bad)]' : 'border-[var(--border)]'
+  const color = tone === 'penalty' ? 'var(--bad)' : tone === 'bonus' ? 'var(--gold)' : 'var(--parchment)'
+  if (small) {
+    // One line: the strip under the board has little height.
+    return (
+      <div className={`flex items-center gap-1 border-2 bg-[var(--panel-2)] px-1.5 py-0.5 ${border} ${shown ? 'tile-in' : 'invisible'}`}>
+        <span className="pixel-font text-[9px] tabular-nums" style={{ color }}>{value}</span>
+        {sub && <span className="text-[11px] leading-none text-[var(--ember)]">{sub}</span>}
+        <span className="text-xs leading-none text-[var(--dim)]">{label}</span>
+      </div>
+    )
+  }
   return (
     <div className={`flex w-[4.75rem] flex-col items-center gap-1 border-2 bg-[var(--panel-2)] px-1 py-2 text-center ${border} ${shown ? 'tile-in' : 'invisible'}`}>
-      <span className="pixel-font text-xs tabular-nums" style={{ color: tone === 'penalty' ? 'var(--bad)' : tone === 'bonus' ? 'var(--gold)' : 'var(--parchment)' }}>
+      <span className="pixel-font text-xs tabular-nums" style={{ color }}>
         {value}
       </span>
       {sub && <span className="text-[11px] leading-none text-[var(--ember)]">{sub}</span>}
@@ -159,9 +172,77 @@ function ModeBadge({ mode }: { mode: RollEntry['mode'] }) {
 }
 
 export function Shell({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const dock = useDock()
+  // In a fight the window sits in the strip under the board, so the board stays in view.
+  if (dock) return createPortal(<div className="dice-pop h-full overflow-y-auto bg-[var(--panel)] p-2">{children}</div>, dock)
   return (
     <div className="pointer-events-none fixed inset-0 z-40 flex items-start justify-center pt-[8vh]">
       <div className={`dice-pop pointer-events-auto relative border-4 border-[var(--gold)] bg-[var(--panel)] px-5 py-4 ${className}`}>{children}</div>
+    </div>
+  )
+}
+
+/** The d20 and its total on the left, the damage tray on the right: a roll in the strip under the board of a fight. */
+function StripRoll({ entry, title, subtitle, target, settled, shown, done, rate, rows, crit, seq, queued, onLanded, trayRef, damage }: {
+  entry: RollEntry; title: string; subtitle?: string; target?: { label: string; value: number }; settled: boolean; shown: number; done: boolean; rate: number
+  rows: TrayRow[] | null; crit: boolean; seq: number; queued: boolean; onLanded: () => void; trayRef: React.MutableRefObject<(() => boolean) | null>; damage: RollDetail['damage']
+}) {
+  const prefs = usePrefs()
+  const kept = entry.d20[entry.kept]
+  const tiles = [
+    ...entry.mods.map((m) => ({ label: m.label, value: signed(m.value), sub: undefined, tone: 'plain' as const })),
+    ...entry.bonus.map((b) => ({ label: b.label, value: signed(b.value), sub: `${b.die} → ${b.faces.join('+')}`, tone: (b.value < 0 ? 'penalty' : 'bonus') as 'penalty' | 'bonus' })),
+  ]
+  const running = prefs.tiles ? kept + tiles.slice(0, shown).reduce((n, t) => n + Number(t.value), 0) : entry.total
+  const two = entry.d20.length > 1
+  const flair = done && kept === 20 ? 'burst' : done && kept === 1 ? 'shake' : ''
+  const tone = (face: number, counts: boolean): Tone => (!counts ? 'plain' : face === 20 ? 'gold' : face === 1 ? 'red' : 'plain')
+  return (
+    <div className="flex min-h-full items-stretch gap-2">
+      <div className={`relative flex w-28 shrink-0 flex-col items-center justify-center gap-1 border-r-2 border-[var(--border)] pr-2 ${flair}`}>
+        <span className="max-w-full truncate text-xs text-[var(--dim)]">{entry.name}</span>
+        <div className="flex items-end gap-1">
+          {entry.d20.map((face, i) => {
+            const counts = i === entry.kept
+            const glow = entry.mode === 'advantage' ? 'var(--good)' : entry.mode === 'disadvantage' ? 'var(--bad)' : 'var(--gold)'
+            return <Die key={i} face={face} tone={tone(face, counts)} settled={settled} size={two ? 44 : 60} className={settled && two ? (counts ? 'die-kept' : 'die-dropped') : ''} glow={glow} rate={rate} />
+          })}
+        </div>
+        <ModeBadge mode={entry.mode} />
+        <div className="pixel-font text-lg tabular-nums" style={{ color: done ? 'var(--parchment)' : 'var(--dim)' }}>
+          {settled ? running : '?'}
+        </div>
+        {target && <span className="text-xs text-[var(--dim)]">vs {target.label === 'Armor Class' ? 'AC' : target.label} {target.value}</span>}
+        {done && entry.outcome && (
+          <span className="result-in pixel-font text-[9px]" style={{ color: OUTCOME_COLOR[entry.outcome] }}>
+            {OUTCOME_TEXT[entry.outcome]}
+          </span>
+        )}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-baseline gap-2 truncate text-sm">
+          <span className="pixel-font shrink-0 text-[10px] text-[var(--parchment)]">{title}</span>
+          {subtitle && <span className="truncate text-[var(--ember)]">{subtitle}</span>}
+        </div>
+        {prefs.tiles && tiles.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {tiles.map((t, i) => (
+              <Tile key={i} label={t.label} value={t.value} sub={t.sub} tone={t.tone} shown={i < shown} small />
+            ))}
+          </div>
+        )}
+        {done && rows && <DiceTray rows={rows} crit={crit} seed={seq} queued={queued} onSettled={onLanded} skipRef={trayRef} compact />}
+        {done && damage && !rows && (
+          <ul className="result-in flex flex-col text-base">
+            {damage.map((d, i) => (
+              <li key={i}>
+                <span className="pixel-font text-sm text-[var(--ember)]">{d.total}</span> <span className="capitalize">{d.type || 'damage'}</span>{' '}
+                <span className="text-sm text-[var(--dim)]">{d.expr} [{d.faces.join(', ')}]</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
@@ -182,16 +263,28 @@ function RollWindow({ detail, seq, hold, queued, onDone }: { detail: RollDetail;
   const summary = detail.rolls.map((r) => `${r.name} ${r.total}${r.outcome ? ` ${OUTCOME_TEXT[r.outcome]}` : ''}`).join(', ')
   const damageSummary = detail.damage?.map((d) => `${d.total} ${d.type || 'damage'}`).join(', ')
   const crit = detail.rolls[0]?.outcome === 'crit'
+  const dock = useDock()
+  const onClick = () => {
+    if (trayRef.current?.()) return // a click throws the dice, or lands them
+    if (settled) onDone()
+    else skip()
+  }
+  if (dock && !group) {
+    return (
+      <Shell>
+        <div role="status" aria-live="polite" onClick={onClick} className="cursor-pointer">
+          <span className="sr-only">{`${detail.title}. ${summary}${damageSummary ? `. Damage: ${damageSummary}` : ''}`}</span>
+          <StripRoll entry={detail.rolls[0]} title={detail.title} subtitle={detail.subtitle} target={detail.target} settled={settled} shown={shown} done={done} rate={rate} rows={rows} crit={crit} seq={seq} queued={queued} onLanded={onLanded} trayRef={trayRef} damage={detail.damage} />
+        </div>
+      </Shell>
+    )
+  }
   return (
     <Shell className={group || rows ? 'w-[28rem] max-w-[94vw]' : 'w-[22rem] max-w-[94vw]'}>
       <div
         role="status"
         aria-live="polite"
-        onClick={() => {
-          if (trayRef.current?.()) return // a click throws the dice, or lands them
-          if (settled) onDone()
-          else skip()
-        }}
+        onClick={onClick}
         className="flex cursor-pointer flex-col items-center gap-2"
       >
         <span className="sr-only">{`${detail.title}. ${summary}${damageSummary ? `. Damage: ${damageSummary}` : ''}`}</span>

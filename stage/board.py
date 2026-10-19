@@ -321,17 +321,17 @@ def resources(state: dict, cid: str) -> dict:
     return state["active_encounter"].setdefault("resources", {}).setdefault(cid, {})
 
 
-def tiles_left(state: dict, rec: dict) -> int:
-    """Tiles the creature can still walk this turn: its speed (doubled by Dash) less what it has walked."""
-    base = rec.get("speed_ft", 30) // TILE_FT * (2 if tracker.has_condition(state, rec["id"], "dashing") else 1)
+def feet_left(state: dict, rec: dict) -> int:
+    """Feet the creature can still walk this turn: its speed (doubled by Dash) less what it has walked (7 ft a diagonal step, 5 ft a straight one)."""
+    base = rec.get("speed_ft", 30) // TILE_FT * TILE_FT * (2 if tracker.has_condition(state, rec["id"], "dashing") else 1)
     return max(0, base - resources(state, rec["id"]).get("moved", 0))
 
 
 def reachable(campaign_dir: Path, state: dict, a: dict, cid: str) -> tuple[dict, dict]:
-    """Where `cid` can walk now: (steps by cell, previous cell by cell)."""
+    """Where `cid` can walk now: (feet by cell, previous cell by cell)."""
     rec = records.combatant(campaign_dir, state, cid)
     others = set(occupied(campaign_dir, state, a, skip=cid))
-    return arena.reach(pos(a, cid), tiles_left(state, rec), arena.blocked_cells(a), (a["w"], a["h"]), others)
+    return arena.reach(pos(a, cid), feet_left(state, rec), arena.blocked_cells(a), (a["w"], a["h"]), others, arena.STEP_FT)
 
 
 def engage(campaign_dir: Path, state: dict, a: dict, attacker: str, target: str, rng=None) -> list[str]:
@@ -402,6 +402,9 @@ def walk(campaign_dir: Path, state: dict, a: dict, cid: str, path: list, rng=Non
     """Walk the steps one by one. A creature that is left gets a reaction attack: a creature the stage plays attacks at once;
     a player character is asked (the walk stops, and `a["pending"]` holds the rest of it). Stops if the walker falls."""
     lines, steps = [], []
+    trails = a.setdefault("trails", {})
+    trail = trails.get(cid) if (trails.get(cid) or [None])[-1] == list(pos(a, cid)) else None
+    trail = trails[cid] = trail or [list(pos(a, cid))]  # the cells it walked, for the browser to draw the walk
     for i, cell in enumerate(path):
         cell = tuple(cell)
         for foe in provokers(campaign_dir, state, a, cid, cell):
@@ -411,9 +414,11 @@ def walk(campaign_dir: Path, state: dict, a: dict, cid: str, path: list, rng=Non
             lines += _react(campaign_dir, state, a, foe, cid, rng)
             if not standing(records.combatant(campaign_dir, state, cid)):
                 return {"steps": steps, "lines": lines, "pending": None}
+        resources(state, cid)["moved"] = resources(state, cid).get("moved", 0) + arena.step_cost(pos(a, cid), cell)
         a["units"][cid] = {"x": cell[0], "y": cell[1]}
-        resources(state, cid)["moved"] = resources(state, cid).get("moved", 0) + 1
         steps.append(list(cell))
+        trail.append(list(cell))
+        del trail[:-40]
     if not is_foe(state, cid):
         refresh_sight(campaign_dir, state, a)
     return {"steps": steps, "lines": lines, "pending": None}
@@ -429,7 +434,7 @@ def move(campaign_dir: Path, state: dict, a: dict, cid: str, to, rng=None) -> di
         raise BoardError(f"{cid} is already there.")
     if to not in dist:
         rec = records.combatant(campaign_dir, state, cid)
-        raise BoardError(f"{cid} cannot reach {to[0]},{to[1]}: {tiles_left(state, rec) * TILE_FT} ft of walking left.")
+        raise BoardError(f"{cid} cannot reach {to[0]},{to[1]}: {feet_left(state, rec)} ft of walking left.")
     return walk(campaign_dir, state, a, cid, arena.path_from(prev, pos(a, cid), to), rng)
 
 
@@ -554,7 +559,7 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict
     if current in a["units"] and not is_foe(state, current) and standing(records.combatant(campaign_dir, state, current)) and not a.get("pending"):
         dist, _ = reachable(campaign_dir, state, a, current)
         walk = [list(c) for c, n in dist.items() if n > 0]
-        left = tiles_left(state, records.combatant(campaign_dir, state, current)) * TILE_FT
+        left = feet_left(state, records.combatant(campaign_dir, state, current))
     pending = a.get("pending")
     known = (lambda x, y: (x, y) in seen) if fog else (lambda x, y: True)
     return {
@@ -567,7 +572,7 @@ def view(campaign_dir: Path, state: dict, arena_id: str, a: dict, settings: dict
         "items": [{"id": i["id"], "name": i["name"], "x": i["x"], "y": i["y"]} for i in a["items"] if known(i["x"], i["y"])],
         "units": units, "current": None if current in hidden else current, "round": enc.get("round", 1),
         "bystanders": [{"id": b, "name": title(b), "x": v["x"], "y": v["y"]} for b, v in (a.get("bystanders") or {}).items() if known(v["x"], v["y"])],
-        "walk": walk, "feet_left": left,
+        "walk": walk, "feet_left": left, "trails": {c: t for c, t in (a.get("trails") or {}).items() if c in a["units"] and c not in hidden},
         "pending": {"who": pending["who"], "against": pending["against"], "seconds_left": (
             max(0, round(settings["reaction_seconds"] - (time.time() - pending.get("asked_at", 0)))) if settings["reaction_seconds"] else None)}
         if pending else None,
@@ -618,7 +623,7 @@ def dm_prompt(campaign_dir: Path, state: dict, a: dict, cid: str) -> str:
                      f"{records.health_band(records.combatant(campaign_dir, state, p))}" for p in standing_pcs(campaign_dir, state, a))
     attacks = "; ".join(f"{x['name']} +{x.get('bonus', 0)} " + ", ".join(e for e, _ in x["damage"])
                         + (f" (reach {x['reach_ft']} ft)" if x.get("reach_ft") else f" (range {x['range_ft']} ft)") for x in rec["attacks"] if x["damage"])
-    walk = tiles_left(state, rec) * TILE_FT
+    walk = feet_left(state, rec)
     other = "; ".join(f"{x['name']} ({x['kind'] if x['kind'] != 'dm' else 'play it from the rules: ' + x.get('desc', '')[:90]})"
                       for x in rec.get("abilities", []) if abilities.available(rec, x) or x["kind"] == "dm")
     attacks += f". Also: {other}" if other else ""

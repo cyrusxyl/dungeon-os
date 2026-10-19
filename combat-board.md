@@ -121,7 +121,7 @@ The server computes the cells that the party sees (the crawl sight code, with th
 ## 2. The board
 
 - **Grid.** One tile is 5 ft. Distance is the larger of the x and y difference. A diagonal move is allowed unless a blocking tile is at its corner.
-- **Move.** A unit has its speed in tiles each turn. Dash adds the speed again. A click on a blue tile walks the shortest path.
+- **Move.** A unit has its speed in feet each turn. A straight step costs 5 ft and a diagonal step costs 7 ft (5 x 1.4). Dash adds the speed again. A click on a blue tile, or the 8-direction pad, walks the shortest path. The board draws each walk step by step along the cells in `trails`.
 - **Reach.** Melee needs distance 1. Ranged abilities have a range in tiles and need line of sight.
 - **Sight.** A line between two tile centers (Bresenham, as in the crawl). Walls, pillars and trees stop it. Crates and tables do not.
 - **Cover.** A ranged attack whose line crosses a crate or a table gets +2 AC for the target.

@@ -107,7 +107,7 @@ def _move(campaign_dir, state: dict, args) -> list[str]:
     arena.save(campaign_dir, arena_id, a)
     notify_stage(campaign_dir, {"type": "arena_updated", "arena": arena_id})
     x, y = board.pos(a, args.who)
-    lines = result["lines"] + [f"{args.who} walks to {x},{y} ({board.tiles_left(state, records.combatant(campaign_dir, state, args.who)) * board.TILE_FT} ft left)."]
+    lines = result["lines"] + [f"{args.who} walks to {x},{y} ({board.feet_left(state, records.combatant(campaign_dir, state, args.who))} ft left)."]
     if result["pending"]:
         lines.append(f"The walk stops: {result['pending']['who']}'s player is asked for a reaction. The stage finishes the walk.")
     return lines

@@ -156,7 +156,14 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const canAct = canType && caughtUp
   // The picture of the world: the board of a fight, the site the party walks, or the scene.
   const sceneView = state.arena ? (
-    <ArenaView state={state} arenaId={state.arena} actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null} mine={mine} isHost={isHost} />
+    <ArenaView
+      state={state}
+      arenaId={state.arena}
+      actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null}
+      mine={mine}
+      status={party?.characters.find((c) => c.id === onTurn && mine.includes(c.id)) ?? null}
+      onEnd={onTurn ? () => postJson('/api/end-turn', { who: onTurn }) : undefined}
+    />
   ) : state.explore ? (
     <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
   ) : (
@@ -164,8 +171,8 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   )
   // The fight's own hand (on the board) lists the actions; the table screen takes no input. Cards then skip their action buttons.
   // The scene always shows on the table and on a wide window; on a small window it is the player's choice.
-  const showScene = mode === 'table' || wide || hand.scene
-  const handOnBoard = Boolean(state.arena) && mode !== 'table' && (wide || hand.scene)
+  const showScene = mode === 'table' || wide || hand.scene || Boolean(state.arena) // a fight always shows its board
+  const handOnBoard = Boolean(state.arena) && mode !== 'table'
   const hideActions = mode === 'table' || handOnBoard
   const waitingWorld = state.party_mode === 'premade' && log.length === 0 && ['starting', 'busy'].includes(state.dm.status)
   const activity = state.activity?.at(-1)
@@ -329,7 +336,7 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} blocked={!mine.includes(state.roll_request.who) ? 'Not your roll' : !caughtUp ? 'Read the narration first' : !canType ? 'Wait for the DM…' : null} />
       )}
       {needsRole && <RoleScreen onTable={() => setMode('table')} onPlay={() => setMode('player')} />}
-      {settingsOpen && <SettingsPanel isHost={isHost} mode={mode} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsPanel isHost={isHost} mode={mode} combat={isHost ? (state.combat_settings ?? null) : null} onClose={() => setSettingsOpen(false)} />}
       {inviteOpen && (
         <div role="dialog" aria-label="Invite" className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4">
           <div className="flex w-full max-w-xs flex-col gap-3 border-4 border-[var(--gold)] bg-[var(--panel)] p-4">
@@ -523,14 +530,14 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
         ? 'grid grid-cols-[1.3fr_1fr]'
         : 'flex flex-col landscape:grid landscape:grid-cols-[1.3fr_1fr]'
   // On a small window `main` scrolls. Its children keep their own height (`*:shrink-0`); if they could shrink, the story would overflow its box and the input would sit on top of it.
-  const mainLayout = lobby || showCreator ? 'flex flex-col' : wide ? (showParty ? 'grid grid-cols-[1fr_22rem]' : 'grid') : `${narrow} overflow-y-auto *:shrink-0`
+  const mainLayout = lobby || showCreator ? 'flex flex-col' : wide ? (showParty ? 'grid grid-cols-[1fr_22rem]' : 'grid') : `${narrow} overflow-x-hidden overflow-y-auto px-1.5 *:shrink-0`
   const input = mode === 'table' ? tableChoices : inputBlock
   const cards = (party?.characters ?? []).filter((c) => mine.includes(c.id))
   const story = (
     <section className="flex min-h-0 min-w-0 flex-col gap-2 sm:gap-3">
-      {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} />}
+      {party && <TurnBar party={party} dmStatus={state.dm.status} feed={state.feed} compact={Boolean(state.arena) && !wide} />}
       {showScene && (
-        <div className={`relative border-4 border-[var(--border)] bg-black ${wide ? 'min-h-48 flex-1' : state.explore && !state.arena ? 'aspect-[320/192] w-full' : 'aspect-[4/3] w-full'}`}>
+        <div className={`relative border-4 border-[var(--border)] bg-black ${wide ? 'min-h-48 flex-1' : state.arena ? 'h-[calc(100dvh-11rem)] min-h-[30rem] w-full' : state.explore ? 'aspect-[320/192] w-full' : 'aspect-[4/3] w-full'}`}>
           <SceneTitle state={state} />
           {sceneView}
         </div>

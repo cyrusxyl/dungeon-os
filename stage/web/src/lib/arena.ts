@@ -46,6 +46,8 @@ export interface ArenaView {
   /** Where the character whose turn it is can walk now. */
   walk: Cell[]
   feet_left: number
+  /** The cells each creature crossed on its last walks, newest last: the board walks it along them. */
+  trails?: Record<string, Cell[]>
   /** A player is asked whether to take a reaction attack. */
   pending: { who: string; against: string; seconds_left: number | null } | null
   settings: { reaction_seconds: number; round_summary: boolean }

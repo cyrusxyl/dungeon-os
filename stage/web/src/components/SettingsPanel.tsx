@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
+import type { CombatValues } from '@/components/CombatSettings'
 import { Settings, type Framework, type SettingsData } from '@/components/Settings'
 import type { Mode } from '@/lib/view'
 
 /** Settings during a game: the shared tabs without the DM tab. The DM is fixed while a session runs. */
-export function SettingsPanel({ isHost, mode, onClose }: { isHost: boolean; mode: Mode; onClose: () => void }) {
+export function SettingsPanel({ isHost, mode, combat, onClose }: { isHost: boolean; mode: Mode; combat: CombatValues | null; onClose: () => void }) {
   const [settings, setSettings] = useState<SettingsData | null>(null)
   const [frameworks, setFrameworks] = useState<Framework[]>([])
   const [loaded, setLoaded] = useState(!isHost) // a guest has nothing to load
@@ -34,7 +35,7 @@ export function SettingsPanel({ isHost, mode, onClose }: { isHost: boolean; mode
       <div className="flex max-h-full w-full max-w-md flex-col gap-4 overflow-y-auto border-4 border-[var(--gold)] bg-[var(--panel)] p-4">
         <h2 className="pixel-font text-xs text-[var(--gold)]">Settings</h2>
         {loaded ? (
-          <Settings settings={settings} frameworks={frameworks} inGame mode={mode} onSaved={(m) => setSettings(m.settings)} />
+          <Settings settings={settings} frameworks={frameworks} inGame mode={mode} combat={combat} onSaved={(m) => setSettings(m.settings)} />
         ) : (
           !error && <p className="text-[var(--dim)]">Loading…</p>
         )}

@@ -13,9 +13,11 @@ export interface GameplayPrefs {
   hold: 'short' | 'normal' | 'long' | 'click'
   /** Show the tiles that add to the roll. */
   tiles: boolean
+  /** Show the 8-direction walking pad on the board of a fight. */
+  pad: boolean
 }
 
-const DEFAULT_PREFS: GameplayPrefs = { dice: 'tray', throw: 'auto', speed: 'normal', hold: 'normal', tiles: true }
+const DEFAULT_PREFS: GameplayPrefs = { dice: 'tray', throw: 'auto', speed: 'normal', hold: 'normal', tiles: true, pad: true }
 
 const CHOICES: { [K in keyof GameplayPrefs]: readonly GameplayPrefs[K][] } = {
   dice: ['tray', 'text', 'off'],
@@ -23,6 +25,7 @@ const CHOICES: { [K in keyof GameplayPrefs]: readonly GameplayPrefs[K][] } = {
   speed: ['normal', 'fast', 'instant'],
   hold: ['short', 'normal', 'long', 'click'],
   tiles: [true, false],
+  pad: [true, false],
 }
 
 const KEY = 'dungeon-gameplay'

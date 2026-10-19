@@ -1,13 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/8bit/button'
 import { Hand } from '@/components/Hand'
+import { WalkPad } from '@/components/WalkPad'
 import type { Ability, ArenaUnit, ArenaView as View, Cell, Preview } from '@/lib/arena'
 import { useHand, useSkin } from '@/lib/hand'
 import { buildBase, byDepth, diamond, facing, frameAt, geometry, groundCentre, pick as pickCell, roomCentre, S, unitDepth, type Base, type Facing, type Geometry, type Style } from '@/lib/iso'
 import { type PropsInfo, usePropsInfo } from '@/lib/propAtlas'
+import { setDock } from '@/lib/dock'
+import { reducedMotion, usePrefs } from '@/lib/prefs'
 import { propThing, sceneBase, sceneStyle, type Thing } from '@/lib/roomDraw'
-import { BAND_FILL } from '@/lib/party'
+import { BAND_FILL, type PartyChar } from '@/lib/party'
 import { deviceHeaders, postJson, type StageState, useFitScale, useJson } from '@/lib/stage'
 import { T, useImages, variant, type ImageLoader } from '@/lib/tiles'
 
@@ -183,37 +186,43 @@ function Countdown({ from }: { from: number | null }) {
   return left === null ? null : <> ({left})</>
 }
 
-const REACTION_TIMES = [0, 5, 10, 20, 30, 60]
+const MIN_SCALE = 0.75
 
-/** The host's controls during play: how long a player has to answer a reaction question, and the DM's one beat for each round. */
-function CombatSettings({ settings }: { settings: { reaction_seconds: number; round_summary: boolean } }) {
-  const set = (body: Record<string, unknown>) => postJson('/api/combat/settings', body)
-  const next = REACTION_TIMES[(REACTION_TIMES.indexOf(settings.reaction_seconds) + 1) % REACTION_TIMES.length]
-  return (
-    <div className="absolute top-2 right-2 flex flex-col items-end gap-1 text-[10px]">
-      <Button size="sm" variant="outline" className="text-[10px]" onClick={() => set({ reaction_seconds: next })} title="Time to answer a reaction question (click to change)">
-        Reaction time: {settings.reaction_seconds ? `${settings.reaction_seconds} s` : 'no limit'}
-      </Button>
-      <Button size="sm" variant="outline" className="text-[10px]" onClick={() => set({ round_summary: !settings.round_summary })} title="The DM tells one beat after each round">
-        Round summary: {settings.round_summary ? 'on' : 'off'}
-      </Button>
-      <Button size="sm" variant="outline" className="text-[10px]" onClick={() => set({ ...settings, make_default: true })} title="Keep these for every game on this machine">
-        Make default
-      </Button>
-    </div>
-  )
+/** A creature walking: the cells it crosses, and when it set off. */
+type Walk = { path: Cell[]; t0: number }
+const STEP_MS = 190 // a straight step; a diagonal one takes 1.4 times as long, as it costs 7 ft against 5
+
+const stepMs = (a: Cell, b: Cell) => (a[0] !== b[0] && a[1] !== b[1] ? STEP_MS * 1.4 : STEP_MS)
+
+/** Where a walking creature is at `now` (fractions of a cell), and whether it has arrived. */
+function walkAt(w: Walk, now: number): { at: Cell; done: boolean } {
+  let t = now - w.t0
+  for (let i = 0; i + 1 < w.path.length; i++) {
+    const ms = stepMs(w.path[i], w.path[i + 1])
+    if (t < ms) {
+      const k = t / ms
+      return { at: [w.path[i][0] + (w.path[i + 1][0] - w.path[i][0]) * k, w.path[i][1] + (w.path[i + 1][1] - w.path[i][1]) * k], done: false }
+    }
+    t -= ms
+  }
+  return { at: w.path[w.path.length - 1], done: true }
 }
 
 /**
  * The board of a fight. The server owns the rules: a click on a blue cell walks, a click on a creature attacks with the
  * weapon that reaches it. A refusal comes back as words ("The goblin is 25 ft away"), which show over the board.
  */
-export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: StageState; arenaId: string; actingAs: string | null; mine: string[]; isHost: boolean }) {
+export function ArenaView({ state, arenaId, actingAs, mine, status, onEnd }: { state: StageState; arenaId: string; actingAs: string | null; mine: string[]; status?: PartyChar | null; onEnd?: () => void }) {
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const view = useJson<View>(`/api/arena/${encodeURIComponent(arenaId)}`, state.versions?.[`arena:${arenaId}`] ?? 0)
   const g = geometry(view?.w ?? 16, view?.h ?? 10)
-  const scale = useFitScale(box, g.width, g.height)
+  const fit = useFitScale(box, g.width, g.height)
+  const scale = Math.max(fit, MIN_SCALE) // a small screen scrolls the board a little rather than shrinking it to nothing
+  const prefs = usePrefs()
+  const walks = useRef(new Map<string, Walk>())
+  const placed = useRef(new Map<string, Cell>())
+  const frame = useRef(0)
   const [image, tick] = useImages()
   const props = usePropsInfo()
   const atlas = props ? image(props.atlas) : undefined
@@ -234,12 +243,50 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   const aimed = selected?.needs === 'aim' ? selected : null
   const aimedId = aimed?.id ?? null
 
+  // Units walk cell by cell: a new position starts a walk along the cells the server says it crossed (else straight there).
+  useEffect(() => {
+    if (!view) return
+    const now = performance.now()
+    for (const u of view.units) {
+      const prev = placed.current.get(u.id)
+      placed.current.set(u.id, [u.x, u.y])
+      if (!prev || (prev[0] === u.x && prev[1] === u.y) || reducedMotion()) continue
+      const trail = view.trails?.[u.id] ?? []
+      const from = trail.findLastIndex((c) => c[0] === prev[0] && c[1] === prev[1])
+      const path: Cell[] = from >= 0 && trail.length - from > 1 && trail.length - from <= 40 ? trail.slice(from) : [prev, [u.x, u.y]]
+      walks.current.set(u.id, { path, t0: now })
+    }
+  }, [view])
   useEffect(() => {
     const ctx = canvas.current?.getContext('2d')
     if (!ctx || !view) return
-    base.current = baseFor(base.current, view, g, image, props, atlas)
-    draw(ctx, view, g, base.current.base, hover, image, aimed ? aim : null, props, atlas, seen.current)
+    cancelAnimationFrame(frame.current)
+    const paint = (now: number) => {
+      const moving = new Map<string, Cell>()
+      for (const [id, w] of walks.current) {
+        const { at, done } = walkAt(w, now)
+        if (done) walks.current.delete(id)
+        else moving.set(id, at)
+      }
+      const shown = moving.size ? { ...view, units: view.units.map((u) => (moving.has(u.id) ? { ...u, x: moving.get(u.id)![0], y: moving.get(u.id)![1] } : u)) } : view
+      base.current = baseFor(base.current, view, g, image, props, atlas)
+      draw(ctx, shown, g, base.current.base, hover, image, aimed ? aim : null, props, atlas, seen.current)
+      if (walks.current.size) frame.current = requestAnimationFrame(paint)
+    }
+    paint(performance.now())
+    return () => cancelAnimationFrame(frame.current)
   }, [view, hover, image, tick, aim, aimed, props, atlas]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The board may be bigger than the screen: bring the creature whose turn it is into the middle.
+  const turnKey = `${view?.id}:${view?.current}:${view?.round}`
+  useEffect(() => {
+    const el = box.current
+    const u = view?.units.find((x) => x.id === view.current)
+    if (!el || !u) return
+    const [cx, cy] = groundCentre(g, u.x, u.y)
+    el.scrollTo({ left: cx * scale - el.clientWidth / 2, top: cy * scale - el.clientHeight / 2, behavior: 'smooth' })
+  }, [turnKey, scale]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The roll window draws in this strip, under the board.
+  const dockRef = useCallback((el: HTMLDivElement | null) => setDock(el), [])
   useEffect(() => {
     if (!aimedId || !hover || !actingAs) return
     let live = true
@@ -322,11 +369,13 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
   }
   const asked = view.pending && mine.includes(view.pending.who) ? view.pending : null
   const name = (id: string) => view.units.find((u) => u.id === id)?.name ?? id
+  const me = view.units.find((u) => u.id === actingAs)
   const mover = canWalk ? '' : `${name(view.current ?? '')} `
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col">
-      <div ref={box} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+      <div className="relative min-h-0 flex-1">
+      <div ref={box} className="absolute inset-0 flex overflow-auto">
         <canvas
           ref={canvas}
           width={g.width * S}
@@ -339,17 +388,16 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
           }}
           onMouseLeave={() => setHover(null)}
           aria-label="The board of the fight. Click a blue cell to walk. Click a creature to attack it."
-          className={`pixelated shrink-0 ${canWalk ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`pixelated m-auto shrink-0 ${canWalk ? 'cursor-pointer' : 'cursor-default'}`}
           style={{ width: g.width * scale, height: g.height * scale }}
         />
+      </div>
         <div className="pointer-events-none absolute top-2 left-2 flex flex-col gap-1">
           <span className="pixel-font bg-black/60 px-2 py-1 text-[10px] text-[var(--gold)]">
-            Round {view.round}
-            {view.walk.length ? ` · ${mover}${view.feet_left} ft left` : ''}
+            {view.walk.length ? `${mover}${view.feet_left} ft left` : `Round ${view.round}`}
           </span>
           {note && <span className="pixel-font bg-black/70 px-2 py-1 text-[8px] text-[var(--bad)]">{note}</span>}
         </div>
-        {isHost && <CombatSettings settings={state.combat_settings ?? view.settings} />}
         {ask && (
           <div role="alertdialog" className="absolute inset-x-2 bottom-2 flex flex-wrap items-center justify-center gap-2 border-2 border-[var(--border)] bg-black/90 p-2">
             <span className="text-sm">{ask.why}</span>
@@ -378,8 +426,11 @@ export function ArenaView({ state, arenaId, actingAs, mine, isHost }: { state: S
             )}
           </div>
         )}
+        {canWalk && prefs.pad && me && <WalkPad at={[me.x, me.y]} walk={view.walk} onStep={(to) => call('/api/arena/move', { who: actingAs, to })} />}
       </div>
-    {hand && canWalk && <Hand key={hand.who} hand={hand} skin={skin} onSkin={flipSkin} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />}
+      {/* The roll window draws here while a roll plays; with none the strip has no height, so the board keeps the room. */}
+      <div ref={dockRef} className="h-[15rem] shrink-0 overflow-hidden border-t-2 border-[var(--border)] empty:hidden" />
+    {hand && canWalk && <Hand key={hand.who} hand={hand} skin={skin} onSkin={flipSkin} status={status} onEnd={onEnd} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />}
     </div>
   )
 }

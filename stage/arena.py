@@ -9,6 +9,7 @@ its own tiles, and `stage/board.py` runs the rules on it. See combat-board.md.
 from __future__ import annotations
 
 import io
+import heapq
 import json
 import math
 import random
@@ -211,6 +212,7 @@ WHERES = ("party", "center", "foes")
 HAZARDS = ("lava", "water")
 WALL, FLOOR, DOOR, HAZARD, VOID = "#", ".", "d", "~", "-"  # the void is outside the room: never drawn, never walkable, blocks sight
 STAND = {FLOOR, DOOR}  # tiles a unit can stand on; a prop on one may still block it
+STEP_FT = (5, 7)  # feet for a straight step and a diagonal one
 COVER_BONUS = {"none": 0, "half": 2, "three-quarters": 5}
 DEFAULT_BOARD = {"blocks_move": True, "blocks_sight": False, "cover": "none", "hp": None, "tags": []}
 ZONE_ROWS = ("back", "mid", "front")
@@ -311,28 +313,36 @@ def shape_cells(shape: dict, origin, aim, size: tuple[int, int]) -> set[tuple[in
     return out
 
 
-def reach(start, limit: int, blocked, size: tuple[int, int], occupied=frozenset()):
-    """Walk 8 directions from start, up to `limit` steps: (distance by cell, previous cell by cell).
+def reach(start, limit: int, blocked, size: tuple[int, int], occupied=frozenset(), cost: tuple[int, int] = (1, 1)):
+    """Walk 8 directions from start, up to `limit`: (distance by cell, previous cell by cell).
 
+    `cost` is (straight step, diagonal step). The board uses (5, 7): 5 ft straight, 7 ft on the diagonal (5 x 1.4).
     A diagonal step needs both side cells free of blocking tiles. A unit cannot enter or pass an occupied cell.
     """
     w, h = size
     start = tuple(start)
-    dist, prev, queue = {start: 0}, {}, deque([start])
+    dist, prev, queue, done = {start: 0}, {}, [(0, start)], set()
     while queue:
-        x, y = queue.popleft()
-        if dist[(x, y)] >= limit:
+        d, (x, y) = heapq.heappop(queue)
+        if (x, y) in done:
             continue
+        done.add((x, y))
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 n = (x + dx, y + dy)
-                if (dx or dy) and 0 <= n[0] < w and 0 <= n[1] < h and n not in dist and n not in blocked and n not in occupied:
+                if (dx or dy) and 0 <= n[0] < w and 0 <= n[1] < h and n not in blocked and n not in occupied:
                     if dx and dy and ((x + dx, y) in blocked or (x, y + dy) in blocked):
                         continue
-                    dist[n] = dist[(x, y)] + 1
-                    prev[n] = (x, y)
-                    queue.append(n)
+                    nd = d + cost[1 if dx and dy else 0]
+                    if nd <= limit and nd < dist.get(n, limit + 1):
+                        dist[n], prev[n] = nd, (x, y)
+                        heapq.heappush(queue, (nd, n))
     return dist, prev
+
+
+def step_cost(a, b) -> int:
+    """The feet of one step between neighbouring cells."""
+    return STEP_FT[1 if a[0] != b[0] and a[1] != b[1] else 0]
 
 
 def path_from(prev: dict, start, target) -> list[tuple[int, int]]:

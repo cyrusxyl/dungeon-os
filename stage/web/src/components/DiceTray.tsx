@@ -26,13 +26,30 @@ const dieSize = (n: number) => (n <= 4 ? 56 : n <= 8 ? 44 : n <= 12 ? 36 : 28)
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
 const LABEL_H = 22
 
-/** The rows, one above the other, each with its dice in a line (more lines when they do not fit). */
-function layout(rows: TrayRow[], size: number, width: number) {
-  const pad = 8, gap = 6, perLine = Math.max(1, Math.floor((width - 2 * pad + gap) / (size + gap)))
+/** Where each row's label stands: `w` is its width when the row is a column of its own (the compact tray), else null (the whole width). */
+interface LabelAt { x: number; y: number; w: number | null }
+
+/** The rows, one above the other, each with its dice in a line (more lines when they do not fit). Compact: the rows are columns side by side. */
+function layout(rows: TrayRow[], size: number, width: number, compact: boolean) {
+  const pad = 8, gap = 6
+  const starts: { x: number; y: number }[] = [], labels: LabelAt[] = []
+  if (compact) {
+    const per = 3
+    let x = pad, y = pad, band = 0
+    for (const row of rows) {
+      const w = Math.min(row.dice.length, per) * (size + gap) + 4
+      if (x + w > width && x > pad) { x = pad; y += band; band = 0 }
+      labels.push({ x, y, w })
+      row.dice.forEach((_, i) => starts.push({ x: x + size / 2 + (i % per) * (size + gap), y: y + LABEL_H + size / 2 + Math.floor(i / per) * (size + 4) }))
+      band = Math.max(band, LABEL_H + Math.ceil(row.dice.length / per) * (size + 4) + 8)
+      x += w + 8
+    }
+    return { starts, labels, height: y + band }
+  }
+  const perLine = Math.max(1, Math.floor((width - 2 * pad + gap) / (size + gap)))
   let y = pad
-  const starts: { x: number; y: number }[] = [], labels: number[] = []
   for (const row of rows) {
-    labels.push(y)
+    labels.push({ x: pad, y, w: null })
     const lines = Math.ceil(row.dice.length / perLine)
     row.dice.forEach((_, i) => starts.push({ x: pad + size / 2 + (i % perLine) * (size + gap), y: y + LABEL_H + size / 2 + Math.floor(i / perLine) * (size + 4) }))
     y += LABEL_H + lines * (size + 4) + 8
@@ -47,13 +64,15 @@ type Phase = 'rows' | 'throw' | 'done'
  * player chose. `skipRef` is filled with a function that a click on the window calls: it throws (before the throw) or lands the dice
  * (during it) and returns true; once the tray is done it returns false.
  */
-export function DiceTray({ rows, crit, seed, queued, onSettled, skipRef }: {
+export function DiceTray({ rows, crit, seed, queued, onSettled, skipRef, compact = false }: {
   rows: TrayRow[]
   crit: boolean
   seed: number
   queued: boolean
   onSettled: () => void
   skipRef: MutableRefObject<(() => boolean) | null>
+  /** In the strip under the board: a shorter box. */
+  compact?: boolean
 }) {
   const prefs = usePrefs()
   const tm = timeScale(prefs)
@@ -81,11 +100,11 @@ export function DiceTray({ rows, crit, seed, queued, onSettled, skipRef }: {
   }, [dice, seed])
   const geo = useMemo(() => {
     if (!width) return null
-    const size = width < 300 && dice.length > 8 ? 28 : dieSize(dice.length), r = 0.42 * size
-    const lay = layout(rows, size, width)
-    const height = Math.ceil(Math.max(lay.height + 4, 130, (dice.length * Math.PI * r * r) / 0.28 / width))
+    const size = compact ? (dice.length <= 3 ? 44 : dice.length <= 6 ? 36 : 30) : width < 300 && dice.length > 8 ? 28 : dieSize(dice.length), r = 0.42 * size
+    const lay = layout(rows, size, width, compact)
+    const height = Math.ceil(Math.max(lay.height + 4, compact ? 96 : 130, (dice.length * Math.PI * r * r) / 0.28 / width))
     return { ...lay, size, r, height }
-  }, [width, rows, dice.length])
+  }, [width, rows, dice.length, compact])
   const res = geo ? Math.round(geo.size * (window.devicePixelRatio || 1)) : 0
 
   // Draw a frame of the throw (or, before it, the dice in their rows).
@@ -170,14 +189,14 @@ export function DiceTray({ rows, crit, seed, queued, onSettled, skipRef }: {
 
   let at = 0
   return (
-    <div className="flex w-full flex-col gap-2 border-2 border-[var(--border)] bg-[var(--panel-2)] p-2">
-      <div ref={box} className="relative w-full overflow-hidden" style={{ height: geo?.height ?? 130 }}>
+    <div className={`flex w-full flex-col border-2 border-[var(--border)] bg-[var(--panel-2)] ${compact ? 'gap-1 p-1' : 'gap-2 p-2'}`}>
+      <div ref={box} className="relative w-full overflow-hidden" style={{ height: geo?.height ?? (compact ? 96 : 130) }}>
         {geo &&
           rows.map((row, ri) => (
             <div
               key={`label-${ri}`}
               className={`absolute right-2 left-2 truncate border-l-4 pl-2 text-base leading-[20px] transition-opacity duration-300 ease-[steps(5)] ${phase === 'rows' ? '' : 'opacity-0'}`}
-              style={{ top: geo.labels[ri], borderColor: TONES[row.tone].ramp[2] }}
+              style={{ top: geo.labels[ri].y, borderColor: TONES[row.tone].ramp[2], ...(geo.labels[ri].w ? { left: geo.labels[ri].x, width: geo.labels[ri].w, right: 'auto' } : {}) }}
             >
               <span className="capitalize">{row.label}</span> <span className="text-sm text-[var(--dim)]">{row.expr}</span>
             </div>
@@ -200,7 +219,7 @@ export function DiceTray({ rows, crit, seed, queued, onSettled, skipRef }: {
             }),
           )}
       </div>
-      <div className="flex min-h-8 flex-wrap items-center gap-2">
+      <div className={`flex flex-wrap items-center ${compact ? 'min-h-6 gap-1 text-sm' : 'min-h-8 gap-2'}`}>
         {phase === 'rows' ? (
           <>
             <Button size="sm" className="text-[10px]" onClick={(e) => { e.stopPropagation(); skipRef.current?.() }}>
@@ -211,12 +230,12 @@ export function DiceTray({ rows, crit, seed, queued, onSettled, skipRef }: {
         ) : (
           <>
             {rows.map((row, i) => (
-              <span key={i} className={`border-2 px-2 text-base ${phase === 'done' ? 'tile-in' : 'invisible'}`} style={{ borderColor: TONES[row.tone].ramp[2] }}>
+              <span key={i} className={`border-2 px-2 ${compact ? 'text-sm' : 'text-base'} ${phase === 'done' ? 'tile-in' : 'invisible'}`} style={{ borderColor: TONES[row.tone].ramp[2] }}>
                 <span className="capitalize">{row.label}</span> <span className="pixel-font ml-1 text-xs text-[var(--ember)]">{row.total}</span>
               </span>
             ))}
             {rows.length > 1 && (
-              <span className={`ml-auto border-2 border-[var(--gold)] px-2 text-base ${phase === 'done' ? 'tile-in' : 'invisible'}`}>
+              <span className={`ml-auto border-2 border-[var(--gold)] px-2 ${compact ? 'text-sm' : 'text-base'} ${phase === 'done' ? 'tile-in' : 'invisible'}`}>
                 Total <span className="pixel-font ml-1 text-xs text-[var(--ember)]">{rows.reduce((n, r) => n + r.total, 0)}</span>
               </span>
             )}

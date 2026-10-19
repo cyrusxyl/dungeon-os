@@ -87,6 +87,9 @@ def place(room: dict, actors: dict[str, dict], seed: str = "") -> dict[str, dict
             cur[aid] = tuple(a["cell"])
         else:
             todo.append(aid)
+    for aid in [i for i, c in cur.items() if c in keep_clear and not actors[i].get("on")]:  # one who stands in front of a seat is placed again
+        del cur[aid]
+        todo.append(aid)
     on_prop = set(out)
 
     def open_cells(need: int = 1) -> tuple[list[Cell], int]:

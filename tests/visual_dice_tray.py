@@ -243,7 +243,7 @@ async def settings(page: v.Page, url: str) -> None:
     await asyncio.sleep(0.6)
     await page.shot("settings-gameplay")
     tabs = await page.eval("[...document.querySelectorAll('[role=tab]')].map((t) => t.textContent.trim())")
-    check("in a game: Gameplay and Voice, no DM tab", tabs == ["Gameplay", "Voice"], str(tabs))
+    check("in a game: Gameplay, Combat and Voice, no DM tab", tabs == ["Gameplay", "Combat", "Voice"], str(tabs))
     text = await page.eval("document.querySelector('[role=dialog]').innerText")
     check("the options are there", all(w in text for w in ("Dice display", "Damage throw", "Roll speed", "Keep the window open", "Show what adds to the roll")))
     fonts = await page.eval("""(() => { const d = document.querySelector('[role=dialog]'); const l = [...d.querySelectorAll('legend')].map((e) => getComputedStyle(e).fontFamily);
