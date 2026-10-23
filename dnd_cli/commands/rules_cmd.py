@@ -51,7 +51,7 @@ def execute_encounter(campaign, action: str, args) -> int:
             notify_stage(campaign_dir, {"type": "arena", "arena": state["active_encounter"]["arena"]})
             return lines
         if action == "add":
-            lines = encounters.add(campaign_dir, state, args.specs)
+            lines = encounters.add(campaign_dir, state, args.specs, stage=stage_state.replay(log_path(campaign_dir))["actors"])
             if arena_id := board.arena_id_of(state):
                 a = arena.load(campaign_dir, arena_id)
                 if board.sync_units(campaign_dir, state, a):

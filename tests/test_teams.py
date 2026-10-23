@@ -92,6 +92,10 @@ def main() -> int:
         check("encounter start: stage allies named in a spec fight for the party, the rest are hostile",
               t2 == {"guard#1": "party", "guard#2": "party", "guard#3": "hostile", "guard#4": "hostile"}, str(t2))
 
+        encounters.add(c, state2, ["guard"], stage={**stage2, "guard#5": {"side": "ally", "cell": [1, 0]}, "guard#6": {"side": "ally", "cell": [1, 1]}})
+        check("encounter add: a stage ally takes its side, and a stage fighter that is not named stays out",
+              tracker.team_of(state2, "guard#5") == "party" and "guard#6" not in state2["active_encounter"]["participants"])
+
         # The arena.
         arena_id, a, _ = board.build(c, state, [], stage)
         check("the arena is the room of the scene, every fighter on the cell it had on the stage",

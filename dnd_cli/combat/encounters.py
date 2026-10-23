@@ -173,14 +173,16 @@ def _stage_team(stage: dict | None, cid: str) -> str | None:
     return None if team == HOSTILE else team
 
 
-def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng, stage: dict | None = None) -> list[str]:
+def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng, stage: dict | None = None,
+          fighters: bool = True) -> list[str]:
     enc = state["active_encounter"]
     entrants = [(combatant(campaign_dir, state, p), None) for p in pcs]
     prefer = [a for a, v in (stage or {}).items() if v.get("side") in TEAM_OF_SIDE]  # the creatures the DM names take the ids they have on the stage
     # ...and the side they have there: a named guard#1 that is an ally fights for the party. Creatures that are new are hostile.
     entrants += [(r, _stage_team(stage, r["id"])) for r in _creatures(campaign_dir, specs, set(enc["participants"]), prefer)]
     skipped: list[str] = []
-    entrants += _stage_fighters(campaign_dir, stage, set(enc["participants"]) | {r["id"] for r, _ in entrants}, skipped)
+    if fighters:  # `add` joins only what the DM names; the stage still gives their ids and sides
+        entrants += _stage_fighters(campaign_dir, stage, set(enc["participants"]) | {r["id"] for r, _ in entrants}, skipped)
     return _enroll(state, entrants, rng) + skipped
 
 
@@ -221,9 +223,9 @@ def provoke(campaign_dir: Path, state: dict, target: str, attacker: str, rng=Non
     return lines + [f"{target} is drawn into the fight against {attacker}'s side."]
 
 
-def add(campaign_dir: Path, state: dict, specs: list[str], rng=None) -> list[str]:
+def add(campaign_dir: Path, state: dict, specs: list[str], rng=None, stage: dict | None = None) -> list[str]:
     enc = encounter(state)
-    lines = _join(campaign_dir, state, [], specs, rng or random)
+    lines = _join(campaign_dir, state, [], specs, rng or random, stage, fighters=False)
     _initiative_feed(campaign_dir, state, enc)
     return lines + [_order_lines(enc)]
 
