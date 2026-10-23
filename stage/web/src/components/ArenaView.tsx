@@ -10,6 +10,8 @@ import { buildBase, byDepth, diamond, facing, frameAt, geometry, groundCentre, p
 import { type PropsInfo, usePropsInfo } from '@/lib/propAtlas'
 import { setDock } from '@/lib/dock'
 import { reducedMotion, usePrefs } from '@/lib/prefs'
+import { blockMap, fadedBlocks, isBlock } from '@/lib/blockMap'
+import { blockThing } from '@/lib/blocks'
 import { propThing, sceneBase, sceneStyle, type Thing } from '@/lib/roomDraw'
 import { BAND_FILL, type PartyChar } from '@/lib/party'
 import { deviceHeaders, postJson, type StageState, useFitScale, useJson } from '@/lib/stage'
@@ -164,6 +166,14 @@ function draw(
   const centre = roomCentre(view.grid)
   // Flat props, the low walls, props and creatures, back to front.
   const things: Thing[] = base.rims.map((r) => ({ depth: r.depth, draw: () => r.draw(ctx) }))
+  if (view.room) {
+    // Blocks of the room: a block in front of a creature fades, so the creature shows through.
+    const blocks = blockMap(view.props)
+    const faded = fadedBlocks(blocks, [...view.units.filter((u) => !u.down), ...(view.bystanders ?? [])].map((u) => [u.x, u.y]))
+    const sheet = image(`/asset/arena/${view.id}/room.png`)
+    const room = { grid: view.grid, sheet: view.room.sheet, blocks_look: view.room.blocks_look }
+    for (const p of view.props) if (isBlock(p.kind)) things.push(blockThing(ctx, g, room, sheet, p, blocks, faded, !seenNow(view, p.x, p.y)))
+  }
   if (props && atlas) {
     for (const p of view.props) {
       const thing = propThing(ctx, g, props, atlas, p, centre, !seenNow(view, p.x, p.y))
@@ -440,7 +450,7 @@ export function ArenaView({ state, arenaId, actingAs, mine, status, onEnd }: { s
       <div className="relative h-[15rem] shrink-0 overflow-hidden border-t-2 border-[var(--border)]">
         <div className="flex h-full flex-col [&>*]:h-full [&>*]:max-h-full">
           {hand && canWalk ? (
-            <Hand key={hand.who} hand={hand} skin={skin} onSkin={flipSkin} status={status} onEnd={onEnd} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item').map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />
+            <Hand key={hand.who} hand={hand} skin={skin} onSkin={flipSkin} status={status} onEnd={onEnd} selected={selected} onPick={pick} objects={view.props.filter((p) => p.kind !== 'item' && !isBlock(p.kind)).map((p) => ({ id: p.id, name: p.kind.replace(/_/g, ' ') }))} onTarget={act} onImprovise={improvise} onCancel={() => setPicked(null)} />
           ) : (
             <div className="flex flex-col gap-2 overflow-y-auto bg-black/85 p-2 text-xs">
               {status && <CombatStatus c={status} />}

@@ -45,7 +45,8 @@ def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="visual-"))
     c = campaign(tmp)
     shape = sys.argv[2] if len(sys.argv) > 2 else None  # a second argument gives the scene a room shape: ... cross
-    scenes.save(c, "hall", {"template": "tavern", "slots": {}, "add": [], "mood": "day", **({"shape": shape, "seed": 4} if shape else {})})
+    template = sys.argv[3] if len(sys.argv) > 3 else "tavern"  # a third argument gives the scene a template: ... cross dungeon
+    scenes.save(c, "hall", {"template": template, "slots": {}, "add": [], "mood": "day", "blocks": "auto", **({"shape": shape, "seed": 4} if shape else {})})
     state = fight(c)
     port, debug = v.free_port(), v.free_port()
     app = create_app(campaign_dir=c, dm_command=["sleep", "3600"])

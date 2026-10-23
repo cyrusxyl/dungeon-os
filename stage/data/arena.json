@@ -1,5 +1,5 @@
 {
-  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees). darkvision_ft: the darkvision of a race word (the longest match wins); a character without one sees only by light. styles: the weights of the foe planner (stage/foes.py). A creature with only ranged attacks plays as a skirmisher. shapes: the odds of each room shape by theme, as weights (see isometric-view.md); a theme with no table uses `default`.",
+  "_comment": "Combat arena data (see combat-board.md and stage/arena.py). decor: the props a theme draws from. scene_looks: the site theme whose walls an arena takes for a scene template (the floor stays the scene's own LPC floor). open_templates: scene templates with no walls (an arena at the edge of trees). darkvision_ft: the darkvision of a race word (the longest match wins); a character without one sees only by light. styles: the weights of the foe planner (stage/foes.py). A creature with only ranged attacks plays as a skirmisher. shapes: the odds of each room shape by theme, as weights (see isometric-view.md); a theme with no table uses `default`. blocks: the look and the density of the blocks of a room by theme (see blocks.md): `skin` is `flat` (a color of `colors`), `wall` (the wall tile on the sides and top) or `floor` (the wall tile on the sides, the floor tile on top); `density` is the floor cells for each block.",
   "decor": {
     "tavern": {
       "obstacles": [
@@ -176,6 +176,23 @@
     "mine": {"hall": 3, "dogleg": 2, "zigzag": 2, "cave": 3},
     "forest": {"ellipse": 4, "blob": 3, "cave": 3},
     "overgrown": {"ellipse": 4, "blob": 3, "cave": 3}
+  },
+  "blocks": {
+    "default": {"skin": "flat", "density": 39, "colors": ["#7b8190", "#6c7b92", "#8c7f70", "#62706a"]},
+    "tavern": {"skin": "flat", "density": 45, "colors": ["#9a6a35", "#b07d44", "#7b4f2a", "#8a5a3a"]},
+    "house": {"skin": "flat", "density": 51, "colors": ["#9a6a35", "#b07d44", "#7b4f2a", "#8a5a3a"]},
+    "manor": {"skin": "floor", "density": 42, "colors": ["#9a6a35", "#b07d44", "#7b4f2a", "#8a5a3a"]},
+    "tower": {"skin": "wall", "density": 39, "colors": ["#7b8190", "#6c7b92", "#8c7f70", "#62706a"]},
+    "temple": {"skin": "floor", "density": 36, "colors": ["#c9bfa8", "#a9b0bc", "#b8a98f", "#9aa39a"]},
+    "castle": {"skin": "floor", "density": 39, "colors": ["#c9bfa8", "#a9b0bc", "#b8a98f", "#9aa39a"]},
+    "dungeon": {"skin": "wall", "density": 27, "colors": ["#7b8190", "#6c7b92", "#8c7f70", "#62706a"]},
+    "sewer": {"skin": "wall", "density": 30, "colors": ["#7b8190", "#6c7b92", "#8c7f70", "#62706a"]},
+    "crypt": {"skin": "floor", "density": 24, "colors": ["#6a5a86", "#58607a", "#7a6a8f", "#4f5b6b"]},
+    "mine": {"skin": "flat", "density": 30, "colors": ["#7a6a55", "#6a6f5c", "#8a7a62", "#5e5a52"]},
+    "cave": {"skin": "flat", "density": 24, "colors": ["#7a6a55", "#6a6f5c", "#8a7a62", "#5e5a52"]},
+    "overgrown": {"skin": "flat", "density": 36, "colors": ["#6f7a5e", "#7a7f6a", "#5f6b58", "#85806a"]},
+    "forest": {"skin": "flat", "density": 42, "colors": ["#6f7a5e", "#7a7f6a", "#5f6b58", "#85806a"]},
+    "volcano": {"skin": "flat", "density": 27, "colors": ["#5a4a48", "#4a4a55", "#6a4a40", "#3f3f48"]}
   },
   "darkvision_ft": {
     "drow": 120,

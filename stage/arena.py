@@ -234,8 +234,10 @@ def arena_data() -> dict:
 def board_of(kind: str) -> dict:
     """What a prop does on the board: from its `board` entry in scenery.json, else the default (blocks movement, no cover;
     a prop that lies flat, such as a rug, blocks nothing)."""
-    from stage import scenes
+    from stage import blocks, scenes
 
+    if blocks.is_block(kind):
+        return {**DEFAULT_BOARD, **blocks.BOARD[kind]}
     prop = scenes.catalog()["props"].get(kind) or {}
     entry = prop.get("board") or {}
     return {**DEFAULT_BOARD, **({"blocks_move": False} if prop.get("flat") and not entry else {}), **entry}

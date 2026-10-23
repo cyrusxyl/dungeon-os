@@ -65,11 +65,12 @@ def execute_options(what: str | None) -> int:
                   for k, v in cat["props"].items()},
         "moods": cat["moods"],
         "shapes": list(scenes.rooms.SHAPE_NAMES),
+        "heights": list(scenes.blocks.MIXES),
         "slots": scenes.SLOTS,
     }
     if what is None:
         print("Usage: uv run dnd-cli scene set <location-id> template=<t> [wall=<w>] [floor=<f>] [mood=<m>] "
-              "[shape=<shape>|none] [seed=<n>] [size=small|medium|large] [<slot>=<prop>|none] [+<prop>@<zone>] [clear=add]")
+              "[shape=<shape>|none] [seed=<n>] [size=small|medium|large] [blocks=<n>|auto|none] [heights=mixed|low|tall] [<slot>=<prop>|none] [+<prop>@<zone>] [clear=add]")
         print("Zones (for +prop@zone) are the floor slots: " + ", ".join(scenes.ZONES))
         for k, v in groups.items():
             print(f"\n{k}: " + ", ".join(v))

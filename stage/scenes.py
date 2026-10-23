@@ -20,6 +20,7 @@ import io
 import json
 import random
 import re
+import zlib
 from functools import cache, lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -27,7 +28,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from PIL import Image
 
-from stage import rooms
+from stage import blocks, cast, rooms
 from stage.assets import ASSETS_DIR, ensure_dcss, ensure_tiles
 from stage.creatures import recolor
 from core.files import read_json, write_json
@@ -47,6 +48,7 @@ UPRIGHT = re.compile(
 )
 UPRIGHT_FIRST = re.compile("cloud|smoke|armor|suit|cactus|corn|hoard")
 
+MAX_BLOCKS = 24  # the most blocks a DM may ask for
 ROOM_W, ROOM_H = 14, 11  # the room of a scene in cells (see `_make_grid`)
 # Where a wall slot hangs: the wall (n = north, w = west) and the place along it as a fraction of that wall (the centre of the piece).
 WALL_AT = {"wall_left": ("w", 0.325), "wall_left2": ("n", 0.26), "wall_center": ("n", 0.54), "wall_right2": ("w", 0.7), "wall_right": ("n", 0.83)}
@@ -280,7 +282,12 @@ def resolve(spec: dict) -> dict:
         "add": list(spec.get("add", [])),
         "mood": spec.get("mood") or t.get("mood") or "day",
         "shape": spec.get("shape"), "seed": spec.get("seed"), "size": spec.get("size"),
+        "blocks": spec.get("blocks"), "heights": spec.get("heights"),
     }
+    if out["blocks"] is not None and out["blocks"] != "auto" and not (isinstance(out["blocks"], int) and 0 <= out["blocks"] <= MAX_BLOCKS):
+        raise SceneError(f"blocks {out['blocks']!r} is not auto or a whole number from 0 to {MAX_BLOCKS}.")
+    if out["heights"] is not None and out["heights"] not in blocks.MIXES:
+        raise SceneError(f"heights {out['heights']!r} is not one of {', '.join(blocks.MIXES)}.")
     if out["shape"] == "fixed":
         out["shape"] = None  # the plain 14 x 11 room
     if out["shape"] is not None and out["shape"] not in rooms.SHAPE_NAMES:
@@ -395,6 +402,44 @@ def _icon(path: str) -> Image.Image:
     return icon.crop(icon.getchannel("A").getbbox())
 
 
+def _block_look(template: str, walled: bool) -> dict:
+    """The look of the blocks of a scene: from the theme table in arena.json. Without walls there is no wall tile, so they are flat."""
+    from stage import arena
+
+    data = arena.arena_data()
+    theme = data["scene_looks"].get(template, "dungeon")
+    entry = {**data["blocks"]["default"], **data["blocks"].get(theme, {})}
+    return {**entry, "skin": entry["skin"] if walled else "flat"}
+
+
+def _blocks_of(spec: dict, r: dict, grid: list[str], props: list[dict], decor: list[dict], full: bool, walled: bool) -> tuple[list, dict | None]:
+    """The blocks of a room (see blocks.md) and their look. None for a place with no `blocks` in its spec: a place saved before blocks
+    keeps its room. The blocks are made for the full room; the story set shows them at their scaled places."""
+    if r["blocks"] is None:
+        return [], None
+    look = _block_look(spec["template"], walled)
+    taken = {(p["x"], p["y"]) for p in props}
+    keep = set()
+    for d in decor:  # the floor in front of a door stays clear
+        if re.search("door|gate|arch|stair", d["kind"]):
+            keep.add((int(d["t"]), d["line"] + 1) if d["wall"] == "n" else (d["line"] + 1, int(d["t"])))
+    if full:
+        seed = r["seed"] if isinstance(r["seed"], int) else zlib.crc32(spec["template"].encode())
+        floor_cells = sum(row.count(".") for row in grid)
+        count = blocks.default_count(floor_cells, look["density"]) if r["blocks"] == "auto" else r["blocks"]
+        return blocks.generate(grid, taken, keep, seed, count, r["heights"] or "mixed"), look
+    big_grid, big = _full_blocks(json.dumps(spec, sort_keys=True))
+    if big_grid == grid:
+        return big, look  # the set is the full room: the same blocks
+    return blocks.fit(big, lambda c: cast.scale_cell(c, big_grid, grid), grid, taken, keep), look
+
+
+@lru_cache(maxsize=64)
+def _full_blocks(spec_json: str) -> tuple[list[str], list]:
+    made = room(json.loads(spec_json), full=True)
+    return made["grid"], [[tuple(c) for c in g] for g in made["blocks"]]
+
+
 def room(spec: dict, stuff: tuple = (), full: bool = False) -> dict:
     """A scene as an isometric room, for the browser (see isometric-view.md). By default it is the story set, a small room; `full`
     gives the room of a fight: the same shape, props and walls at full size (see compact-set.md).
@@ -444,6 +489,9 @@ def room(spec: dict, stuff: tuple = (), full: bool = False) -> dict:
         props.append({"kind": name, "slot": slot, "x": x, "y": y, "flat": flat})
         if stand := cat["props"][name].get("stand"):
             standing.append({"slot": slot, "prop": name, "mode": stand["mode"], "points": stand["at"], "x": x, "y": y})
+    groups, look = _blocks_of(spec, r, grid, props, decor, full, walled)
+    for n, group in enumerate(groups):
+        props += [{"kind": kind, "slot": "block", "x": x, "y": y, "flat": False, "block": n} for x, y, kind in group]
     face, cap = WALL_FACE[1] - WALL_FACE[0], WALL_CAP
     sheet_h = h * T + 2 * (face + cap)
     sheet = {"w": max(w, ROOM_W) * T, "h": sheet_h + (T if stuff else 0), "north": [h * T, h * T + face], "west": [h * T + face + cap, h * T + 2 * face + cap],
@@ -454,7 +502,8 @@ def room(spec: dict, stuff: tuple = (), full: bool = False) -> dict:
         placed.append({"icon": path, "r": [x, sheet_h, icon.width, icon.height], "on": prop, "at": [px, py]})
         x += icon.width + 1
     return {"w": w, "h": h, "grid": grid, "open": not walled, "shaped": bool(r.get("shape")), "mood": r["mood"], "props": props, "decor": decor,
-            "stand": standing, "stuff": placed, "sheet": sheet, "walls": len(r["walls"])}
+            "stand": standing, "stuff": placed, "sheet": sheet, "walls": len(r["walls"]),
+            "blocks": [[list(c) for c in g] for g in groups], "blocks_look": look}
 
 
 def stand_points(spec: dict) -> list[dict]:
@@ -529,7 +578,7 @@ def save(campaign_dir: Path, location: str, spec: dict) -> Path:
 
 
 def build(tokens: list[str], current: dict | None) -> dict:
-    """Make a spec from tokens: template= wall= floor= mood= shape= (a new place gets one from its theme; `fixed` is the plain room) seed= size= <slot>=<prop|none> +<prop>@<zone> clear=add."""
+    """Make a spec from tokens: template= wall= floor= mood= shape= (a new place gets one from its theme; `fixed` is the plain room) seed= size= blocks=<n|auto|none> heights=<mixed|low|tall> <slot>=<prop|none> +<prop>@<zone> clear=add."""
     spec = json.loads(json.dumps(current or {}))
     spec.setdefault("slots", {})
     spec.setdefault("add", [])
@@ -561,6 +610,14 @@ def build(tokens: list[str], current: dict | None) -> dict:
             spec["size"] = None if value in ("none", "") else value
             if spec["size"] is None:
                 spec.pop("size")
+        elif key == "blocks":
+            if value not in ("auto", "none", "") and not value.isdigit():
+                raise SceneError("blocks= is auto or a whole number (0 for none).")
+            spec["blocks"] = "auto" if value == "auto" else 0 if value in ("none", "") else int(value)
+        elif key == "heights":
+            if value not in blocks.MIXES:
+                raise SceneError(f"heights= is one of {', '.join(blocks.MIXES)}.")
+            spec["heights"] = value
         elif key in ("wall", "floor", "mood"):
             spec[key] = value.split(",") if key == "wall" and "," in value else value
         elif key == "clear" and value == "add":
@@ -577,4 +634,6 @@ def build(tokens: list[str], current: dict | None) -> dict:
 
         spec["seed"] = random.randrange(1, 10**6)
         spec["shape"] = arena.pick_shape(arena.arena_data()["scene_looks"].get(spec["template"], "dungeon"), spec["seed"])
+    if current is None or any(t.startswith("template=") for t in tokens):
+        spec.setdefault("blocks", "auto")  # a new place gets blocks by itself, whatever shape it has; a place saved before keeps its room
     return spec

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 
+import { blockMap, fadedBlocks, isBlock } from '@/lib/blockMap'
+import { blockThing } from '@/lib/blocks'
 import { byDepth, geometry, groundCentre, roomCentre, S, unitDepth, type Base, type Geometry, type Pt as Point } from '@/lib/iso'
 import type { Placed } from '@/lib/layout'
 import { usePropsInfo, type PropsInfo } from '@/lib/propAtlas'
@@ -122,6 +124,8 @@ export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', 
     const key = [room, sheet, props, atlas]
     if (!base.current || base.current.key.some((k, i) => k !== key[i])) base.current = { key, base: sceneBase(room, room.grid, g, sceneStyle(room, sheet), props, atlas) }
     const { rims } = base.current.base
+    const blocks = blockMap(room.props)
+    const faded = fadedBlocks(blocks, cast.filter((p) => !p.down).map((p) => p.cell)) // a block in front of a figure fades
     const to = new Map(cast.map((p) => [p.id, anchor(g, props, p, centre)] as const))
     const from = new Map(cast.map((p) => [p.id, shown.current.get(p.id) ?? to.get(p.id)!] as const))
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -140,6 +144,7 @@ export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', 
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.drawImage(base.current!.base.canvas, 0, 0)
       const things: Thing[] = rims.map((r) => ({ depth: r.depth, draw: () => r.draw(ctx) }))
+      for (const p of room.props) if (isBlock(p.kind)) things.push(blockThing(ctx, g, room, sheet, p, blocks, faded))
       if (props && atlas) {
         for (const p of room.props) {
           const thing = propThing(ctx, g, props, atlas, p, centre)

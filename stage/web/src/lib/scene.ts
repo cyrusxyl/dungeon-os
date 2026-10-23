@@ -74,6 +74,8 @@ export interface SceneRoom extends Room {
   stand: Stand[]
   stuff: Stuff[]
   sheet: Sheet
+  /** How the blocks of the room look (stage/blocks.py, the `blocks` table of arena.json); null in a place with no blocks. */
+  blocks_look?: { skin: 'flat' | 'wall' | 'floor'; colors: string[]; density: number } | null
 }
 
 /** A room with nothing in it, for actors that stand on no scene. */
