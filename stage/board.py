@@ -172,6 +172,12 @@ def outcome(campaign_dir: Path, state: dict, a: dict) -> dict:
             cell = cast.nearest_free(floor, held, cell)
             held.add(cell)
         cells[cid] = {"cell": list(cell), "facing": "down"}
+    if a["spec"].get("shape") == "scene" and a.get("scene_spec"):  # the fight was in the full room: the scene is the small set, so each unit goes to the same relative place
+        from stage import scenes
+
+        small = scenes.room(a["scene_spec"])["grid"]
+        for v in cells.values():
+            v["cell"] = list(cast.scale_cell(tuple(v["cell"]), a["grid"], small))
     monsters = state["active_encounter"]["monsters"]  # a player character who is down is not a corpse: only creatures are listed
     down = [cid for cid in a["units"] if cid in monsters and not standing(monsters[cid])]
     sides = {cid: "hostile" if tracker.hostile_to_party(state, cid) else "neutral" for cid in a["units"] if tracker.team_of(state, cid) == tracker.NEUTRAL}

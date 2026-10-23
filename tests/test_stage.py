@@ -595,15 +595,12 @@ def test_placement() -> None:
     check("@enter near a slot", e[0] == {"type": "enter", "actor": "guard", "near": "mid_center"} and raises(lambda: beat.parse("@enter x near nowhere")))
     s = state.apply(state.empty(), {"type": "scene", "location": "hall", "party": ["sireth"]})
     check("a scene brings actors with no cell: the server places them", "cell" not in s["actors"]["sireth"])
-    check("@walk names a pattern", beat.parse("@walk gareth patrol") == [{"type": "walk", "actor": "gareth", "walk": "patrol"}]
-          and all(raises(lambda b=b: beat.parse(b)) for b in ("@walk gareth", "@walk gareth run", "@walk")))
-    walking = state.apply(state.apply(s, {"type": "enter", "actor": "gareth"}), {"type": "walk", "actor": "gareth", "walk": "wander"})
-    check("a walk event sets the pattern and an actor not on stage is ignored", walking["actors"]["gareth"]["walk"] == "wander"
-          and "nobody" not in state.apply(s, {"type": "walk", "actor": "nobody", "walk": "still"})["actors"])
-    fallen = {**walking, "actors": {**walking["actors"], "gareth": {**walking["actors"]["gareth"], "down": True, "cell": [3, 3]}}}
+    check("@walk is gone: an old DM may write it, and it does nothing", beat.parse("@walk gareth patrol\n@narrate Hi.") == beat.parse("@narrate Hi."))
+    old_walk = state.apply(state.apply(s, {"type": "enter", "actor": "gareth"}), {"type": "walk", "actor": "gareth", "walk": "wander"})
+    check("an old walk event in a log changes nothing", "walk" not in old_walk["actors"]["gareth"])
+    fallen = {**old_walk, "actors": {**old_walk["actors"], "gareth": {**old_walk["actors"]["gareth"], "down": True, "cell": [3, 3]}}}
     check("@enter stands a fallen actor up where it lay", "down" not in state.apply(fallen, {"type": "enter", "actor": "gareth"})["actors"]["gareth"]
           and state.apply(fallen, {"type": "enter", "actor": "gareth"})["actors"]["gareth"]["cell"] == [3, 3])
-    check("entering again keeps the pattern", state.apply(walking, {"type": "enter", "actor": "gareth", "side": "hostile"})["actors"]["gareth"]["walk"] == "wander")
     placed = state.apply(s, {"type": "place", "scene": "hall", "cells": {"sireth": {"cell": [3, 4], "facing": "right"}, "gone": {"cell": [1, 1], "facing": "down"}}})
     check("a place event sets the cell and the facing, for actors on stage only",
           placed["actors"]["sireth"]["cell"] == [3, 4] and placed["actors"]["sireth"]["facing"] == "right" and "gone" not in placed["actors"])

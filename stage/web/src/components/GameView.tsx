@@ -154,21 +154,6 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   const waitingText = awaiting?.who === 'all' && awaiting.waiting.length ? `Waiting for ${awaiting.waiting.map(nameOf).join(', ')}.` : ''
   // Walking and travel wait until the player has read the story so far.
   const canAct = canType && caughtUp
-  // The picture of the world: the board of a fight, the site the party walks, or the scene.
-  const sceneView = state.arena ? (
-    <ArenaView
-      state={state}
-      arenaId={state.arena}
-      actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null}
-      mine={mine}
-      status={party?.characters.find((c) => c.id === onTurn && mine.includes(c.id)) ?? party?.characters.find((c) => mine.includes(c.id)) ?? null}
-      onEnd={onTurn ? () => postJson('/api/end-turn', { who: onTurn }) : undefined}
-    />
-  ) : state.explore ? (
-    <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
-  ) : (
-    <StageView state={state} speaker={speaker} walkAs={mode !== 'table' && mine.includes(who) ? who : null} />
-  )
   // The fight's own hand (on the board) lists the actions; the table screen takes no input. Cards then skip their action buttons.
   // The scene always shows on the table and on a wide window; on a small window it is the player's choice.
   const showScene = mode === 'table' || wide || hand.scene || Boolean(state.arena) // a fight always shows its board
@@ -195,6 +180,22 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
   }
   const submit = (text: string) => send(text, false)
   const whisper = (text: string) => send(text, true)
+
+  // The picture of the world: the board of a fight, the site the party walks, or the scene.
+  const sceneView = state.arena ? (
+    <ArenaView
+      state={state}
+      arenaId={state.arena}
+      actingAs={canAct && onTurn && mine.includes(onTurn) ? onTurn : null}
+      mine={mine}
+      status={party?.characters.find((c) => c.id === onTurn && mine.includes(c.id)) ?? party?.characters.find((c) => mine.includes(c.id)) ?? null}
+      onEnd={onTurn ? () => postJson('/api/end-turn', { who: onTurn }) : undefined}
+    />
+  ) : state.explore ? (
+    <CrawlView state={state} siteId={state.explore} canAct={canAct && !mapOpen} />
+  ) : (
+    <StageView state={state} speaker={speaker} onAct={canSpeak && caughtUp ? (text) => void send(text, false) : undefined} />
+  )
 
   // What the DM said to this player alone, and who the DM still waits for.
   const sendNow =

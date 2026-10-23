@@ -134,8 +134,6 @@ def apply(state: dict, event: dict) -> dict:
             s["actors"][event["actor"]]["on"] = event["on"]
         if event.get("near"):
             s["actors"][event["actor"]]["near"] = event["near"]
-        if old.get("walk"):
-            s["actors"][event["actor"]]["walk"] = old["walk"]  # the DM's pattern stays when the actor enters again
         if "cell" in old and not (event.get("on") or event.get("near")):
             s["actors"][event["actor"]].update(cell=old["cell"], facing=old.get("facing", "down"))  # entering again (to set a side) does not move the actor
     elif kind == "place":
@@ -144,14 +142,8 @@ def apply(state: dict, event: dict) -> dict:
             for aid, v in event["cells"].items():
                 if aid in s["actors"]:
                     s["actors"][aid] = {**s["actors"][aid], "cell": v["cell"], "facing": v["facing"]}
-    elif kind == "stand":
-        # An actor leaves its seat or its place on a prop (a player sent it walking): it stands on the floor at `cell`.
-        if event.get("scene") == s["scene"] and event["actor"] in s["actors"]:
-            old = {k: v for k, v in s["actors"][event["actor"]].items() if k not in ("on", "near")}
-            s["actors"][event["actor"]] = {**old, "cell": event["cell"], "facing": event.get("facing", "down")}
-    elif kind == "walk":
-        if event["actor"] in s["actors"]:
-            s["actors"][event["actor"]] = {**s["actors"][event["actor"]], "walk": event["walk"]}
+    elif kind in ("stand", "walk"):
+        pass  # old logs only: a scene has no walking now (compact-set.md)
     elif kind == "join":
         # A companion steps on stage now and comes with every later scene (the CLI keeps the roster in state.json).
         old = s["actors"].get(event["actor"], {})
@@ -213,28 +205,6 @@ def apply(state: dict, event: dict) -> dict:
     return s
 
 
-def cells_path(log_path):
-    """The file where the server keeps the cells the actors have walked to (steps are not in the log): `stage/cells.json`."""
-    from pathlib import Path
-
-    return Path(log_path).with_name("cells.json")
-
-
-def with_cells(state: dict, log_path) -> dict:
-    """`state` with the walked cells of the actors laid over it, when the file is for the scene on stage. The log alone gives the cells
-    where the actors were placed, which is not where they stand now; a fight must start where they stand."""
-    from core.files import read_json
-
-    saved = read_json(cells_path(log_path)) or {}
-    if not saved.get("scene") or saved["scene"] != state["scene"]:
-        return state
-    actors = dict(state["actors"])
-    for aid, v in saved.get("cells", {}).items():
-        if aid in actors and not actors[aid].get("on"):
-            actors[aid] = {**actors[aid], "cell": v["cell"], "facing": v["facing"]}
-    return {**state, "actors": actors}
-
-
 def replay(log_path) -> dict:
     """The state after every event of a stage log (the CLI has no running stage to ask)."""
     import json
@@ -249,4 +219,4 @@ def replay(log_path) -> dict:
             state = apply(state, json.loads(line))
         except ValueError:
             continue
-    return with_cells(state, log_path)
+    return state

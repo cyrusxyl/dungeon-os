@@ -51,7 +51,6 @@ from core.ids import ID_RE, ID_RULE
 EMOTIONS = ("neutral", "happy", "angry", "sad", "surprised", "fearful", "disgusted")  # the voice labels; the DM-facing list
 MOODS = ("neutral", "ominous", "warm", "wry", "tense", "intense", "urgent", "action", "bright", "somber")  # narrator styles
 POSITIONS = ("left", "center", "right", "far-left", "far-right")
-WALKS = ("still", "wander", "patrol")  # how an actor moves in a room before a fight (stage/walk.py)
 SIDES = ("party", "ally", "neutral", "bystander", "hostile")  # a ring under the feet: green, green, yellow, yellow, red
 BYSTANDER = "bystander"  # drawn in a fight, takes no turn, and is not at war with anyone, until something provokes it (stage/board.py)
 JOIN_SIDES = ("ally", "neutral", "hostile")  # a companion is not a player character
@@ -70,7 +69,7 @@ def title(slug: str) -> str:
 
 USAGE = (
     "Beat lines: @scene <location-id> [-<actor-id> ...] (the party and the companions come with it; -<id> leaves one out) | "
-    "@enter <actor-id> [position | on <slot> | near <slot>] [party|ally|neutral|hostile] | @exit <actor-id> | @join <actor-id> [ally|neutral|hostile] | @leave <actor-id> | @walk <actor-id> still|wander|patrol | "
+    "@enter <actor-id> [position | on <slot> | near <slot>] [party|ally|neutral|hostile] | @exit <actor-id> | @join <actor-id> [ally|neutral|hostile] | @leave <actor-id> | "
     "@side <actor-id> party|ally|neutral|hostile | @narrate[mood] <text> (mood is optional: " + ", ".join(MOODS) + ") | @say[emotion] <actor-id> <text> (emotion is optional: " + ", ".join(EMOTIONS) + ") | "
     "@choices <a> | <b> | ... | @choices-for <pc-id> <a> | <b> | @whisper <pc-id> <text> | @await all|<pc-id> | "
     "@roll <pc-id> <skill|ability|abil-save> [dc N] [hide] | @clear | "
@@ -158,10 +157,7 @@ def parse(text: str) -> list[dict]:
             events.append({"type": command, "actor": _check_id(parts[0], line_no, "actor"),
                            "side": parts[1] if len(parts) == 2 else "ally"})
         elif command == "walk":
-            parts = rest.lower().split()
-            if len(parts) != 2 or parts[1] not in WALKS:
-                raise BeatError(f"line {line_no}: use '@walk <actor-id> {'|'.join(WALKS)}'.")
-            events.append({"type": "walk", "actor": _check_id(parts[0], line_no, "actor"), "walk": parts[1]})
+            continue  # gone: a scene has no walking (compact-set.md). An old DM session may still write it; it does nothing.
         elif command == "leave":
             if not rest:
                 raise BeatError(f"line {line_no}: @leave needs an actor id. {USAGE}")

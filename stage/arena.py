@@ -469,11 +469,12 @@ def source_of(campaign_dir: Path, stage: dict, spec: dict) -> dict:
         for slot, name in resolved["slots"].items():
             props.append((name, slot))
         props += [(name, zone) for name, zone in resolved["add"]]
-        room = scenes.room(scene)
+        small, room = scenes.room(scene), scenes.room(scene, full=True)  # the actors stand in the set; the fight is in the full room
         actors = stage.get("actors") or {}
-        placed = {i: {**a, **cast.place(room, actors, seed=stage["scene"]).get(i, {})} for i, a in actors.items()}  # the CLI may start a fight before the server has placed the last actor
+        placed = {i: {**a, **cast.place(small, actors, seed=stage["scene"]).get(i, {})} for i, a in actors.items()}  # the CLI may start a fight before the server has placed the last actor
         out = {"kind": "scene", "id": stage["scene"], "theme": walls, "look": look, "props": props, "room": room, "scene_spec": scene,
-               "cast": [{"id": i, "side": a.get("side") or "neutral", "cell": a["cell"]} for i, a in placed.items() if a.get("cell")]}
+               "cast": [{"id": i, "side": a.get("side") or "neutral", "cell": list(cast.scale_cell(tuple(a["cell"]), small["grid"], room["grid"]))}
+                        for i, a in placed.items() if a.get("cell")]}  # each actor at the same relative place in the full room
         out["shell"] = "open" if template in cfg["open_templates"] else "room"
         out["decor"] = "forest" if out["shell"] == "open" else cfg["site_decor"].get(walls, "dungeon")
         out["layout"] = "open"
@@ -560,11 +561,11 @@ def _in_room(spec: dict, source: dict, party_ids: list[str], foe_ids: list[str])
     dist = lambda p, q: math.hypot(p[0] - q[0], p[1] - q[1])  # noqa: E731
 
     def start(want, near) -> tuple[int, int] | None:
-        """The cell the cast gave, else the free cell nearest `near`."""
+        """The cell the cast gave, else the free cell nearest to it (when it gave none, nearest `near`)."""
         ok = [c for c in floor if c not in blocked and c not in taken]
         if not ok:
             return None
-        pick = want if want in ok else min(ok, key=lambda c: (dist(c, near), c))
+        pick = want if want in ok else min(ok, key=lambda c: (dist(c, want or near), c))
         taken.add(pick)
         return pick
 

@@ -42,6 +42,21 @@ def nearest_free(floor: list[Cell], held, cell: Cell) -> Cell:
     return min((c for c in floor if c not in held), key=lambda c: (dist(c, cell), c), default=cell)
 
 
+def floor_box(grid: list[str]) -> tuple[int, int, int, int]:
+    """The box of the floor of a room grid: (x0, y0, width, depth)."""
+    cells = [(x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if c == "."]
+    x0, y0 = min(x for x, _ in cells), min(y for _, y in cells)
+    return x0, y0, max(x for x, _ in cells) - x0 + 1, max(y for _, y in cells) - y0 + 1
+
+
+def scale_cell(cell: Cell, src: list[str], dst: list[str]) -> Cell:
+    """The cell of room `dst` at the same relative place in its floor box as `cell` has in the floor box of room `src`. The two rooms are
+    the story set and the full room of one scene (see compact-set.md). The cell may be a wall or a prop: the caller takes the nearest free one."""
+    sx, sy, sw, sh = floor_box(src)
+    dx, dy, dw, dh = floor_box(dst)
+    return math.floor(dx + (cell[0] - sx + 0.5) / sw * dw), math.floor(dy + (cell[1] - sy + 0.5) / sh * dh)
+
+
 def blank_room(w: int = 14, h: int = 11) -> dict:
     """A room with nothing in it, for a place that has no look yet."""
     return {"w": w, "h": h, "grid": ["." * w for _ in range(h)], "props": [], "stand": []}

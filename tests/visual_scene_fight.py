@@ -1,4 +1,4 @@
-"""A fight starts in the room of the scene, with the party where it stood (isometric-view.md, Goal 4).
+"""A fight starts in the room of the scene, with the party where it stood (isometric-view.md, Goal 4), at the same relative place (compact-set.md).
 
 Run from the repo root:  .venv/bin/python tests/visual_scene_fight.py [screenshot-dir]
 (or `tests/run_all.py --visual`). Needs Google Chrome and a built web UI (`npm run build` in stage/web).
@@ -27,6 +27,7 @@ import websockets  # noqa: E402
 
 from dnd_cli.combat import tracker  # noqa: E402
 from stage import arena, beat, board, scenes, state as stage_state  # noqa: E402
+from stage.cast import scale_cell as cast_cell  # noqa: E402
 from stage.server import create_app  # noqa: E402
 from test_rules import campaign, fight  # noqa: E402
 from visual_stage_cast import CAST, show  # noqa: E402
@@ -89,12 +90,14 @@ def main() -> int:
                 tracker.save_state(c, state)
                 arena_id = state["active_encounter"]["arena"]
                 a = arena.load(c, arena_id)
-                blocked = arena.blocked_cells(a)
-                moved = [who for who in ("aragorn", "legolas") if tuple(board.pos(a, who)) != cast[who] and cast[who] not in blocked]
-                check("every character stands on the cell where the scene put them", not moved, f"{moved}: {[(board.pos(a, w), cast[w]) for w in moved]}")
-                foes = [who for who in ("goblin#1", "goblin#2") if who in a["units"] and tuple(board.pos(a, who)) != cast[who] and cast[who] not in blocked]
+                small, full = scenes.room(a["scene_spec"])["grid"], a["grid"]
+                want = {who: cast_cell(c_, small, full) for who, c_ in cast.items()}  # the story set is smaller: each one keeps the relative place
+                near = lambda who: max(abs(board.pos(a, who)[0] - want[who][0]), abs(board.pos(a, who)[1] - want[who][1])) <= 3  # noqa: E731
+                moved = [who for who in ("aragorn", "legolas") if not near(who)]
+                check("every character stands at the same relative place as in the scene", not moved, f"{moved}: {[(board.pos(a, w), want[w]) for w in moved]}")
+                foes = [who for who in ("goblin#1", "goblin#2") if who in a["units"] and not near(who)]
                 check("and so does each creature the scene shows", not foes, str(foes))
-                check("the arena is the room of the scene", a["spec"]["shape"] == "scene" and a["grid"] == scenes.room(a["scene_spec"])["grid"])
+                check("the arena is the room of the scene", a["spec"]["shape"] == "scene" and a["grid"] == scenes.room(a["scene_spec"], full=True)["grid"])
 
                 beat.append(c, [{"type": "arena", "arena": arena_id}, {"type": "dm_status", "status": "idle"}])
                 await asyncio.sleep(3)

@@ -63,7 +63,7 @@ export function useFitScale(ref: React.RefObject<HTMLDivElement | null>, w: numb
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
       const fit = Math.min(width / w, height / h)
-      setScale(fit >= 1 ? Math.floor(fit * 2) / 2 : Math.max(0.2, Math.floor(fit * 20) / 20))
+      setScale(fit >= 1 ? Math.floor(fit * 4) / 4 : Math.max(0.2, Math.floor(fit * 20) / 20))
     })
     ro.observe(el)
     return () => ro.disconnect()
@@ -236,14 +236,6 @@ export function useStage(onNoGame: () => void): { state: StageState | null; camp
         if (data.kind === 'snapshot') {
           setState(data.state)
           setCampaign(data.campaign)
-        } else if (data.kind === 'cells') {
-          // The steps of the actors in a scene: a small message, no snapshot (see Stage.broadcast_cells).
-          setState((s) => {
-            if (!s || s.scene !== data.scene) return s
-            const actors = { ...s.actors }
-            for (const [id, v] of Object.entries(data.cells as Record<string, { cell: [number, number]; facing: 'down' | 'left' | 'right' | 'up' }>)) if (actors[id]) actors[id] = { ...actors[id], ...v }
-            return { ...s, actors }
-          })
         }
       }
       ws.onclose = async () => {

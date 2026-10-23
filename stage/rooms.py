@@ -16,6 +16,7 @@ FLOOR, WALL, VOID = ".", "#", "-"
 CLASSES = {"small": ((12, 15), (9, 11)), "medium": ((17, 22), (12, 15)), "large": ((24, 30), (16, 20))}
 HALL = ((20, 27), (6, 8))
 MIN_CAVE = (13, 10)
+SET_BOX = (12, 9)  # the most that a story set is wide and deep, in cells (see `shrink`)
 MIN_PART = 40  # the largest part of a shape must have at least max(this, 30% of its box)
 
 Mask = list[list[bool]]
@@ -182,6 +183,25 @@ def turn(cells: list[tuple[int, int]], orient: int) -> list[tuple[int, int]]:
         out.append((x, y))
     x0, y0 = min(x for x, _ in out), min(y for _, y in out)
     return [(x - x0 + 1, y - y0 + 1) for x, y in out]
+
+
+def shrink(cells: list[tuple[int, int]], cap: tuple[int, int] = SET_BOX) -> list[tuple[int, int]]:
+    """The same room squeezed to fit in `cap` (a story set; see compact-set.md): every cell of the small room takes the look of the cell of the
+    big room at the same relative place, so the shape and its turn stay. `cells` itself when it fits already, or when the squeeze breaks the room.
+    The cells start at (1, 1), as `turn` leaves them."""
+    x0, y0 = min(x for x, _ in cells), min(y for _, y in cells)
+    w, h = max(x for x, _ in cells) - x0 + 1, max(y for _, y in cells) - y0 + 1
+    if h > w:
+        cap = (cap[1], cap[0])  # a tall room stays tall
+    nw, nh = min(w, cap[0]), min(h, cap[1])
+    if (nw, nh) == (w, h):
+        return cells
+    floor = set(cells)
+    small = _mk(nw, nh, lambda i, j: (x0 + int((i + 0.5) * w / nw), y0 + int((j + 0.5) * h / nh)) in floor)
+    part = biggest(small)
+    if len(part) < max(MIN_PART, 0.3 * nw * nh):
+        return cells
+    return [(x + 1, y + 1) for x, y in part]
 
 
 def mask(shape: str, r: random.Random, size: str | None = None, orient: int | None = None) -> tuple[list[tuple[int, int]], dict] | None:

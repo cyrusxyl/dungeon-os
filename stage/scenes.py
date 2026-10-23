@@ -369,16 +369,17 @@ def _wall_runs(grid: list[str]) -> dict[str, tuple[int, int, int]]:
     return best
 
 
-def _make_grid(r: dict, walled: bool) -> list[str]:
+def _make_grid(r: dict, walled: bool, full: bool = False) -> list[str]:
     """The rows of the room: the fixed 14 x 11 room (with walls, the north row and the west column are wall, and a south row and
-    an east column are added as the low rim that the view cuts), or a shaped one."""
+    an east column are added as the low rim that the view cuts), or a shaped one. A shaped room is a story set (squeezed to
+    `rooms.SET_BOX`) unless `full`: the fight is in the full room, the same shape and turn."""
     if not r.get("shape"):
         n = 1 if walled else 0
         return ["".join("#" if walled and (x == 0 or y == 0 or x == ROOM_W or y == ROOM_H) else "." for x in range(ROOM_W + n)) for y in range(ROOM_H + n)]
     for attempt in range(60):
         made = rooms.mask(r["shape"], random.Random(f"{r['shape']}:{r['seed']}:{attempt}"), r.get("size"))
         if made:
-            rows = ["".join(row) for row in rooms.grid_of(made[0])]
+            rows = ["".join(row) for row in rooms.grid_of(made[0] if full else rooms.shrink(made[0]))]
             return rows if walled else [row.replace("#", "-") for row in rows]  # an open scene has no wall blocks
     raise SceneError(f"could not make a {r['shape']} room; try another seed=.")
 
@@ -394,8 +395,9 @@ def _icon(path: str) -> Image.Image:
     return icon.crop(icon.getchannel("A").getbbox())
 
 
-def room(spec: dict, stuff: tuple = ()) -> dict:
-    """A scene as an isometric room, for the browser (see isometric-view.md).
+def room(spec: dict, stuff: tuple = (), full: bool = False) -> dict:
+    """A scene as an isometric room, for the browser (see isometric-view.md). By default it is the story set, a small room; `full`
+    gives the room of a fight: the same shape, props and walls at full size (see compact-set.md).
 
     The room is 14 x 11 cells, walled as `_make_grid` says; an open scene (a street,
     a forest) has floor everywhere. A scene with `shape=` has a room of that shape (`stage/rooms.py`), walled all round, with
@@ -406,7 +408,7 @@ def room(spec: dict, stuff: tuple = ()) -> dict:
     r = resolve(spec)
     cat = catalog()
     walled = bool(r["walls"])
-    grid = _make_grid(r, walled)
+    grid = _make_grid(r, walled, full)
     w, h = len(grid[0]), len(grid)
     floor = [(x, y) for y in range(h) for x in range(w) if grid[y][x] == "."]
     x0, x1, y0, y1 = min(x for x, _ in floor), max(x for x, _ in floor), min(y for _, y in floor), max(y for _, y in floor)
@@ -480,11 +482,11 @@ def _wall_strip(r: dict, west: bool) -> list[Image.Image]:
 
 
 @lru_cache(maxsize=64)
-def _room_png(spec_json: str, stuff: tuple) -> bytes:
+def _room_png(spec_json: str, stuff: tuple, full: bool) -> bytes:
     from PIL import Image
     spec = json.loads(spec_json)
     r = resolve(spec)
-    made = room(spec, stuff)
+    made = room(spec, stuff, full)
     layout, w, h = made["sheet"], made["w"], made["h"]
     img = Image.new("RGBA", (layout["w"], layout["h"]))
     walled = bool(r["walls"])
@@ -509,9 +511,9 @@ def _room_png(spec_json: str, stuff: tuple) -> bytes:
     return buf.getvalue()
 
 
-def room_png(spec: dict, stuff: tuple = ()) -> bytes:
-    """The pictures of `room(spec, stuff)`: the floor (14 x 11 tiles), then the wall faces and caps, then the stuff icons."""
-    return _room_png(json.dumps(spec, sort_keys=True), stuff)
+def room_png(spec: dict, stuff: tuple = (), full: bool = False) -> bytes:
+    """The pictures of `room(spec, stuff, full)`: the floor (a tile a cell), then the wall faces and caps, then the stuff icons."""
+    return _room_png(json.dumps(spec, sort_keys=True), stuff, full)
 
 
 def scenes_dir(campaign_dir: Path) -> Path:

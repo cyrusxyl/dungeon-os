@@ -30,7 +30,6 @@ from stage.server import create_app  # noqa: E402
 from test_rules import GOBLIN, Fixed, campaign  # noqa: E402
 from test_teams import fighter  # noqa: E402
 from visual_stage_cast import CAST, show  # noqa: E402
-from visual_walk import until  # noqa: E402
 
 check, REPO = v.check, v.REPO
 # The board canvas: `data-geom` is ox, oy, width, height. The ground centre of cell (x, y) is (ox + (x - y) * 32, oy + (x + y) * 16 + 16).
@@ -39,6 +38,15 @@ CLICK = """((x, y) => {
   const r = c.getBoundingClientRect(); const px = ox + (x - y) * 32, py = oy + (x + y) * 16 + 16;
   c.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: r.left + px / w * r.width, clientY: r.top + py / h * r.height }));
 })"""
+
+
+async def until(page, js: str, seconds: float):
+    end = time.time() + seconds
+    while time.time() < end:
+        if got := await page.eval(js):
+            return got
+        await asyncio.sleep(0.25)
+    return None
 
 
 def main() -> int:

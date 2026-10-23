@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from 'react'
 
-import { byDepth, geometry, groundCentre, pick as pickCell, roomCentre, S, unitDepth, type Base, type Geometry, type Pt as Point } from '@/lib/iso'
+import { byDepth, geometry, groundCentre, roomCentre, S, unitDepth, type Base, type Geometry, type Pt as Point } from '@/lib/iso'
 import type { Placed } from '@/lib/layout'
 import { usePropsInfo, type PropsInfo } from '@/lib/propAtlas'
 import { faceOf } from '@/lib/props'
-import { pointOn, type SceneRoom } from '@/lib/scene'
+import { decorCentre, pointOn, type SceneRoom } from '@/lib/scene'
 import { propThing, sceneBase, sceneStyle, type Thing } from '@/lib/roomDraw'
 import { type Side, useFitScale } from '@/lib/stage'
 import { useImages, type ImageLoader } from '@/lib/tiles'
@@ -23,6 +23,11 @@ const MOOD_FILTER: Record<string, string> = {
 const RING: Record<Side, string> = { party: '#5fd08a', ally: '#5fd08a', neutral: '#e8c14a', bystander: '#e8c14a', hostile: '#ef6a5a' }
 const HIP_ROW = 48 // a seated frame puts its hip row on the seat
 const MOVE_MS = 300
+
+/** What a click on the picture hit: a figure, or an exit (a door in the wall). */
+export type Pick = { kind: 'actor'; id: string } | { kind: 'exit'; name: string }
+const EXIT = /door|gate|arch|stair/
+const HIT = 24 // how close a click must be to a figure or a door, in logical px
 
 export interface SceneActor extends Placed {
   /** The picture of the actor: `/asset/actor/<id>/full.png?...`. */
@@ -85,8 +90,8 @@ interface Props {
   cast?: SceneActor[]
   speaker?: string
   mood?: string
-  /** A click on a floor cell of the room (a player sends their character there). Off when not given. */
-  onCell?: (cell: [number, number]) => void
+  /** A click on the picture: what it hit (null: nothing) and where, in percent of the picture. Off when not given. */
+  onPick?: (hit: Pick | null, at: { left: number; top: number }) => void
   /** Fill the box and crop (a backdrop) instead of fitting inside it. */
   cover?: boolean
   className?: string
@@ -98,7 +103,7 @@ interface Props {
  * A scene room, drawn on the renderer of the combat board: the floor and the walls with their decor once, then the props
  * and the actors back to front. An actor walks to a new place in a short tween.
  */
-export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', onCell, cover = false, className = '', children }: Props) {
+export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', onPick, cover = false, className = '', children }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   const g = useMemo(() => geometry(room.w, room.h), [room.w, room.h])
@@ -181,15 +186,33 @@ export function SceneCanvas({ room, sheetUrl, cast = [], speaker, mood = 'day', 
       data-geom={`${g.ox},${g.oy},${g.width},${g.height}`}
       aria-hidden="true"
       onClick={
-        onCell && !cover
+        onPick && !cover
           ? (e) => {
               const rect = e.currentTarget.getBoundingClientRect()
-              const [x, y] = pickCell(g, ((e.clientX - rect.left) / rect.width) * g.width, ((e.clientY - rect.top) / rect.height) * g.height)
-              if (room.grid[y]?.[x] === '.') onCell([x, y])
+              const [x, y] = [((e.clientX - rect.left) / rect.width) * g.width, ((e.clientY - rect.top) / rect.height) * g.height]
+              const near = (px: number, py: number) => Math.hypot(px - x, py - y)
+              let hit: Pick | null = null
+              let best = HIT
+              for (const p of cast) {
+                const at = shown.current.get(p.id)
+                if (!at || p.down || near(at[0], at[1] - 30) >= best) continue
+                best = near(at[0], at[1] - 30)
+                hit = { kind: 'actor', id: p.id }
+              }
+              if (!hit) {
+                for (const d of room.decor) {
+                  const [dx, dy] = decorCentre(g, d)
+                  if (EXIT.test(d.kind) && near(dx, dy) < best) {
+                    best = near(dx, dy)
+                    hit = { kind: 'exit', name: d.kind.replace(/_/g, ' ') }
+                  }
+                }
+              }
+              onPick(hit, { left: (x / g.width) * 100, top: (y / g.height) * 100 })
             }
           : undefined
       }
-      className={`pixelated ${onCell && !cover ? 'cursor-pointer ' : ''}${cover ? 'absolute inset-0 h-full w-full object-cover' : 'block'} ${className}`}
+      className={`pixelated ${onPick && !cover ? 'cursor-pointer ' : ''}${cover ? 'absolute inset-0 h-full w-full object-cover' : 'block'} ${className}`}
       style={{ filter, ...(cover ? {} : { width: g.width * scale, height: g.height * scale }) }}
     />
   )
