@@ -165,6 +165,29 @@ def test_attacks() -> None:
         check("a barrel on the line gives half cover, and does not hide", info["cover"] == "half" and info["mode"] == "ranged")
         lines = board.attack(c, state, a, "aragorn", "longbow", "goblin#1", rng=Fixed(10, 4))
         check("half cover lowers the roll by 2 (+4 becomes +2)", any("half cover: -2" in ln for ln in lines) and any("10+2 = 12" in ln for ln in lines))
+        # The roll window names the cover as its own tile.
+        from dnd_cli.combat import resolve as _resolve
+
+        shown: list = []
+        original = _resolve.stage_roll
+        _resolve.stage_roll = lambda *args, **kw: shown.append(args[-1])
+        try:
+            board.attack(c, state, a, "aragorn", "longbow", "goblin#1", rng=Fixed(10, 4))
+            mods = shown[-1]["rolls"][0]["mods"]
+            check("the roll window shows the cover as a tile named Cover", {"label": "Cover", "value": -2} in mods and not any(m["label"] == "Bonus" for m in mods))
+            entry = shown[-1]["rolls"][0]
+            check("the total counts the cover once", entry["total"] == entry["d20"][entry["kept"]] + sum(m["value"] for m in mods))
+            # A Dexterity save against an area takes the cover between the point of origin and the target (5e: +2 or +5).
+            sphere = {"shape": {"type": "sphere"}}
+            check("a barrel between the aim point and a target gives it half cover on the save", board.area_cover(a, "aragorn", sphere, (3, 3), ["goblin#1"]) == {"goblin#1": 2})
+            check("no cover when nothing stands between", board.area_cover(a, "aragorn", sphere, (8, 3), ["goblin#1"]) == {"goblin#1": 0})
+            _resolve.save(c, state, ["goblin#1"], "dexterity", 15, rng=Fixed(12, 4), cover={"goblin#1": 2})
+            dex = shown[-1]["rolls"][0]
+            check("a Dexterity save shows the cover tile and counts it", {"label": "Cover", "value": 2} in dex["mods"] and dex["total"] == 12 + sum(m["value"] for m in dex["mods"]))
+            _resolve.save(c, state, ["goblin#1"], "wisdom", 15, rng=Fixed(12, 4), cover={"goblin#1": 2})
+            check("a save of another ability takes no cover", not any(m["label"] == "Cover" for m in shown[-1]["rolls"][0]["mods"]))
+        finally:
+            _resolve.stage_roll = original
         c, state, a = setup(Path(tmp) / "e", at={"goblin#1": (10, 3)}, props=[dict(kind="column_broken", x=5, y=3)])
         check("three-quarters cover from a column", board.attack_check(c, state, a, "aragorn", records.combatant(c, state, "aragorn")["attacks"][1], "goblin#1")["cover"] == "three-quarters")
         c, state, a = setup(Path(tmp) / "f", at={"goblin#1": (10, 3)}, props=[dict(kind="tree", x=5, y=3)])

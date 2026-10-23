@@ -517,7 +517,7 @@ def attack(campaign_dir: Path, state: dict, a: dict, attacker: str, weapon: str,
         resources(state, attacker)["martial"] = True  # once per turn
         damage_expr, damage_type = f"{entry['damage'][0][0]}+{abilities.traits()['Martial Advantage']['dice']}", entry["damage"][0][1]
     lines = resolve.attack(campaign_dir, state, attacker, entry["name"], target, rng=rng, cost=cost, adv=adv, secret=secret,
-                          bonus=bonus - arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up,
+                          bonus=bonus, cover=arena.COVER_BONUS[check["cover"]], dis=dis or check["dis"], catch_up=catch_up,
                           damage_expr=damage_expr, damage_type=damage_type, melee=check["mode"] == "melee", smite=smite)
     note(a, brief(campaign_dir, state, a, lines, attacker, entry["name"], target))
     notes = [f"{target} has {check['cover']} cover: -{arena.COVER_BONUS[check['cover']]} to hit."] if check["cover"] != "none" else []
@@ -738,6 +738,14 @@ def covered_units(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, 
             and standing(records.combatant(campaign_dir, state, u))]
 
 
+def area_cover(a: dict, cid: str, ab: dict, aim, targets: list[str]) -> dict[str, int]:
+    """The cover bonus on a Dexterity save of each target against an area (5e): cover between the point of origin and the target. A sphere,
+    a cylinder or a cube starts at the aim point; a cone or a line at the caster."""
+    origin = tuple(aim) if ab["shape"]["type"] in ("sphere", "cylinder", "cube") else pos(a, cid)
+    cover = arena.cover_cells(a)
+    return {t: arena.COVER_BONUS[arena.cover_between(origin, pos(a, t), cover)] for t in targets}
+
+
 def spend_ability(campaign_dir: Path, state: dict, cid: str, ab: dict) -> None:
     """The action, bonus action or reaction an ability costs, and its use or slot."""
     if ab["cost"] in tracker.TURN_KINDS:
@@ -760,7 +768,7 @@ def use_zone(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dict, aim, 
     spend_ability(campaign_dir, state, cid, ab)
     expr, dtype = ab["damage"][0]
     lines = resolve.save(campaign_dir, state, targets, ab["save"]["ability"], ab["save"]["dc"], damage_expr=expr, damage_type=dtype,
-                        half=ab["save"]["success"] == "half", rng=rng) if targets else []
+                        half=ab["save"]["success"] == "half", rng=rng, cover=area_cover(a, cid, ab, aim, targets)) if targets else []
     names = ", ".join(records.combatant(campaign_dir, state, t)["name"] for t in targets) or "no one"
     note(a, f"{rec['name']} used {ab['name']} on {names}")
     return [f"{cid} uses {ab['name']}: {len(targets)} in the area."] + lines
@@ -777,7 +785,7 @@ def use_spell_attack(campaign_dir: Path, state: dict, a: dict, cid: str, ab: dic
     expr, dtype = ab["damage"][0]
     weapon = ab.get("weapon", "spell")  # an item thrown as an improvised weapon rolls with its own to-hit
     lines = resolve.attack(campaign_dir, state, cid, weapon, target, rng=rng, cost=None, damage_expr=expr, damage_type=dtype,
-                          bonus=ab.get("to_hit", 0) - arena.COVER_BONUS[check["cover"]], dis=check["dis"])
+                          bonus=ab.get("to_hit", 0), cover=arena.COVER_BONUS[check["cover"]], dis=check["dis"])
     note(a, brief(campaign_dir, state, a, [ln.replace(f" {weapon} ", f" {ab['name']} ", 1) for ln in lines], cid, ab["name"], target))
     return pulled + [f"{cid} casts {ab['name']}."] + lines
 

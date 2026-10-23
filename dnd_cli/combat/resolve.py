@@ -30,7 +30,7 @@ def _find_attack(rec: dict, name: str) -> dict:
 def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: str, adv: bool = False,
            dis: bool = False, damage_expr: str | None = None, damage_type: str = "", bonus: int = 0,
            secret: bool = False, rng=None, skip=(), cost: str | None = "action", catch_up: bool = True,
-           smite: int | None = None, melee: bool | None = None) -> list[str]:
+           smite: int | None = None, melee: bool | None = None, cover: int = 0) -> list[str]:
     """One attack roll against AC; on a hit, roll and apply the damage. Crits double the dice.
 
     `smite` is a spell slot level a paladin spends on a hit for Divine Smite (a melee weapon attack only). Without it,
@@ -78,7 +78,7 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     # Weapon gear (a +1 sword, Keen, of Flame) touches weapon attacks only, not Unarmed Strike, spells or throws.
     wfx = effects.NO_WEAPON if act.get("plain") else effects.weapon(campaign_dir, attacker, str(t_rec.get("ctype", "")), act["name"])
     r["flat"] = r["flat"] + wfx["hit"]
-    tiles = [{"label": "Attack Bonus", "value": act["bonus"]}] + ([{"label": "Bonus", "value": bonus}] if bonus else [])
+    tiles = [{"label": "Attack Bonus", "value": act["bonus"]}] + ([{"label": "Bonus", "value": bonus}] if bonus else []) + ([{"label": "Cover", "value": -cover}] if cover else [])
     entry = roll_entry(a_rec, r, tiles)
     to_hit = entry["total"]
     fumble = kept == 1
@@ -92,7 +92,7 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
     def detail(dmg=None) -> dict:
         return roll_detail("attack", act["name"], f"Attack Roll · {a_rec['name']} → {t_rec['name']}", [entry], shown_ac, dmg)
 
-    head = (f"{attacker} {act['name']} → {target}: {kept}{dice.signed(act['bonus'] + bonus)} = {to_hit}"
+    head = (f"{attacker} {act['name']} → {target}: {kept}{dice.signed(act['bonus'] + bonus - cover)} = {to_hit}"
             f"{fx_note(r)} vs AC {t_rec['ac']}")
     if not hit:
         stage_roll(f"{a_rec['name']}: {act['name']}", to_hit, groups, secret, detail())
@@ -124,8 +124,10 @@ def attack(campaign_dir: Path, state: dict, attacker: str, weapon: str, target: 
 def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, dc: int | None,
          damage_expr: str | None = None, damage_type: str = "", half: bool = False, source: str | None = None,
          adv: bool = False, dis: bool = False, secret: bool = False, rng=None, hide_dc: bool = False,
-         skip=()) -> list[str]:
-    """A saving throw for each target; optional damage rolled once (half on a success with --half)."""
+         skip=(), cover: dict[str, int] | None = None) -> list[str]:
+    """A saving throw for each target; optional damage rolled once (half on a success with --half).
+
+    `cover`: the bonus each target gets on a Dexterity save from cover against the area (the board works it out; 5e: +2 or +5)."""
     rng = rng or random
     if source:
         who, _, act_name = source.partition(":")
@@ -149,14 +151,15 @@ def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, 
     for t, rec in zip(targets, recs):
         r = roll_d20(campaign_dir, t, "save", adv, dis, rng, skip, (abil,))
         bonus = save_bonus(rec, abil)
-        entry = roll_entry(rec, r, check_tiles(rec, abil, bonus, f"{abil.capitalize()} Save"))
+        shelter = (cover or {}).get(t, 0) if abil == "dexterity" else 0
+        entry = roll_entry(rec, r, check_tiles(rec, abil, bonus, f"{abil.capitalize()} Save") + ([{"label": "Cover", "value": shelter}] if shelter else []))
         total = entry["total"]
         ok = total >= dc
         entry["outcome"] = "success" if ok else "fail"
         entries.append(entry)
         successes += ok
         groups += d20_groups(r["faces"], r["kept"]) + [{"die": b["die"], "faces": b["faces"]} for b in r["bonus"]]
-        lines.append(f"{t} {abil[:3].upper()} save: {r['kept']}{dice.signed(bonus)} = {total}{fx_note(r)} "
+        lines.append(f"{t} {abil[:3].upper()} save: {r['kept']}{dice.signed(bonus + shelter)} = {total}{fx_note(r)} "
                      f"vs DC {dc} — {'success' if ok else 'fail'}")
         if amount is not None:
             taken = amount // 2 if ok and half else 0 if ok else amount
