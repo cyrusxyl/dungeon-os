@@ -168,6 +168,11 @@ def test_armor() -> None:
     plate_row.unequip(sh)
     check("putting the armor away clears its flag on the armor entry too", sh["armor"]["equipped"] is False and not plate_row.equipped)
     check("the shield stays", items.shield_equipped(sh))
+    items.add(sh, "Mithral Vest", 1, type="armor")  # no base: only the flag
+    items.get(sh, "Dragon Plate").equip(sh, plate)
+    items.get(sh, "Mithral Vest").equip(sh)
+    check("armor with no base still replaces the worn armor", items.get(sh, "Mithral Vest").equipped
+          and not items.get(sh, "Dragon Plate").equipped and sh["armor"]["equipped"] is False)
 
 
 def test_dice() -> None:

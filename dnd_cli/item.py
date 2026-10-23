@@ -112,6 +112,8 @@ class Item:
         and armor sets the AC and takes off the armor it replaces. Without, it only gets the flag."""
         if base is not None and self.needs_base:
             return equip_base(sheet, base, proficient, self.name)
+        if self.row.get("type") == "armor" and (old := find(sheet, (sheet.get("armor") or {}).get("item", ""))) and old.row is not self.row:
+            old.unequip(sheet)  # one armor at a time, also when this one has no base: its perks end
         return self._flag(sheet, True)
 
     def weapon_warning(self, presets: dict) -> str | None:
