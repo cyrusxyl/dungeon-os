@@ -83,6 +83,15 @@ def main() -> int:
         check("teams: green companion, yellow faction", enc["teams"] == {"ilvuur": "party", "qorlia": "neutral"})
         check("everyone who joined has an initiative", {o["name"] for o in enc["initiative_order"]} == set(enc["participants"]))
 
+        # A spec that names creatures on the stage keeps their side: allies stay allies, new ones are hostile.
+        state2 = tracker.load_state(c)
+        stage2 = {**stage["actors"], "guard#1": {"side": "ally", "cell": [0, 0]}, "guard#2": {"side": "ally", "cell": [0, 1]},
+                  "guard#3": {"side": "hostile", "cell": [0, 2]}}
+        encounters.start(c, state2, ["guard:4"], None, rng=Fixed(10), stage=stage2)
+        t2 = {i: tracker.team_of(state2, i) for i in state2["active_encounter"]["participants"] if i.startswith("guard")}
+        check("encounter start: stage allies named in a spec fight for the party, the rest are hostile",
+              t2 == {"guard#1": "party", "guard#2": "party", "guard#3": "hostile", "guard#4": "hostile"}, str(t2))
+
         # The arena.
         arena_id, a, _ = board.build(c, state, [], stage)
         check("the arena is the room of the scene, every fighter on the cell it had on the stage",

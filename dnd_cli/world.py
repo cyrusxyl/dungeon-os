@@ -152,7 +152,11 @@ def travel(state: dict, m: dict, place: str) -> str | None:
             pass  # a route without a clear time costs none
     if not minutes:
         return None
-    return f"Time: {advance(state, minutes)} (+{show_duration(minutes)} of travel)"
+    line = f"Time: {advance(state, minutes)} (+{show_duration(minutes)} of travel)"
+    if minutes >= DAY:
+        line += ("\nRest: the party travelled a day or more. Rule on a long rest (`dnd-cli rest long`) or note what interrupted it, "
+                 "so HP, slots and hit dice match the game time.")
+    return line
 
 
 # -- state fields ------------------------------------------------------------

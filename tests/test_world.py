@@ -78,7 +78,10 @@ def test_travel(c: Path) -> None:
     check("first place: no travel", world.travel(s, m, "a") is None and s["place"] == "a")
     check("same place: no travel", world.travel(s, m, "a") is None)
     line = world.travel(s, m, "c")
-    check("route legs are summed", line == "Time: Day 3, Afternoon (+2 days 6 hours of travel)" and s["place"] == "c")
+    check("route legs are summed", line.startswith("Time: Day 3, Afternoon (+2 days 6 hours of travel)") and s["place"] == "c")
+    check("a day or more of travel reminds the DM to rule on a long rest", "long rest" in line)
+    s2 = {"game_time": "Day 1, Morning", "place": "b"}
+    check("a short trip gives no rest reminder", "rest" not in world.travel(s2, m, "c").lower())
     check("an unparseable leg costs nothing", world.travel(s, m, "d") is None and s["place"] == "d")
     check("a place on another map: no travel", world.travel(s, {"places": {"x": {}}, "routes": []}, "x") is None)
     # through the real beat path

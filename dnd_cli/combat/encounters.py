@@ -167,11 +167,18 @@ def _initiative_feed(campaign_dir: Path, state: dict, enc: dict) -> None:
     stage_feed("Initiative: " + ", ".join(names))
 
 
+def _stage_team(stage: dict | None, cid: str) -> str | None:
+    """The team a creature has by its stage side, or None for hostile (the default of a creature)."""
+    team = TEAM_OF_SIDE.get(((stage or {}).get(cid) or {}).get("side"))
+    return None if team == HOSTILE else team
+
+
 def _join(campaign_dir: Path, state: dict, pcs: list[str], specs: list[str], rng, stage: dict | None = None) -> list[str]:
     enc = state["active_encounter"]
     entrants = [(combatant(campaign_dir, state, p), None) for p in pcs]
-    prefer = [a for a, v in (stage or {}).items() if v.get("side") == "hostile"]  # the creatures the DM names take the ids they have on the stage
-    entrants += [(r, None) for r in _creatures(campaign_dir, specs, set(enc["participants"]), prefer)]
+    prefer = [a for a, v in (stage or {}).items() if v.get("side") in TEAM_OF_SIDE]  # the creatures the DM names take the ids they have on the stage
+    # ...and the side they have there: a named guard#1 that is an ally fights for the party. Creatures that are new are hostile.
+    entrants += [(r, _stage_team(stage, r["id"])) for r in _creatures(campaign_dir, specs, set(enc["participants"]), prefer)]
     skipped: list[str] = []
     entrants += _stage_fighters(campaign_dir, stage, set(enc["participants"]) | {r["id"] for r, _ in entrants}, skipped)
     return _enroll(state, entrants, rng) + skipped
