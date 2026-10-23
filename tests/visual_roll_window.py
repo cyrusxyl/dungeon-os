@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import uvicorn  # noqa: E402
 import websockets  # noqa: E402
 
-from dnd_cli import effects  # noqa: E402
+from dnd_cli import character, effects  # noqa: E402
 from dnd_cli.combat import resolve, rolls, tracker  # noqa: E402
 from stage import beat  # noqa: E402
 from stage.server import create_app  # noqa: E402
@@ -137,6 +137,26 @@ async def scenarios(page: Page, c: Path) -> None:
     check("the request closes when the roll starts", not await page.eval("Boolean(document.querySelector('[role=dialog]'))"))
     await asyncio.sleep(8)
     await turn_over(c)  # the click told the stub DM to work; a real DM would now finish its turn
+
+    print("a failed roll with inspiration: the player can roll again")
+    effects.remove(c, "aragorn", "bless")
+    sheet = character.load(c, "aragorn")
+    sheet["inspiration"] = 1
+    character.save(c, "aragorn", sheet)
+    await turn_over(c)
+    beat.append(c, [{"type": "roll_request", "who": "aragorn", "what": "dex-save", "dc": 99, **rolls.roll_preview(c, state, "aragorn", "dex-save")}])
+    await asyncio.sleep(1.5)
+    await page.click("Roll")
+    await asyncio.sleep(5)
+    await page.shot("reroll-offer")
+    dialog = (await page.eval("document.querySelector('[role=dialog][aria-label=Reroll]')?.innerText || ''")).lower()
+    check("the offer asks to reroll or keep, with the points left", "reroll" in dialog and "keep" in dialog and "1 left" in dialog, dialog.replace("\n", " | "))
+    await page.click("Reroll ✦")
+    await asyncio.sleep(1.5)
+    check("the offer closes and the point is spent", not await page.eval("Boolean(document.querySelector('[role=dialog][aria-label=Reroll]'))")
+          and character.load(c, "aragorn").get("inspiration") == 0)
+    await asyncio.sleep(8)
+    await turn_over(c)
 
     print("a hidden DC is not in the page")
     beat.append(c, [{"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": 17, "hide": True,

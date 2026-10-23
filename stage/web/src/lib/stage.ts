@@ -118,6 +118,8 @@ export interface StageState {
   rolls: Roll[]
   /** The DM asked a player character for a check or a save: the roll window waits for the player. */
   roll_request: RollRequest | null
+  /** The roll failed and the character has inspiration: reroll or keep it. */
+  reroll_offer: RerollOffer | null
   explore: string | null
   /** The id of the fight on a board (stage/arena.py), or null. The board replaces the scene and the site until the fight ends. */
   arena: string | null
@@ -180,6 +182,15 @@ export interface RollRequest {
   /** What the roll is for (Hide, Shove): the DM reads it with the result. */
   note?: string
   mods: { label: string; value: number }[]
+  seq: number
+}
+
+/** A failed roll the server holds while the player decides whether to spend inspiration (the DM has not heard it yet). */
+export interface RerollOffer {
+  who: string
+  what: string
+  name?: string
+  left: number
   seq: number
 }
 

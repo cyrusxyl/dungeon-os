@@ -1792,6 +1792,51 @@ def test_player_actions() -> None:
             check("an effect left off the roll is still there", effects.active(c, "aragorn") == ["bless"])
             status, r = await post("/api/roll", {})
             check("a second click rolls nothing", status == 409)
+
+            # Inspiration: a failed roll can be rolled again.
+            def ask(dc):
+                stage.fold([{"type": "roll_request", "who": "aragorn", "what": "athletics", "dc": dc, "hide": dc == 99, "name": "Aragorn"}])
+
+            def points(n):
+                sheet = character.load(c, "aragorn")
+                sheet["inspiration"] = n
+                character.save(c, "aragorn", sheet)
+            points(0)
+            n = len(sent)
+            ask(99)
+            status, r = await post("/api/roll", {})
+            check("a failed roll with no inspiration goes to the DM at once", status == 200 and len(sent) == n + 1 and not stage.state["reroll_offer"])
+            points(1)
+            ask(1)
+            n = len(sent)
+            status, r = await post("/api/roll", {})
+            check("a passed roll goes to the DM even with inspiration", status == 200 and len(sent) == n + 1 and not stage.state["reroll_offer"])
+            effects.add(c, "aragorn", "guidance")
+            ask(99)
+            n = len(sent)
+            status, r = await post("/api/roll", {})
+            offer = stage.state["reroll_offer"] or {}
+            check("a failed roll with inspiration is held: the DM hears nothing, the player is offered a reroll",
+                  status == 200 and r.get("reroll") and len(sent) == n and offer.get("left") == 1 and offer["lines"])
+            shown = stage.snapshot()["state"]["reroll_offer"]
+            check("the offer in the snapshot has neither the DC nor the first lines", shown["who"] == "aragorn" and "dc" not in shown and "lines" not in shown)
+            check("the roll spent Guidance", "guidance" not in effects.active(c, "aragorn"))
+            status, r = await post("/api/roll", {})
+            check("a roll is not possible while the offer waits", status == 409)
+            status, r = await post("/api/roll/reroll", {"use": True})
+            check("the reroll spends the point, has Guidance again, and the DM hears both rolls with the second final",
+                  status == 200 and len(sent) == n + 1 and character.load(c, "aragorn")["inspiration"] == 0 and "First roll" in sent[-1]
+                  and "is final" in sent[-1] and "guidance" in sent[-1].split("is final")[1] and stage.state["reroll_offer"] is None)
+            status, r = await post("/api/roll/reroll", {"use": True})
+            check("a reroll is offered once", status == 409)
+            points(1)
+            ask(99)
+            n = len(sent)
+            await post("/api/roll", {})
+            status, r = await post("/api/roll/reroll", {"use": False})
+            check("keeping the roll costs nothing and the DM hears the first roll only",
+                  status == 200 and len(sent) == n + 1 and character.load(c, "aragorn")["inspiration"] == 1 and "First roll" not in sent[-1]
+                  and stage.state["reroll_offer"] is None)
             status, r = await api(app, "GET", "/api/spell/..%2Fx")
             check("a bad spell index is refused", status == 404)
             await app.state.table.stop()

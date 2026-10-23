@@ -129,6 +129,12 @@ def test_combat(c: Path) -> None:
     from dnd_cli.commands import rules_cmd
     import argparse
 
+    check("the inspiration command gives a point and saves the sheet",
+          rules_cmd.execute_inspiration(str(c), "aragorn", "+2") == 0 and character.load(c, "aragorn")["inspiration"] == 2)
+    check("it refuses a bad amount, a value past the cap and one below 0",
+          all(rules_cmd.execute_inspiration(str(c), "aragorn", d) != 0 for d in ("2", "+9", "-3")) and character.load(c, "aragorn")["inspiration"] == 2)
+    rules_cmd.execute_inspiration(str(c), "aragorn", "-2")
+
     disk = (c / "state.json").read_bytes()  # the later checks need the state as it was
     tracker.save_state(c, state)
     ev = staged(c, lambda: rules_cmd.execute_encounter(str(c), "damage", argparse.Namespace(target="aragorn", amount="3", type=None)))
@@ -684,6 +690,11 @@ def test_sheet(c: Path) -> None:
     check("a profile for an item that is not carried is refused", raises(lambda: items.set_profile(data, "Ghost", {"kind": "heal", "heal": "1d4"})))
     check("gold cannot go below zero", raises(lambda: sheet.gold(data, -5)))
     check("gold is an item", sheet.gold(data, 30) == "Aragorn: 30 gp")
+    check("inspiration is given and taken", sheet.inspiration(data, 2) == "Aragorn: 2 inspiration" and sheet.inspiration(data, -1) == "Aragorn: 1 inspiration")
+    check("inspiration stays from 0 to the cap", raises(lambda: sheet.inspiration(data, -2)) and raises(lambda: sheet.inspiration(data, sheet.INSPIRATION_CAP))
+          and data["inspiration"] == 1)
+    check("the sheet cap is the schema cap", json.loads((REPO / "game" / "schemas" / "character.schema.json").read_text())["properties"]["inspiration"]["maximum"]
+          == sheet.INSPIRATION_CAP)
     mail = {"name": "Chain Mail", "equipment_category": {"index": "armor"}, "armor_category": "Heavy",
             "armor_class": {"base": 16, "dex_bonus": False}, "stealth_disadvantage": True}
     items.equip_base(data, mail)

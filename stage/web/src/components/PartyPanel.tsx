@@ -152,7 +152,9 @@ export function Card({ c, party, active, canAct, refresh, onSheet, seat, mineIds
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="pixel-font truncate text-[10px] text-[var(--gold)]">{c.name}</h2>
-            <span className="text-sm text-[var(--dim)]">AC {c.armor_class}</span>
+            <span className="text-sm text-[var(--dim)]">
+              {c.inspiration > 0 && <span title="Inspiration: roll a failed check or save again" className="mr-2 text-[var(--gold)]">✦ {c.inspiration}</span>}AC {c.armor_class}
+            </span>
           </div>
           <p className="truncate text-sm text-[var(--dim)]">
             {c.race} {c.class} · lvl {c.level}

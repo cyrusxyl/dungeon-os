@@ -18,7 +18,7 @@ import { MapOverlay } from '@/components/MapOverlay'
 import { NoticeToasts } from '@/components/NoticeToasts'
 import { Card, PartyPanel } from '@/components/PartyPanel'
 import { RoleScreen } from '@/components/RoleScreen'
-import { RollRequest } from '@/components/RollRequest'
+import { RerollOffer, RollRequest } from '@/components/RollRequest'
 import { SceneTitle } from '@/components/SceneTitle'
 import { SeatPicker } from '@/components/SeatPicker'
 import { SheetDrawer } from '@/components/SheetDrawer'
@@ -335,6 +335,9 @@ export function GameView({ onMenu }: { onMenu: () => void }) {
       {/* Show the window only after the narration before it is read: Roll needs caughtUp, so an earlier window is stuck on "Wait for the DM". */}
       {state.roll_request && !showCreator && (mode === 'table' || caughtUp) && (
         <RollRequest key={state.roll_request.seq} request={state.roll_request} party={party} refresh={refresh} blocked={!mine.includes(state.roll_request.who) ? 'Not your roll' : !caughtUp ? 'Read the narration first' : !canType ? 'Wait for the DM…' : null} />
+      )}
+      {state.reroll_offer && !showCreator && (
+        <RerollOffer key={state.reroll_offer.seq} offer={state.reroll_offer} blocked={!mine.includes(state.reroll_offer.who) ? 'Not your roll' : null} />
       )}
       {needsRole && <RoleScreen onTable={() => setMode('table')} onPlay={() => setMode('player')} />}
       {settingsOpen && <SettingsPanel isHost={isHost} mode={mode} combat={isHost ? (state.combat_settings ?? null) : null} onClose={() => setSettingsOpen(false)} />}

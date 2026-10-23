@@ -42,7 +42,8 @@ Campaign files in `/campaigns/` are the **sole source of truth**. Never rely on 
 - **Rules commands do the arithmetic** (one short line per result, dice shown on the stage; `--secret` hides a roll):
   - Combat: `uv run dnd-cli encounter start goblin:3`, `attack <who> <weapon> <target>`, `save <targets> <ability> --dc N`, `encounter next|status|damage|heal|condition|end` — the `combat` skill.
   - Checks: `uv run dnd-cli check <who...|all> <skill|ability|death> --dc N` (group checks, `--passive`) — the `exploration` skill.
-  - Sheets: `uv run dnd-cli character item|gold|xp|level-up ...`, `uv run dnd-cli rest long|short`.
+  - Sheets: `uv run dnd-cli character item|gold|xp|level-up ...`, `uv run dnd-cli rest long|short`. Map travel of a day or more prints a rest reminder: rule on a long rest, or on what interrupted it.
+  - Inspiration: `uv run dnd-cli character inspiration <who> +1` rewards a bold, in-character or risky choice (at most 4 held; award one now and then, not every scene). The player spends 1 in the roll window to roll a failed check or save again; the new roll is final. Say what earned it in your narration. `-1` takes a point back.
   - World: `uv run dnd-cli state time +2h` (or `"Day 3, 18:00"`), `state set weather=Rain party_status=Resting`, `quest add|progress|done|fail|show`, `npc set|note|attitude`, `faction <name> +N`. Do not edit `state.json`, quest files or NPC files by hand for these.
   - Any other roll: `uv run roll 1d20+5 -v` from your working directory (`game/`).
 - **Command form (all tools)**: Run one `uv run ...` command per Bash call, on one line. Do not prefix it with `cd ... &&`, do not chain commands with `&&`, and never break a line with `\`. A compound command or a backslash line break stops the game for a permission prompt; a plain `uv run` command does not. Several commands in a row are several Bash calls.

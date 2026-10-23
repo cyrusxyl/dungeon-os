@@ -29,6 +29,8 @@ export interface PartyChar {
   level: number
   background?: string
   hp: { current?: number; max?: number; temp?: number }
+  /** Points the player can spend to roll a failed check or save again. */
+  inspiration: number
   armor_class: number
   speed: number
   initiative: number

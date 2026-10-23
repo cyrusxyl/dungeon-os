@@ -113,6 +113,7 @@
       "description": "Movement speed in feet",
       "default": 30
     },
+    "inspiration": {"type": "integer", "minimum": 0, "maximum": 4, "description": "Inspiration points. The player spends one to roll a failed check or save again. Change only with `character inspiration`."},
     "hit_dice": {
       "type": "object",
       "properties": {

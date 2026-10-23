@@ -179,8 +179,10 @@ def save(campaign_dir: Path, state: dict, targets: list[str], abil: str | None, 
 
 def check(campaign_dir: Path, state: dict, who: list[str], what: str, dc: int | None = None,
           adv: bool = False, dis: bool = False, passive: bool = False, secret: bool = False, rng=None,
-          hide_dc: bool = False, skip=()) -> list[str]:
-    """Skill or ability checks (or death saves). Several characters: a group check, half must pass."""
+          hide_dc: bool = False, skip=(), out: dict | None = None) -> list[str]:
+    """Skill or ability checks (or death saves). Several characters: a group check, half must pass.
+
+    `out`: filled with `failed` (True when one character rolled against a DC and missed), for a caller that offers a reroll."""
     rng = rng or random
     if not who:
         raise RulesError("no one to roll for. This campaign has no characters; name a creature in the fight, or add a character first.")
@@ -207,6 +209,8 @@ def check(campaign_dir: Path, state: dict, who: list[str], what: str, dc: int | 
                      + (f" vs DC {dc} — {'success' if ok else 'fail'}" if dc is not None else ""))
     if passive:
         return lines
+    if out is not None:
+        out["failed"] = dc is not None and len(who) == 1 and not passed
     if dc is not None and len(who) > 1:
         lines.append(f"Group check: {passed}/{len(who)} succeed — {'SUCCESS' if passed * 2 >= len(who) else 'FAIL'}")
     shown = spec["title"] + (" check" if what in SKILLS else "")

@@ -171,12 +171,12 @@ function ModeBadge({ mode }: { mode: RollEntry['mode'] }) {
   )
 }
 
-export function Shell({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+export function Shell({ children, className = '', low = false }: { children: React.ReactNode; className?: string; low?: boolean }) {
   const dock = useDock()
   // In a fight the window sits in the strip under the board, so the board stays in view.
   if (dock) return createPortal(<div className="dice-pop h-full overflow-y-auto bg-[var(--panel)] p-2">{children}</div>, dock)
   return (
-    <div className="pointer-events-none fixed inset-0 z-40 flex items-start justify-center pt-[8vh]">
+    <div className={`pointer-events-none fixed inset-0 z-40 flex items-start justify-center ${low ? 'pt-[56vh]' : 'pt-[8vh]'}`}>
       <div className={`dice-pop pointer-events-auto relative border-4 border-[var(--gold)] bg-[var(--panel)] px-5 py-4 ${className}`}>{children}</div>
     </div>
   )

@@ -71,6 +71,18 @@ def gold(sheet: dict, delta: int) -> str:
     return f"{sheet['name']}: {have + delta} gp"
 
 
+INSPIRATION_CAP = 4  # keep in step with "inspiration" in game/schemas/character.schema.json
+
+
+def inspiration(sheet: dict, delta: int) -> str:
+    """Give (`delta` > 0) or take (`delta` < 0) inspiration points. A point lets the player roll a failed check or save again."""
+    have = sheet.get("inspiration", 0)
+    if not 0 <= have + delta <= INSPIRATION_CAP:
+        raise RulesError(f"{sheet['name']} has {have} inspiration; a character holds 0 to {INSPIRATION_CAP}, so {delta:+d} is not possible.")
+    sheet["inspiration"] = have + delta
+    return f"{sheet['name']}: {have + delta} inspiration"
+
+
 # -- gear --------------------------------------------------------------------
 
 

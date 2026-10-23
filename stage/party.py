@@ -42,6 +42,7 @@ def _character(campaign_dir: Path, cid: str, sheet: dict, st: dict, present: lis
         "level": sheet.get("level"),
         "background": sheet.get("background"),
         "hp": sheet.get("hp", {}),
+        "inspiration": sheet.get("inspiration", 0),
         "armor_class": None if sheet.get("armor_class") is None else sheet["armor_class"] + effects.defense_of(held)["ac"],
         "speed": sheet.get("speed", 30),
         "initiative": sheet.get("initiative", mods["dexterity"]),

@@ -54,7 +54,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from core.ids import ID_RE
-from dnd_cli import actions, character, creation, effects, resources, saves
+from dnd_cli import actions, character, creation, effects, resources, saves, sheet as sheets
 from dnd_cli.combat import encounters, records, resolve, rolls, tracker
 from dnd_cli import item as items
 from dnd_cli import campaign as camp
@@ -333,6 +333,9 @@ class Stage:
         if req and req.get("hide"):
             # A hidden DC stays on the server: the roll uses the copy in self.state.
             state["roll_request"] = {k: v for k, v in req.items() if k != "dc"}
+        if state.get("reroll_offer"):
+            # The first lines may show a hidden DC: they stay on the server.
+            state["reroll_offer"] = {k: v for k, v in state["reroll_offer"].items() if k not in ("lines", "dc")}
         return {"kind": "snapshot", "state": state, "campaign": self.campaign_dir.name}
 
     def open_creator(self, device: str | None = None) -> None:
@@ -1535,10 +1538,13 @@ def create_app(
             return error(str(e), 400)
         return JSONResponse({"ok": True})
 
-    def roll_for(stage: Stage, req: dict, skip: list[str]) -> list[str]:
+    def roll_for(stage: Stage, req: dict, skip: list[str], out: dict | None = None) -> list[str]:
         """The roll the DM asked for, made with the same rules code as `dnd-cli check`; the stage shows it."""
         return with_rules(stage, lambda st: resolve.check(stage.campaign_dir, st, [req["who"]], req["what"], dc=req.get("dc"),
-                                                    hide_dc=bool(req.get("hide")), skip=skip))
+                                                    hide_dc=bool(req.get("hide")), skip=skip, out=out))
+
+    def tell_dm(stage: Stage, req: dict, text: str):
+        return stage.submit(f"[{req.get('name', req['who'])} {text}" + (f" {req['note']}" if req.get("note") else "") + " Narrate the outcome.")
 
     async def api_roll(request: Request):
         """The player clicks Roll in the roll window: roll it, show it, and tell the DM the result."""
@@ -1551,13 +1557,60 @@ def create_app(
         skip = [str(x) for x in body.get("skip", []) if isinstance(x, str)]
         # Clear the request at once: a double click must not roll twice.
         await stage._local_event({"type": "roll_done"})
+        held = list(effects.stored(stage.campaign_dir, req["who"]))  # a reroll gives back the one-use effects this roll spends
+        out: dict = {}
         try:
-            lines = await run_in_threadpool(roll_for, stage, req, skip)
+            lines = await run_in_threadpool(roll_for, stage, req, skip, out)
+            left = character.load(stage.campaign_dir, req["who"]).get("inspiration", 0)
         except (RulesError, character.CharacterError) as e:
             return error(str(e), 400)
-        await stage.submit(f"[{req.get('name', req['who'])} rolled in the roll window] " + " ".join(lines)
-                           + (f" {req['note']}" if req.get("note") else "") + " Narrate the outcome.")
+        if out.get("failed") and left:
+            # Hold the result: the player may spend inspiration to roll again. The DM waits, as it waits for the Roll click.
+            await stage._local_event({"type": "reroll_offer", "who": req["who"], "what": req["what"], "dc": req.get("dc"),
+                                      "hide": bool(req.get("hide")), "name": req.get("name"), "note": req.get("note"),
+                                      "skip": skip, "effects": held, "lines": lines, "left": left})
+            return JSONResponse({"lines": lines, "reroll": True})
+        await tell_dm(stage, req, "rolled in the roll window] " + " ".join(lines))
         return JSONResponse({"lines": lines})
+
+    def reroll_for(stage: Stage, offer: dict) -> list[str]:
+        """Spend a point of inspiration and roll the check again. Whatever the first roll spent (Guidance) is back for this one."""
+        def go(st):
+            who = offer["who"]
+            if not character.load(stage.campaign_dir, who).get("inspiration"):
+                raise RulesError("No inspiration left.")
+            for e in offer.get("effects", []):
+                if e not in effects.stored(stage.campaign_dir, who):
+                    effects.add(stage.campaign_dir, who, e)
+            lines = resolve.check(stage.campaign_dir, st, [who], offer["what"], dc=offer.get("dc"), hide_dc=bool(offer.get("hide")),
+                                  skip=offer.get("skip", []))
+            sheet = character.load(stage.campaign_dir, who)  # the roll may have changed the sheet
+            sheets.inspiration(sheet, -1)
+            character.save(stage.campaign_dir, who, sheet)
+            rolls.stage_feed(f"{sheet.get('name', who)} uses inspiration to roll again ({sheet['inspiration']} left).")
+            return lines
+        return with_rules(stage, go)
+
+    async def api_reroll(request: Request):
+        """The player answers the reroll offer: spend inspiration and roll again (`use`), or keep the roll. The DM hears it either way."""
+        stage = idle_stage()
+        body = await request.json()
+        offer = stage.state.get("reroll_offer")
+        if not offer:
+            return error("No reroll is offered.", 409)
+        own(request, stage, offer["who"])
+        await stage._local_event({"type": "reroll_done"})  # a double click must not roll twice
+        text = "rolled in the roll window] " + " ".join(offer["lines"])
+        if body.get("use"):
+            try:
+                again = await run_in_threadpool(reroll_for, stage, offer)
+                text = ("rolled in the roll window and used inspiration to roll again] First roll: " + " ".join(offer["lines"])
+                        + " The new roll is final: " + " ".join(again))
+            except (RulesError, character.CharacterError) as e:
+                await tell_dm(stage, offer, text)  # the player keeps the first roll
+                return error(str(e), 400)
+        await tell_dm(stage, offer, text)
+        return JSONResponse({"used": bool(body.get("use"))})
 
     async def api_spell_levels(request: Request):
         """Spell index -> level, to group a spell list by level (the 5e API's spell list, cached on disk)."""
@@ -1924,6 +1977,7 @@ def create_app(
         Route("/api/end-turn", api_end_turn, methods=["POST"]),
         Route("/api/resource", api_resource, methods=["POST"]),
         Route("/api/roll", api_roll, methods=["POST"]),
+        Route("/api/roll/reroll", api_reroll, methods=["POST"]),
         Route("/api/spells", api_spell_levels),
         Route("/api/spell/{index}", api_spell),
         Route("/api/actor/{actor_id}", api_actor),

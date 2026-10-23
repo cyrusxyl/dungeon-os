@@ -7,6 +7,7 @@ story, not on arithmetic. Logic lives in dnd_cli/combat/ and dnd_cli/sheet.py.
 from __future__ import annotations
 
 import json
+import re
 
 from dnd_cli import audit, character, effects, loot, sheet
 from dnd_cli.combat import encounters, records, resolve, rolls, tracker, wounds
@@ -296,6 +297,13 @@ def execute_gold(campaign, name: str, delta: str) -> int:
         print("Error: give gold as +N or -N, for example +25.")
         return 1
     return _edit_sheet(campaign, name, lambda c, data: [sheet.gold(data, amount)])
+
+
+def execute_inspiration(campaign, name: str, delta: str) -> int:
+    if not re.fullmatch(r"[+-]\d+", delta):
+        print("Error: give inspiration as +N or -N, for example +1.")
+        return 1
+    return _edit_sheet(campaign, name, lambda c, data: [sheet.inspiration(data, int(delta))])
 
 
 def execute_xp(campaign, names: list[str], amount: int) -> int:

@@ -4,7 +4,7 @@ import { Die } from '@/components/Die'
 import { Shell, Tile } from '@/components/DiceOverlay'
 import { GiveBonus } from '@/components/PartyPanel'
 import { act, type Party, signed, TONE } from '@/lib/party'
-import { postJson, type RollRequest as Request } from '@/lib/stage'
+import { postJson, type RerollOffer as Offer, type RollRequest as Request } from '@/lib/stage'
 
 /**
  * The window before a roll the DM asked for. Like Baldur's Gate 3, the player sees the target number and every
@@ -92,6 +92,53 @@ export function RollRequest({ request, party, refresh, blocked }: { request: Req
         >
           {rolling ? 'Rolling…' : blocked ?? 'Roll'}
         </button>
+      </div>
+    </Shell>
+  )
+}
+
+/**
+ * The roll failed and the character has inspiration. The roll shows behind this window; the DM has not heard it yet.
+ * Reroll spends one point and the new roll is final. Keep sends the roll as it fell.
+ */
+export function RerollOffer({ offer, blocked }: { offer: Offer; blocked: string | null }) {
+  const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(false)
+  // The failed roll is still tumbling in the roll window: wait, so the offer does not give the result away.
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), 3000)
+    return () => clearTimeout(t)
+  }, [])
+  const answer = async (use: boolean) => {
+    setBusy(true)
+    if (!(await postJson('/api/roll/reroll', { use })).ok) setBusy(false) // refused: the offer is gone
+  }
+  if (!ready) return null
+  return (
+    <Shell low className="w-[22rem] max-w-[94vw]">
+      <div role="dialog" aria-label="Reroll" className="flex flex-col items-center gap-2">
+        <span className="text-sm text-[var(--dim)]">{offer.name ?? offer.who}</span>
+        <h2 className="pixel-font text-sm text-[var(--ember)]">The roll failed</h2>
+        <p className="text-center text-sm">Spend inspiration to roll again? The new roll is final. You have {offer.left} left.</p>
+        <div className="mt-1 flex gap-3">
+          <button
+            type="button"
+            autoFocus
+            onClick={() => answer(true)}
+            disabled={Boolean(blocked) || busy}
+            className="pixel-font border-4 border-[var(--gold)] bg-[var(--gold)] px-4 py-2 text-xs text-[var(--ink)] hover:bg-[var(--parchment)] disabled:opacity-50"
+          >
+            {blocked ?? 'Reroll ✦'}
+          </button>
+          <button
+            type="button"
+            onClick={() => answer(false)}
+            disabled={Boolean(blocked) || busy}
+            className="pixel-font border-4 border-[var(--border)] px-4 py-2 text-xs text-[var(--parchment)] hover:border-[var(--gold)] disabled:opacity-50"
+          >
+            Keep
+          </button>
+        </div>
       </div>
     </Shell>
   )

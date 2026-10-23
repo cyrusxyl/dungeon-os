@@ -269,6 +269,9 @@ def create_parser():
 
     character_cmd_parser("gold", "Change gold: gold <name> +N|-N", rules_cmd.execute_gold, "name", "delta").add_argument("delta")
 
+    character_cmd_parser("inspiration", "Give or take inspiration (a reroll of a failed check or save): inspiration <name> +N|-N",
+                         rules_cmd.execute_inspiration, "name", "delta").add_argument("delta")
+
     p = character_cmd_parser("xp", "Add XP: xp <name...|all> --amount N", rules_cmd.execute_xp, "names", "amount", parents=(camp,))
     p.add_argument("names", nargs="+")
     p.add_argument("--amount", type=int, required=True)

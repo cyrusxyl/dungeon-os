@@ -48,6 +48,7 @@ def empty() -> dict:
         "notices": [],
         "await": None,
         "roll_request": None,
+        "reroll_offer": None,
         "dm": {"status": "starting"},
         "dm_log": [],
         "versions": {},
@@ -97,7 +98,7 @@ def apply(state: dict, event: dict) -> dict:
             s["actors"].pop(w, None)  # the same room keeps its actors, but the DM sent someone out of it
         s["scene"] = event["location"]
         s["choices"] = None
-        s["roll_request"] = None
+        s["roll_request"] = s["reroll_offer"] = None
         s["explore"] = None
         s["await"] = None
         # s["arena"] stays: only `arena_end` ends a fight. A beat line in a fight must not hide the board, or the creatures stop.
@@ -166,7 +167,7 @@ def apply(state: dict, event: dict) -> dict:
             s["actors"][event["actor"]] = actor
         s["log"] = (s["log"] + [{**event, "seq": s["seq"]}])[-LOG_LIMIT:]
         s["choices"] = None
-        s["roll_request"] = None
+        s["roll_request"] = s["reroll_offer"] = None
         s["await"] = None  # the DM answered; a later `@await` in the same beat sets it again
     elif kind == "pc_say":
         # A player character's words: in the story log, but the DM has not answered, so choices and await stay.
@@ -183,6 +184,10 @@ def apply(state: dict, event: dict) -> dict:
         s["await"] = {"who": event["who"], "seq": s["seq"]}
     elif kind == "roll_request":
         s["roll_request"] = {k: v for k, v in event.items() if k not in ("type", "beat")} | {"seq": s["seq"]}
+    elif kind == "reroll_offer":
+        s["reroll_offer"] = {k: v for k, v in event.items() if k != "type"} | {"seq": s["seq"]}
+    elif kind == "reroll_done":
+        s["reroll_offer"] = None
     elif kind == "roll_done":
         s["roll_request"] = None  # the server is about to make the roll the DM asked for
     elif kind == "roll":
